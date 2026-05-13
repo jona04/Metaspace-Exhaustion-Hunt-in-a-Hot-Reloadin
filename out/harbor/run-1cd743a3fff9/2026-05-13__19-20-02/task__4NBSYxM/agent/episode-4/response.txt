@@ -1,0 +1,15 @@
+{
+  "analysis": "In `WorkerHandle`, the constructor calls `frame.pin()`. The `close()` method calls `frame.unpin()`. \n\nIn `ThreadCache.cursorFor`:\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\nWhen `cursor.matches(frame)` is false, the old `cursor` is replaced by a new one without calling `close()` on the old one. This means `frame.unpin()` is never called for the old frame. Since `TimelineFrame` only closes the `LoadedGeneration` when its pin count reaches zero (and it's 'cooled'), the failure to unpin prevents old generations from being closed. This leads to a resource leak (likely memory/classloaders).",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to call `cursor.close()` before replacing the cursor with a new one.\n2. Verify the fix by running the stress test (if I can find how to run it).",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/if (!cursor.matches(frame)) {/if (!cursor.matches(frame)) {\\n            cursor.close();/' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

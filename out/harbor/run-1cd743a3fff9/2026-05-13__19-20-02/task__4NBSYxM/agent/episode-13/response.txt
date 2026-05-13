@@ -1,0 +1,6 @@
+{
+  "analysis": "The `textd` service was failing during long runs due to a resource leak in the `ThreadCache` class. Each worker thread maintained a `WorkerHandle` that pinned a specific `TimelineFrame` (representing a plugin revision). When a reload occurred, the `ThreadCache` would replace the old `WorkerHandle` with a new one without calling `close()` on the old handle. This meant the `unpin()` method was never called for the old frame, preventing the associated `URLClassLoader` and plugin resources from being released. I modified `ThreadCache.java` to properly close the previous handle during a swap. Verification via the `bin/stress` test (500 cycles with constrained Metaspace) and the full `bin/run-suite` confirmed the fix.",
+  "plan": "The task is complete. I have fixed the resource leak and verified it with the provided stress test suite.",
+  "commands": [],
+  "task_complete": true
+}

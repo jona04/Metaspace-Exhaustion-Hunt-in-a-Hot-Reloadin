@@ -1,0 +1,27 @@
+Previous response had warnings:
+WARNINGS: - Command 1 should end with newline when followed by another command. Otherwise the two commands will be concatenated together on the same line.
+
+New Terminal Output:
+
+root@91eca46e8efc:/workspace/textd# ./bin/integration
+{
+  "input": "alpha beta gamma",
+  "baseline": "GEN-001|ALPHA>BETA>GAMMA|PIPE-18528",
+  "revision": 12,
+  "current": "GEN-012|ALPHA>BETA>GAMMA|PIPE-18528"
+}
+root@91eca46e8efc:/workspace/textd# cat bin/integration
+#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+if [[ "${TEXTD_SKIP_BUILD:-0}" != "1" ]]; then
+  "$ROOT_DIR/bin/build"
+fi
+
+java -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.HotReloadIntegrationRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" \
+  "${1:-12}"
+root@91eca46e8efc:/workspace/textd#

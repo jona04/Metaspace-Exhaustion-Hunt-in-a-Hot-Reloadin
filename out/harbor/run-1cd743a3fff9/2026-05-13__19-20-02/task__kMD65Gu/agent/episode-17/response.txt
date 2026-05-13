@@ -1,0 +1,6 @@
+{
+  "analysis": "The `textd` service was failing with an `OutOfMemoryError: Metaspace` during long runs with frequent processor swaps. This was caused by a leak where old `URLClassLoader` instances (one per generation) were never closed. Specifically, the `ThreadCache` held by each worker thread in a `ThreadLocal` was not closing the previous `WorkerHandle` when a new one was created for a new generation. Since each `WorkerHandle` pins a `TimelineFrame`, and a pinned frame prevents the underlying `LoadedGeneration` (and its class loader) from being closed, the Metaspace grew indefinitely. I have modified `ThreadCache.java` to properly close the old `WorkerHandle` before replacing it, ensuring the class loaders are released. This was verified by running the stress test for 500 cycles within the 64MB Metaspace limit.",
+  "plan": "I have already applied the fix and verified it with the provided stress and integration tests. No further actions are required.",
+  "commands": [],
+  "task_complete": true
+}

@@ -1,0 +1,19 @@
+{
+  "analysis": "I see the issue. \n1. `TimelineLedger` keeps old `TimelineFrame` objects in a `shadow` queue until they are 'drained' (`isDrained()`).\n2. `ThreadBridge` uses a `ThreadLocal<ThreadCache>` to store a `WorkerHandle` for each thread.\n3. `ThreadCache` holds onto a `WorkerHandle` until it's replaced by a new one for a different frame.\n4. `WorkerHandle` likely keeps a reference to the `TimelineFrame`, which keeps the `LoadedGeneration` (and its ClassLoader) alive.\n5. The `pruneShadow()` method in `TimelineLedger` only removes frames that are `isDrained()`. \n6. The `ThreadLocal` in each worker thread is never cleared, and the `ThreadCache` only replaces the `cursor` when a *new* request comes in for a *new* generation. However, if a thread is idle, it will still hold onto the `WorkerHandle` of the *previous* generation.\n\nWait, if the `ThreadLocal` holds the `WorkerHandle`, and the `WorkerHandle` points to the `TimelineFrame`, then the `TimelineFrame` will not be 'drained' as long as any thread's `ThreadLocal` still points to it. But `TimelineFrame.isDrained()` probably checks something else.\n\nLet's look at `TimelineFrame.java` and `WorkerHandle.java` and `LoadedGeneration.java`.",
+  "plan": "1. Examine `TimelineFrame.java`, `WorkerHandle.java`, and `LoadedGeneration.java` to see how they track usage and what `isDrained()` means.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

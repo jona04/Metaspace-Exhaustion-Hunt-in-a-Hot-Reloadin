@@ -1,0 +1,11 @@
+{
+  "analysis": "I've found the bug. \n\nIn `ThreadCache.java`:\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\nWhen `!cursor.matches(frame)`, a new `WorkerHandle` is created and assigned to `cursor`, but the previous `cursor` is never closed. \n\nEach `WorkerHandle` pins the `TimelineFrame` in its constructor: `this.frame = frame.pin();`. \nWhen the frame is no longer current in `TimelineLedger`, `cool()` is called, which decrements the pin count. However, the `TimelineFrame` will only be closed (and its `LoadedGeneration` / `ClassLoader` released) when the pin count reaches 0. \n\nSince `ThreadCache` keeps overwriting `cursor` without closing the old one, the old `WorkerHandle` objects are leaked (until GC, but they are pinned by the `ThreadLocal`'s `ThreadCache` if they weren't overwritten, and even if overwritten, they aren't explicitly unpinned). Actually, if `cursor` is overwritten, the old `WorkerHandle` is eligible for GC, but the `TimelineFrame` it points to will remain pinned until the `WorkerHandle`'s `close()` is called, or until it's finalized (but `WorkerHandle` doesn't have a finalizer). Wait, if the `WorkerHandle` is GCed, the `TimelineFrame` it references is still pinned because `unpin()` was never called.\n\nSo the fix is to call `cursor.close()` before creating a new `WorkerHandle` in `ThreadCache.java`.",
+  "plan": "1. Verify this by running the stress test and seeing it fail.\n2. Apply the fix to `src/main/java/io/harbor/textd/core/ThreadCache.java`.\n3. Run the stress test again to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}

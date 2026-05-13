@@ -1,0 +1,104 @@
+New Terminal Output:
+
+root@b5de4bbb4be4:/workspace/textd# cat src/main/java/io/harbor/textd/core/ThreadBridge.java
+package io.harbor.textd.core;
+
+final class ThreadBridge {
+    private static final ThreadLocal<ThreadCache> ROUTES = ThreadLocal.withInitial(ThreadCache::new);
+
+    private ThreadBridge() {
+    }
+
+    static WorkerHandle current(TimelineLedger ledger) {
+        return ROUTES.get().cursorFor(ledger);
+    }
+
+    static void clear() {
+        ThreadCache routeState = ROUTES.get();
+        routeState.close();
+        ROUTES.remove();
+    }
+}
+root@b5de4bbb4be4:/workspace/textd# cat src/main/java/io/harbor/textd/core/ThreadCache.java
+package io.harbor.textd.core;
+
+final class ThreadCache implements AutoCloseable {
+    private WorkerHandle cursor;
+
+    WorkerHandle cursorFor(TimelineLedger ledger) {
+        TimelineFrame frame = ledger.current();
+        if (cursor == null) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        if (!cursor.matches(frame)) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        return cursor;
+    }
+
+    @Override
+    public void close() {
+        if (cursor != null) {
+            cursor.close();
+            cursor = null;
+        }
+    }
+}
+root@b5de4bbb4be4:/workspace/textd# cat src/main/java/io/harbor/textd/core/TimelineLedger.java
+package io.harbor.textd.core;
+
+import java.nio.file.Path;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicReference;
+
+final class TimelineLedger {
+    private final Path pluginJar;
+    private final AtomicReference<TimelineFrame> current = new AtomicReference<>();
+    private final Queue<TimelineFrame> shadow = new ConcurrentLinkedQueue<>();
+
+    TimelineLedger(Path pluginJar) {
+        this.pluginJar = pluginJar;
+    }
+
+    void install(long revision) throws Exception {
+        TimelineFrame next = new TimelineFrame(LoadedGeneration.load(pluginJar, revision));
+        TimelineFrame previous = current.getAndSet(next);
+        if (previous != null) {
+            shadow.add(previous);
+            previous.cool();
+            pruneShadow();
+        }
+    }
+
+    TimelineFrame current() {
+        TimelineFrame frame = current.get();
+        if (frame == null) {
+            throw new IllegalStateException("No plugin generation is loaded");
+        }
+        return frame;
+    }
+
+    boolean isBalanced() {
+        pruneShadow();
+        return shadow.isEmpty();
+    }
+
+    void close() {
+        TimelineFrame frame = current.getAndSet(null);
+        if (frame != null) {
+            shadow.add(frame);
+            frame.cool();
+        }
+        pruneShadow();
+    }
+
+    private void pruneShadow() {
+        shadow.removeIf(TimelineFrame::isDrained);
+    }
+}
+root@b5de4bbb4be4:/workspace/textd#

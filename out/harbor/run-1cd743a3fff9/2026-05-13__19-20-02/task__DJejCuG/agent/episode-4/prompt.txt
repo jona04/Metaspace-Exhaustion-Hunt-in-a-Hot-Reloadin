@@ -1,0 +1,41 @@
+New Terminal Output:
+
+root@2c6f8e0d4df8:/workspace/textd# find src/main/java -maxdepth 10
+src/main/java
+src/main/java/io
+src/main/java/io/harbor
+src/main/java/io/harbor/textd
+src/main/java/io/harbor/textd/api
+src/main/java/io/harbor/textd/api/PluginModuleFactory.java
+src/main/java/io/harbor/textd/api/PluginModule.java
+src/main/java/io/harbor/textd/api/TextProcessor.java
+src/main/java/io/harbor/textd/core
+src/main/java/io/harbor/textd/core/ProcessingResult.java
+src/main/java/io/harbor/textd/core/TextDaemon.java
+src/main/java/io/harbor/textd/core/LoadedGeneration.java
+src/main/java/io/harbor/textd/core/TimelineLedger.java
+src/main/java/io/harbor/textd/core/ThreadCache.java
+src/main/java/io/harbor/textd/core/OutputFormat.java
+src/main/java/io/harbor/textd/core/WorkerHandle.java
+src/main/java/io/harbor/textd/core/ThreadBridge.java
+src/main/java/io/harbor/textd/core/TimelineFrame.java
+src/main/java/io/harbor/textd/cli
+src/main/java/io/harbor/textd/cli/HotReloadIntegrationRunner.java
+src/main/java/io/harbor/textd/cli/SessionReplayRunner.java
+src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java
+src/main/java/io/harbor/textd/cli/RuntimeDigestRunner.java
+root@2c6f8e0d4df8:/workspace/textd# cat bin/stress
+#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+if [[ "${TEXTD_SKIP_BUILD:-0}" != "1" ]]; then
+  "$ROOT_DIR/bin/build"
+fi
+
+java -XX:MaxMetaspaceSize=64m -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.HotReloadStressRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" \
+  "${1:-50}"
+root@2c6f8e0d4df8:/workspace/textd#

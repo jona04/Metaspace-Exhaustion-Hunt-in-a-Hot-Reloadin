@@ -1,0 +1,15 @@
+{
+  "analysis": "I found the leak. \n\n1. `ThreadBridge` uses a `ThreadLocal<ThreadCache>`. \n2. `ThreadCache` (I haven't seen the code yet, but I can infer) holds onto `WorkerHandle`s.\n3. `WorkerHandle` holds onto `TimelineFrame`, which is 'pinned' when the handle is created.\n4. `TimelineLedger.pruneShadow()` only removes frames that are 'drained' (`TimelineFrame::isDrained`).\n5. A frame is likely 'drained' only when its pin count reaches zero.\n6. Since each worker thread's `ThreadLocal` holds a `WorkerHandle` for a specific revision, and those `WorkerHandle`s are never replaced or cleared in the `ThreadLocal` when a new revision comes in (unless `cursorFor` handles it, which I need to check), the pin count on old `TimelineFrame`s stays above zero.\n7. This prevents `TimelineLedger` from pruning old frames, which in turn keeps the `LoadedGeneration` and its `URLClassLoader` alive, leading to Metaspace exhaustion.\n\nI need to see `ThreadCache.java` and `TimelineFrame.java`.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/ThreadCache.java`.\n2. Examine `src/main/java/io/harbor/textd/core/TimelineFrame.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

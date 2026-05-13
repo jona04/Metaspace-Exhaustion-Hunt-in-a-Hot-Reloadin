@@ -1,0 +1,11 @@
+{
+  "analysis": "The `bin/stress` script runs `io.harbor.textd.cli.HotReloadStressRunner` with a constraint: `-XX:MaxMetaspaceSize=64m`. This is a strong hint that the 'processor swaps' (hot reloading) are leaking ClassLoaders or classes, eventually exhausting the Metaspace. Metaspace leaks are common in Java when dynamic class loading is used but the old ClassLoaders are not garbage collected because of remaining references.",
+  "plan": "1. Run the stress test and wait for it to fail to confirm the Metaspace OOM.\n2. Examine `HotReloadStressRunner.java` and `TextDaemon.java` to see how plugins are loaded and discarded.\n3. Specifically look for where new ClassLoaders are created and if anything (like threads, caches, or static references) might be holding onto them.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 100\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

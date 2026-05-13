@@ -1,0 +1,15 @@
+{
+  "analysis": "The `ThreadCache` holds a `WorkerHandle` for each thread. When the `TimelineFrame` changes (due to a reload), `cursorFor` creates a new `WorkerHandle`. However, it doesn't call `close()` on the old `cursor` before replacing it. \n\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\n\nThis looks like a resource leak. Each `WorkerHandle` likely holds some resources (maybe related to the class loader or plugin instance) that should be released. `TimelineLedger` also has a `shadow` queue and `pruneShadow` which relies on `TimelineFrame::isDrained`. If `WorkerHandle` is not closed, the old `TimelineFrame` might never be considered 'drained'.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java` and `src/main/java/io/harbor/textd/core/TimelineFrame.java` to see what `close()` and `isDrained()` do.\n2. Confirm if `WorkerHandle.close()` needs to be called in `ThreadCache.cursorFor` when the frame doesn't match.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

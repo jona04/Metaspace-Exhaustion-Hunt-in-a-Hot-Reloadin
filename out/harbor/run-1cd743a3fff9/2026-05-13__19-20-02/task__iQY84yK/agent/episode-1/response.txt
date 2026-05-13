@@ -1,0 +1,11 @@
+{
+  "analysis": "The project is a Java-based text processing daemon. Based on the task description and the file structure, the issue likely resides in how the daemon handles 'processor swaps' (hot reloading). \n\nKey files identified:\n- `src/main/java/io/harbor/textd/core/TextDaemon.java`: Likely the main entry point and coordinator.\n- `src/main/java/io/harbor/textd/core/LoadedGeneration.java`: Probably manages a specific version/generation of loaded plugins.\n- `src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java`: Likely the tool used to reproduce the 'long refresh run' failure.\n- `src/main/java/io/harbor/textd/core/ThreadCache.java` and `ThreadBridge.java`: Potential sources of resource leaks if threads or thread-locals aren't cleaned up.\n\nThe directory structure suggests a plugin-based architecture where `PipelineProcessor` and `CustomerPluginFactory` are swapped out.",
+  "plan": "1. Run the stress test to confirm the failure and see the error (OOM, Too many open files, etc.).\n2. Examine `TextDaemon.java` and `LoadedGeneration.java` to understand the lifecycle of a processor swap.\n3. Search for resource management patterns (try-with-resources, manual closing, thread pool shutdowns).",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}

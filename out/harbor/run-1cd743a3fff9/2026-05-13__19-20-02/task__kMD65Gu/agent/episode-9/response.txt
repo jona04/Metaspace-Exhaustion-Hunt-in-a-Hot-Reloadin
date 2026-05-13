@@ -1,0 +1,11 @@
+{
+  "analysis": "100 cycles passed. I should try more cycles to see if it fails at 500, which is the default for the stress test. The `TextDaemon` uses `ThreadBridge.current(revisions)` to get a `WorkerHandle`. This suggests some thread-local state or a mapping between threads and plugin versions. If `ThreadBridge` or `TimelineLedger` doesn't clean up old versions, that's where the leak is.",
+  "plan": "1. Run the stress test with 500 cycles (the default) to see if it fails.\n2. Examine `ThreadBridge.java` and `TimelineLedger.java`.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 30.0
+    }
+  ],
+  "task_complete": false
+}
