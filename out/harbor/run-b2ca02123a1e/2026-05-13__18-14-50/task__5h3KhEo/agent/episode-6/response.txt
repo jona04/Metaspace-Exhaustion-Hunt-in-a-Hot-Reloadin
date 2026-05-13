@@ -1,0 +1,19 @@
+{
+  "analysis": "The issue is in `ThreadCache.java`. When `cursorFor` is called and the `cursor` doesn't match the current frame, it creates a new `WorkerHandle` but never calls `close()` on the old one. \n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame); // <--- Old cursor is leaked here!\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n\nEach `WorkerHandle` pins a `TimelineFrame`. A `TimelineFrame` only closes its `LoadedGeneration` (and thus the `URLClassLoader`) when its pin count reaches 0 and it has been 'cooled'. Since `ThreadCache` leaks `WorkerHandle` objects, the pin count never reaches 0 for old frames, causing the `URLClassLoader` and all its loaded classes to stay in Metaspace. This perfectly explains the OOM in Metaspace during long runs with many reloads.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before creating a new one.\n2. Run the stress test with a larger number of cycles to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/cursor.close(); cursor = new WorkerHandle(frame);/' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "./bin/stress 100\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

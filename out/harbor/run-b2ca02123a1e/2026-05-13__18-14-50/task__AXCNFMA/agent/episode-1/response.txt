@@ -1,0 +1,10 @@
+{
+  "analysis": "The project is a Java-based text processing daemon. Based on the task description and the file structure, the issue likely involves a resource leak during 'processor swaps' (hot reloading). \n\nKey files to investigate:\n- `src/main/java/io/harbor/textd/core/TextDaemon.java`: Likely the main entry point.\n- `src/main/java/io/harbor/textd/core/ThreadCache.java` and `ThreadBridge.java`: These might be holding onto resources incorrectly.\n- `src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java`: This likely executes the 'long refresh run' mentioned in the task.\n- `plugin-src/.../PipelineProcessor.java`: The actual processing logic.\n\nThe directory `bin` contains `stress`, which probably runs `HotReloadStressRunner`.",
+  "plan": "1. Run the stress test to confirm the failure.\n2. Examine `HotReloadStressRunner.java` and `TextDaemon.java` to understand the reload mechanism.\n3. Check `ThreadCache.java` for potential leaks (e.g., ThreadLocals not being cleared).",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 5.0
+    }
+  ]
+}

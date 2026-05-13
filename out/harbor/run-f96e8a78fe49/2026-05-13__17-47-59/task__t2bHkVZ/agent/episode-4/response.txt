@@ -1,0 +1,15 @@
+{
+  "analysis": "In `TimelineLedger`, `install` creates a new `TimelineFrame` and moves the previous one to a `shadow` queue. `pruneShadow` removes frames that are 'drained'.\n\nIn `ThreadBridge`, a `ThreadLocal<ThreadCache>` is used. `current(ledger)` calls `ROUTES.get().cursorFor(ledger)`.\n\nThere's a potential issue: `ThreadLocal` variables in a thread pool can leak if they aren't cleaned up. However, the problem described is that the service 'falls over' during long runs with many processor swaps. This often means something is holding onto old generations, preventing them from being 'drained' and thus preventing `pruneShadow` from removing them.",
+  "plan": "1. Examine `ThreadCache.java` and `TimelineFrame.java`.\n2. Examine `WorkerHandle.java`.\n3. Look for how `isDrained` is determined in `TimelineFrame`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

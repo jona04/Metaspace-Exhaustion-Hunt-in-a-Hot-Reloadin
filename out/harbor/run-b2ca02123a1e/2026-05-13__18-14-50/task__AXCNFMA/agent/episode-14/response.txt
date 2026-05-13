@@ -1,0 +1,6 @@
+{
+  "analysis": "The investigation revealed a resource leak in `ThreadCache.java` where old `WorkerHandle` instances were not being closed during a processor swap. Each `WorkerHandle` pins a `TimelineFrame`, which in turn holds a `LoadedGeneration` containing a `URLClassLoader`. Because the old handles were never closed, the pin count never reached zero, preventing the `URLClassLoader` from being closed and causing a Metaspace exhaustion in the constrained 64MB environment. I have modified `ThreadCache.java` to properly close the previous `WorkerHandle` before creating a new one. This was verified by running the stress test for 200 cycles (well beyond the failure point), which now completes successfully.",
+  "plan": "I have already applied the fix and verified it with the stress test. No further actions are required.",
+  "commands": [],
+  "task_complete": true
+}

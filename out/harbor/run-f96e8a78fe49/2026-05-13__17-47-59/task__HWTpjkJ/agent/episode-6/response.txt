@@ -1,0 +1,11 @@
+{
+  "analysis": "The stress test passed for 100 cycles, but the task says it fails during a 'long refresh run'. The default is 500 cycles. I'll try running it with 500 cycles to confirm the failure. \n\nLooking at `TextDaemon.java`, `processRecord` calls `ThreadBridge.current(revisions)` and then `binding.process(record)`. The `ThreadBridge` and `TimelineLedger` seem to be involved in managing the plugin generations.",
+  "plan": "1. Run the stress test with 500 cycles to see if it fails.\n2. Read `src/main/java/io/harbor/textd/core/ThreadBridge.java`, `src/main/java/io/harbor/textd/core/TimelineLedger.java`, and `src/main/java/io/harbor/textd/core/WorkerHandle.java` to find potential leaks.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

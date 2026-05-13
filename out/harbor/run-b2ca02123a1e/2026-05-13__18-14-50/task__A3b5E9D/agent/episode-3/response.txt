@@ -1,0 +1,18 @@
+{
+  "analysis": "I found a potential resource leak. In `ThreadCache.java`, the `cursorFor` method creates a new `WorkerHandle` if the current one doesn't match the latest frame, but it **never closes** the old `WorkerHandle`. \n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame); // Old cursor is abandoned but not closed!\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n\n`WorkerHandle` likely holds some resources (maybe a reference to the `TimelineFrame`, which in turn keeps track of the 'active' count). In `TimelineLedger.java`, `pruneShadow` removes frames that are 'drained'. If `WorkerHandle` is not closed, the frame might never become drained, leading to a build-up of `TimelineFrame` objects and their associated ClassLoaders (from `LoadedGeneration.load`).",
+  "plan": "1. Verify `WorkerHandle.java` and `TimelineFrame.java` to see how they track usage.\n2. Run the stress test to confirm it fails (likely with OutOfMemoryError or similar).\n3. Fix the leak in `ThreadCache.java` by closing the old cursor before replacing it.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 10.0
+    }
+  ]
+}

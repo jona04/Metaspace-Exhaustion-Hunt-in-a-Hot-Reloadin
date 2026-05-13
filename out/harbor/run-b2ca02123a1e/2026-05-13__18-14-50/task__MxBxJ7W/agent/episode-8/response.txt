@@ -1,0 +1,14 @@
+{
+  "analysis": "The `ThreadBridge` uses a `ThreadLocal<ThreadCache>`. The `ThreadCache` holds a `WorkerHandle` which points to a `TimelineFrame`. When a new generation is installed, `TimelineLedger` moves the old `TimelineFrame` to the `shadow` queue and calls `previous.cool()`. The `pruneShadow` method removes frames that are 'drained'.\n\nIn `ThreadCache.cursorFor`, if the current `cursor` doesn't match the new `frame`, it simply replaces it: `cursor = new WorkerHandle(frame);`. Crucially, it **does not call `close()` on the old `cursor`** before replacing it. If `WorkerHandle.close()` is responsible for decrementing a reference count or marking the `TimelineFrame` as drained, then the old frame will never be drained and thus never removed from the `shadow` queue in `TimelineLedger`.\n\nLet's check `WorkerHandle.java` and `TimelineFrame.java`.",
+  "plan": "1. Examine `WorkerHandle.java` to see what `close()` and `matches()` do.\n2. Examine `TimelineFrame.java` to see how it tracks usage and becomes 'drained'.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    }
+  ]
+}

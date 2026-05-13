@@ -1,0 +1,10 @@
+{
+  "analysis": "The `bin/stress` script sets `-XX:MaxMetaspaceSize=64m`. This is quite small and explains why leaking ClassLoaders (via `TimelineFrame` pins) would cause the daemon to 'fall over'. \n\nThe script defaults to 50 cycles if no argument is provided. The `HotReloadStressRunner` defaults to 500 if no argument is provided, but `bin/stress` passes `${1:-50}`. \n\nBefore my fix, 50 cycles might have been enough to exhaust 64MB of Metaspace if each cycle loads new classes (which `daemon.reload(generation)` likely does). \n\nTo be sure, I should run it with a larger number of cycles, say 200, to verify the fix holds under more pressure.",
+  "plan": "1. Run `./bin/stress 200` to verify the fix under more cycles with the 64MB Metaspace limit.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 200\n",
+      "duration": 15.0
+    }
+  ]
+}

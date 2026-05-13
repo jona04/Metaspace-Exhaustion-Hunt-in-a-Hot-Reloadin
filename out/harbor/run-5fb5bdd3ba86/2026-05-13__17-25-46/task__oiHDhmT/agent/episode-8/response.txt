@@ -1,0 +1,19 @@
+{
+  "analysis": "The stress test failed with `java.lang.OutOfMemoryError: Metaspace`. This confirms my suspicion about class loaders leaking.\n\nLooking at the code:\n- `ThreadBridge` uses a `ThreadLocal<ThreadCache>`.\n- `ThreadCache` holds a `WorkerHandle cursor`.\n- `WorkerHandle` is associated with a `TimelineFrame`.\n- `TimelineFrame` holds a `LoadedGeneration`.\n- `LoadedGeneration` likely contains the `ClassLoader`.\n\nIn `ThreadCache.cursorFor`:\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\nWhen the `frame` changes (due to a reload), the old `cursor` (which is a `WorkerHandle`) is simply overwritten. However, `WorkerHandle` might need to be closed to release resources, and more importantly, the `TimelineFrame` it was using needs to know that this thread is no longer using it.\n\nWait, I see `ThreadCache.close()` calls `cursor.close()`, but `cursorFor` doesn't call `close()` when it replaces the cursor. Let's check `WorkerHandle.java` and `TimelineFrame.java`.",
+  "plan": "1. Read `src/main/java/io/harbor/textd/core/WorkerHandle.java`.\n2. Read `src/main/java/io/harbor/textd/core/TimelineFrame.java`.\n3. Read `src/main/java/io/harbor/textd/core/LoadedGeneration.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

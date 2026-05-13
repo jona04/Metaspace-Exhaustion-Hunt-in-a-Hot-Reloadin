@@ -1,0 +1,6 @@
+{
+  "analysis": "The problem was a memory leak in the Metaspace caused by not closing old `WorkerHandle` instances when the text-processor was reloaded. Each `WorkerHandle` pinned a `TimelineFrame`, which in turn held a reference to a `LoadedGeneration` (including its ClassLoader). By failing to close the old `WorkerHandle` in `ThreadCache.cursorFor`, the `TimelineFrame` pin count never dropped to zero, preventing the ClassLoader from being garbage collected. I have modified `ThreadCache.java` to properly close the old `cursor` before replacing it. This fix was verified by running the stress test (which previously failed with an `OutOfMemoryError: Metaspace`) and the full test suite, both of which now pass.",
+  "plan": "The task is complete. I have identified, reproduced, and fixed the resource leak, then verified the solution with the provided test suite.",
+  "commands": [],
+  "task_complete": true
+}

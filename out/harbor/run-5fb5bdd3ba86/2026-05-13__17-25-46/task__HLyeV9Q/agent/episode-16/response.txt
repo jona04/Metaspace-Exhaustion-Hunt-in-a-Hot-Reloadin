@@ -1,0 +1,6 @@
+{
+  "analysis": "The task was to resolve a stability issue in the `textd` service where it failed during long refresh runs (processor swaps) in a constrained environment. I identified a Metaspace leak caused by `ThreadCache` not closing old `WorkerHandle` instances when a new plugin generation was loaded. This prevented the corresponding `TimelineFrame` from being unpinned, which in turn prevented the `LoadedGeneration` (and its `ClassLoader`) from being closed and garbage collected. I modified `ThreadCache.java` to properly close the old `cursor` before replacing it. Both the stress test and the full integration suite now pass successfully.",
+  "plan": "The task is verified as complete. I have fixed the leak and verified the fix with the provided stress and integration tests.",
+  "commands": [],
+  "task_complete": true
+}

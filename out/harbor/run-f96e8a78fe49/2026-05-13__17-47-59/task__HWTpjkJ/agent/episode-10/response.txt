@@ -1,0 +1,15 @@
+{
+  "analysis": "The logic in `ThreadCache.java` is definitely leaking `WorkerHandle` instances. When `cursorFor` is called and the revision has changed, it replaces `cursor` with a new `WorkerHandle` without closing the old one. \n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame); // LEAK: old cursor not closed\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n\nClosing the old `cursor` will call `unpin()` on the old `TimelineFrame`. When the pin count reaches 0 and the frame is 'cooled' (which happens in `TimelineLedger.install`), `closeLoadedGeneration()` is called, which closes the `URLClassLoader`. This will allow the Metaspace to be reclaimed.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the existing cursor before creating a new one when the frame doesn't match.\n2. Re-run the stress test to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 15.0
+    }
+  ],
+  "task_complete": false
+}

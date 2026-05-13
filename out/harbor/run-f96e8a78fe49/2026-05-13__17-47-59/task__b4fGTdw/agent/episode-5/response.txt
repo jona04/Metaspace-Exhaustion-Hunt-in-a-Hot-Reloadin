@@ -1,0 +1,19 @@
+{
+  "analysis": "I have the code for `TextDaemon.java`. It uses a `TimelineLedger` to manage revisions and an `ExecutorService` for workers. The `processRecord` method uses `ThreadBridge.current(revisions)` to get a `WorkerHandle`. The `close` method closes the `revisions` and shuts down the workers. The issue might be in how `ThreadBridge` or `TimelineLedger` handles the 'processor swaps' (generations).",
+  "plan": "1. Examine `TimelineLedger.java` to see how it manages generations and installs new ones.\n2. Examine `ThreadBridge.java` to see how it binds generations to threads.\n3. Examine `LoadedGeneration.java` to see how it's closed.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

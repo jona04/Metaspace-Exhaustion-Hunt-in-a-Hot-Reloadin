@@ -1,0 +1,14 @@
+{
+  "analysis": "The `TextDaemon` uses a `TimelineLedger` to manage revisions and a `ThreadBridge` to bind workers to a specific revision. The `processRecord` method calls `ThreadBridge.current(revisions)` to get a `WorkerHandle`. If the Metaspace is filling up, it's likely because old revisions (and their ClassLoaders) are not being fully garbage collected when a new revision is installed via `revisions.install(generation)`.",
+  "plan": "1. Examine `TimelineLedger.java` and `ThreadBridge.java` to see how revisions are managed and how `ThreadLocal` or other caching might be preventing ClassLoaders from being GCed.\n2. Examine `WorkerHandle.java` and `LoadedGeneration.java` to see how they reference classes.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    }
+  ]
+}

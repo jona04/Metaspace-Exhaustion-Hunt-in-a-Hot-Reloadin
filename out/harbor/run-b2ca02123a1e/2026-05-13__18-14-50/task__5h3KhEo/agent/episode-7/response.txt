@@ -1,0 +1,15 @@
+{
+  "analysis": "Wait, my `sed` command was too broad and messed up the `if (cursor == null)` block. \n\n```java\n        if (cursor == null) {\n            cursor.close(); cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\nThis will throw a `NullPointerException` because `cursor` is null. I need to fix this.",
+  "plan": "1. Correct the `ThreadCache.java` file to only close the cursor when it's not null.\n2. Run the stress test again.",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/stress 100\n",
+      "duration": 15.0
+    }
+  ],
+  "task_complete": false
+}

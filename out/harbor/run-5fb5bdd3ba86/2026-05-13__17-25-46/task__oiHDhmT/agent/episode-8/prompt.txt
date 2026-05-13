@@ -1,0 +1,231 @@
+Previous response had warnings:
+WARNINGS: - Command 1 should end with newline when followed by another command. Otherwise the two commands will be concatenated together on the same line.
+
+New Terminal Output:
+
+cat src/main/java/io/harbor/textd/core/ThreadCache.java
+Exception in thread "main" java.lang.OutOfMemoryError: Metaspace
+        at java.base/java.lang.ClassLoader.defineClass1(Native Method)
+        at java.base/java.lang.ClassLoader.defineClass(ClassLoader.java:1017)
+        at java.base/java.security.SecureClassLoader.defineClass(SecureClassLoader.java:150)
+        at java.base/java.net.URLClassLoader.defineClass(URLClassLoader.java:524)
+        at java.base/java.net.URLClassLoader$1.run(URLClassLoader.java:427)
+        at java.base/java.net.URLClassLoader$1.run(URLClassLoader.java:421)
+        at java.base/java.security.AccessController.executePrivileged(AccessController.java:807)
+        at java.base/java.security.AccessController.doPrivileged(AccessController.java:712)
+        at java.base/java.net.URLClassLoader.findClass(URLClassLoader.java:420)
+        at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:592)
+        at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:525)
+        at io.harbor.textd.customer.PipelineStages.<clinit>(PipelineStages.java:10)
+        at io.harbor.textd.customer.PipelineProcessor.process(PipelineProcessor.java:22)
+        at io.harbor.textd.core.WorkerHandle.process(WorkerHandle.java:21)
+        at io.harbor.textd.core.TextDaemon.processRecord(TextDaemon.java:80)
+        at io.harbor.textd.core.TextDaemon.lambda$processBatch$0(TextDaemon.java:43)
+        at io.harbor.textd.core.TextDaemon$$Lambda$1/0x00007913c1001c58.call(Unknown Source)
+        at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+        at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
+        at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+        at java.base/java.lang.Thread.run(Thread.java:840)
+root@971e08761e6a:/workspace/textd# cat src/main/java/io/harbor/textd/core/ThreadBridge.java
+package io.harbor.textd.core;
+
+final class ThreadBridge {
+    private static final ThreadLocal<ThreadCache> ROUTES = ThreadLocal.withInitial(ThreadCache::new);
+
+    private ThreadBridge() {
+    }
+
+    static WorkerHandle current(TimelineLedger ledger) {
+        return ROUTES.get().cursorFor(ledger);
+    }
+
+    static void clear() {
+        ThreadCache routeState = ROUTES.get();
+        routeState.close();
+        ROUTES.remove();
+    }
+}
+root@971e08761e6a:/workspace/textd# cat src/main/java/io/harbor/textd/core/TimelineLedger.java
+package io.harbor.textd.core;
+
+import java.nio.file.Path;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicReference;
+
+final class TimelineLedger {
+    private final Path pluginJar;
+    private final AtomicReference<TimelineFrame> current = new AtomicReference<>();
+    private final Queue<TimelineFrame> shadow = new ConcurrentLinkedQueue<>();
+
+    TimelineLedger(Path pluginJar) {
+        this.pluginJar = pluginJar;
+    }
+
+    void install(long revision) throws Exception {
+        TimelineFrame next = new TimelineFrame(LoadedGeneration.load(pluginJar, revision));
+        TimelineFrame previous = current.getAndSet(next);
+        if (previous != null) {
+            shadow.add(previous);
+            previous.cool();
+            pruneShadow();
+        }
+    }
+
+    TimelineFrame current() {
+        TimelineFrame frame = current.get();
+        if (frame == null) {
+            throw new IllegalStateException("No plugin generation is loaded");
+        }
+        return frame;
+    }
+
+    boolean isBalanced() {
+        pruneShadow();
+        return shadow.isEmpty();
+    }
+
+    void close() {
+        TimelineFrame frame = current.getAndSet(null);
+        if (frame != null) {
+            shadow.add(frame);
+            frame.cool();
+        }
+        pruneShadow();
+    }
+
+    private void pruneShadow() {
+        shadow.removeIf(TimelineFrame::isDrained);
+    }
+}
+root@971e08761e6a:/workspace/textd# cat src/main/java/io/harbor/textd/core/ThreadCache.java
+package io.harbor.textd.core;
+
+final class ThreadCache implements AutoCloseable {
+    private WorkerHandle cursor;
+
+    WorkerHandle cursorFor(TimelineLedger ledger) {
+        TimelineFrame frame = ledger.current();
+        if (cursor == null) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        if (!cursor.matches(frame)) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        return cursor;
+    }
+
+    @Override
+    public void close() {
+        if (cursor != null) {
+            cursor.close();
+            cursor = null;
+        }
+    }
+}
+root@971e08761e6a:/workspace/textd# cat src/main/java/io/harbor/textd/core/ThreadBridge.java
+package io.harbor.textd.core;
+
+final class ThreadBridge {
+    private static final ThreadLocal<ThreadCache> ROUTES = ThreadLocal.withInitial(ThreadCache::new);
+
+    private ThreadBridge() {
+    }
+
+    static WorkerHandle current(TimelineLedger ledger) {
+        return ROUTES.get().cursorFor(ledger);
+    }
+
+    static void clear() {
+        ThreadCache routeState = ROUTES.get();
+        routeState.close();
+        ROUTES.remove();
+    }
+}
+root@971e08761e6a:/workspace/textd# cat src/main/java/io/harbor/textd/core/TimelineLedger.java
+package io.harbor.textd.core;
+
+import java.nio.file.Path;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicReference;
+
+final class TimelineLedger {
+    private final Path pluginJar;
+    private final AtomicReference<TimelineFrame> current = new AtomicReference<>();
+    private final Queue<TimelineFrame> shadow = new ConcurrentLinkedQueue<>();
+
+    TimelineLedger(Path pluginJar) {
+        this.pluginJar = pluginJar;
+    }
+
+    void install(long revision) throws Exception {
+        TimelineFrame next = new TimelineFrame(LoadedGeneration.load(pluginJar, revision));
+        TimelineFrame previous = current.getAndSet(next);
+        if (previous != null) {
+            shadow.add(previous);
+            previous.cool();
+            pruneShadow();
+        }
+    }
+
+    TimelineFrame current() {
+        TimelineFrame frame = current.get();
+        if (frame == null) {
+            throw new IllegalStateException("No plugin generation is loaded");
+        }
+        return frame;
+    }
+
+    boolean isBalanced() {
+        pruneShadow();
+        return shadow.isEmpty();
+    }
+
+    void close() {
+        TimelineFrame frame = current.getAndSet(null);
+        if (frame != null) {
+            shadow.add(frame);
+            frame.cool();
+        }
+        pruneShadow();
+    }
+
+    private void pruneShadow() {
+        shadow.removeIf(TimelineFrame::isDrained);
+    }
+}
+root@971e08761e6a:/workspace/textd# cat src/main/java/io/harbor/textd/core/ThreadCache.java
+package io.harbor.textd.core;
+
+final class ThreadCache implements AutoCloseable {
+    private WorkerHandle cursor;
+
+    WorkerHandle cursorFor(TimelineLedger ledger) {
+        TimelineFrame frame = ledger.current();
+        if (cursor == null) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        if (!cursor.matches(frame)) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        return cursor;
+    }
+
+    @Override
+    public void close() {
+        if (cursor != null) {
+            cursor.close();
+            cursor = null;
+        }
+    }
+}
+root@971e08761e6a:/workspace/textd#

@@ -1,0 +1,6 @@
+{
+  "analysis": "The fix is correctly applied. The `cursor.close()` call ensures that the old `WorkerHandle` is closed, which unpins the old `TimelineFrame`, allowing the `LoadedGeneration` to be closed and its resources released. I previously saw `stress-ok cycles=500` after applying the fix, which confirms it works.",
+  "plan": "I have identified the resource leak in `ThreadCache.java` where old `WorkerHandle` instances were not being closed during a processor swap. I have applied a fix that closes the old cursor before creating a new one. I have verified the fix with the stress test.",
+  "commands": [],
+  "task_complete": true
+}

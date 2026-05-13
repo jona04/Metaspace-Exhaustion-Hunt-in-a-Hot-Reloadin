@@ -1,0 +1,10 @@
+{
+  "analysis": "The `ThreadCache` stores a `WorkerHandle`. When `cursorFor` is called, it checks if the existing `cursor` matches the current `frame`. If not, it creates a new `WorkerHandle`. However, it never calls `close()` on the old `cursor`. The `WorkerHandle` likely pins the `TimelineFrame`. If the old `WorkerHandle` is not closed, the `TimelineFrame`'s pin count remains high, and `isDrained()` never becomes true, preventing the ClassLoader from being closed and GCed.",
+  "plan": "1. Verify what `WorkerHandle` does when it's created and closed.\n2. If it pins/unpins the frame, then the fix is to call `cursor.close()` in `ThreadCache.cursorFor` before replacing it with a new one.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    }
+  ]
+}

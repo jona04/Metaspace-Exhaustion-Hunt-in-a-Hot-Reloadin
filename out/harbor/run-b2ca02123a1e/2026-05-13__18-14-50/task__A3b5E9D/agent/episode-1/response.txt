@@ -1,0 +1,14 @@
+{
+  "analysis": "The project is a Java-based text processing daemon (`textd`). Based on the task description and file structure, the issue occurs during 'processor swaps' in a long run. I see `HotReloadStressRunner.java` and `HotReloadIntegrationRunner.java`, which likely simulate these swaps. The core logic resides in `io.harbor.textd.core`, particularly `TextDaemon.java`, `ThreadCache.java`, and `WorkerHandle.java`. The plugins are in `plugin-src`. The 'constrained CI profile' suggests a memory leak or resource exhaustion (file descriptors, threads) during hot-reloading of plugins.",
+  "plan": "1. Examine `HotReloadStressRunner.java` to see how the long run is executed.\n2. Examine `TextDaemon.java` and `ThreadCache.java` to understand how processors are swapped and if resources are being leaked.\n3. Run the stress test to reproduce the failure.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.5
+    }
+  ]
+}

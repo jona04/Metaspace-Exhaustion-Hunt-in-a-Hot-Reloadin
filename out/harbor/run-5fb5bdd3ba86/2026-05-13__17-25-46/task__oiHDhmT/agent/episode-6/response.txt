@@ -1,0 +1,23 @@
+{
+  "analysis": "The 100-cycle stress test passed. The task mentioned it fails during a 'long refresh run'. I should try a larger number of cycles, like 500 (which is the default in `bin/stress`). I also need to examine `ThreadBridge.java`, `TimelineLedger.java`, and `ThreadCache.java` because `TextDaemon.processRecord` calls `ThreadBridge.current(revisions)`, which sounds like it might be caching state on threads.",
+  "plan": "1. Run the stress test with 500 cycles to reproduce the failure.\n2. Read `src/main/java/io/harbor/textd/core/ThreadBridge.java`.\n3. Read `src/main/java/io/harbor/textd/core/TimelineLedger.java`.\n4. Read `src/main/java/io/harbor/textd/core/ThreadCache.java`.",
+  "commands": [
+    {
+      "keystrokes": "bin/stress 500\n",
+      "duration": 20.0
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

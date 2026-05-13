@@ -1,0 +1,18 @@
+{
+  "analysis": "In `TextDaemon.java`, the `processRecord` method calls `ThreadBridge.current(revisions)`. This seems to be where the worker is bound to a specific revision. The `revisions` object is a `TimelineLedger`. The `reload` method calls `revisions.install(generation)`.\n\nI suspect that `ThreadBridge` or `ThreadCache` (mentioned in the file list) is holding onto references that prevent class loaders from being garbage collected. Metaspace exhaustion is typical when `URLClassLoader` instances (which I saw in the stack trace) are not GC'ed because their classes or the loader itself are still reachable.",
+  "plan": "1. Examine `TimelineLedger.java` to see how it manages generations and class loaders.\n2. Examine `ThreadBridge.java` and `ThreadCache.java` to see how they store and retrieve worker handles.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ]
+}
