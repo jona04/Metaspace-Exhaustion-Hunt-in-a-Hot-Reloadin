@@ -6,9 +6,11 @@ import io.harbor.textd.api.PluginModuleFactory;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Path;
+import java.util.concurrent.ConcurrentHashMap;
 
 final class LoadedGeneration implements AutoCloseable {
     private static final String FACTORY_CLASS = "io.harbor.textd.customer.CustomerPluginFactory";
+    private static final ConcurrentHashMap<Long, LoadedGeneration> LIVE = new ConcurrentHashMap<>();
 
     private final long generation;
     private final URLClassLoader classLoader;
@@ -24,7 +26,9 @@ final class LoadedGeneration implements AutoCloseable {
         URLClassLoader classLoader = new URLClassLoader(new URL[] {pluginJar.toUri().toURL()}, PluginModuleFactory.class.getClassLoader());
         Class<?> factoryType = classLoader.loadClass(FACTORY_CLASS);
         PluginModuleFactory factory = (PluginModuleFactory) factoryType.getDeclaredConstructor().newInstance();
-        return new LoadedGeneration(generation, classLoader, factory.open());
+        LoadedGeneration loaded = new LoadedGeneration(generation, classLoader, factory.open());
+        LIVE.put(generation, loaded);
+        return loaded;
     }
 
     long generation() {
