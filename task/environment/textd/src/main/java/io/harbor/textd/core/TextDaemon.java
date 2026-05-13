@@ -14,17 +14,24 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public final class TextDaemon implements AutoCloseable {
     private final ExecutorService workers;
+    private final ExecutorService reloadExecutor;
     private final TimelineLedger revisions;
     private final int workerCount;
 
     public TextDaemon(Path pluginJar, int workerCount) {
         this.revisions = new TimelineLedger(pluginJar);
         this.workers = Executors.newFixedThreadPool(workerCount, new WorkerThreadFactory());
+        this.reloadExecutor = Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "textd-reload");
+            t.setDaemon(true);
+            return t;
+        });
         this.workerCount = workerCount;
     }
 
     public void reload(long generation) throws Exception {
         revisions.install(generation);
+        reloadExecutor.submit(this::primeReloadBinding).get();
     }
 
     public ProcessingResult process(String record) throws Exception {
@@ -78,6 +85,10 @@ public final class TextDaemon implements AutoCloseable {
 
         WorkerHandle binding = ThreadBridge.current(revisions);
         return binding.process(record);
+    }
+
+    private void primeReloadBinding() {
+        ThreadBridge.current(revisions);
     }
 
     @Override
