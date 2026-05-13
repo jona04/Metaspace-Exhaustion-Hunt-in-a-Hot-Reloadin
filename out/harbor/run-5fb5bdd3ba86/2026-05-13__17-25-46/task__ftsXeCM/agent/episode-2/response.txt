@@ -1,0 +1,11 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with a very tight `MaxMetaspaceSize=64m`. Metaspace is where Java stores class metadata. If the application repeatedly reloads plugins (classes) without properly unloading the old ones, it will eventually run out of Metaspace. This matches the 'processor swaps' and 'long refresh run' failure description.",
+  "plan": "1. Build and run the stress test to confirm it fails with `OutOfMemoryError: Metaspace`.\n2. Analyze `HotReloadStressRunner.java` and `TextDaemon.java` to see how ClassLoaders are being used and if they are being leaked.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 100\n",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}

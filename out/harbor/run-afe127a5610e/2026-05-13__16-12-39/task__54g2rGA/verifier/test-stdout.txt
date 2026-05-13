@@ -44,4 +44,69 @@ rootdir: /tests
 plugins: json-ctrf-0.3.5
 collected 11 items
 
-../../tests/test_outputs.py .
+../../tests/test_outputs.py .....F.FF..                                  [100%]
+
+=================================== FAILURES ===================================
+____________________ test_runtime_digest_reports_stable_run ____________________
+
+digest_result = {'after_close': False, 'before_close': True, 'end': ['textd-worker-1', 'textd-worker-2', 'textd-worker-3', 'textd-worker-4'], 'first': 'GEN-001|ALPHA>BETA>GAMMA|PIPE-18528', ...}
+
+    def test_runtime_digest_reports_stable_run(digest_result: dict) -> None:
+        assert digest_result["sample"] == SAMPLE
+        assert digest_result["first"] == expected_output(1)
+        assert digest_result["rev"] == LATEST_GENERATION
+        assert digest_result["last"] == expected_output(LATEST_GENERATION)
+        assert digest_result["start"] == ["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"]
+        assert digest_result["end"] == ["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"]
+        assert digest_result["same_workers"] is True
+        assert digest_result["before_close"] is True
+>       assert digest_result["after_close"] is True
+E       assert False is True
+
+/tests/test_outputs.py:126: AssertionError
+____________________ test_first_replay_session_stays_clean _____________________
+
+replay_result = {'first': {'after_close': False, 'before_close': True, 'end': ['textd-worker-1', 'textd-worker-2', 'textd-worker-3', '...worker-1', 'textd-worker-2', 'textd-worker-3', 'textd-worker-4'], 'first': 'GEN-001|ALPHA>BETA>GAMMA|PIPE-18528', ...}}
+
+    def test_first_replay_session_stays_clean(replay_result: dict) -> None:
+        first = replay_result["first"]
+        assert first["first"] == expected_output(1)
+        assert first["last"] == expected_output(LATEST_GENERATION)
+        assert first["start"] == ["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"]
+        assert first["end"] == ["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"]
+        assert first["same_workers"] is True
+        assert first["before_close"] is True
+>       assert first["after_close"] is True
+E       assert False is True
+
+/tests/test_outputs.py:156: AssertionError
+____________________ test_second_replay_session_stays_clean ____________________
+
+replay_result = {'first': {'after_close': False, 'before_close': True, 'end': ['textd-worker-1', 'textd-worker-2', 'textd-worker-3', '...worker-1', 'textd-worker-2', 'textd-worker-3', 'textd-worker-4'], 'first': 'GEN-001|ALPHA>BETA>GAMMA|PIPE-18528', ...}}
+
+    def test_second_replay_session_stays_clean(replay_result: dict) -> None:
+        second = replay_result["second"]
+        assert second["first"] == expected_output(1)
+        assert second["last"] == expected_output(LATEST_GENERATION)
+        assert second["start"] == ["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"]
+        assert second["end"] == ["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"]
+        assert second["same_workers"] is True
+        assert second["before_close"] is True
+>       assert second["after_close"] is True
+E       assert False is True
+
+/tests/test_outputs.py:167: AssertionError
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED ../../tests/test_outputs.py::test_public_runner_surfaces_are_pristine
+PASSED ../../tests/test_outputs.py::test_stress_runner_completes
+PASSED ../../tests/test_outputs.py::test_stress_runner_has_no_metaspace_oom
+PASSED ../../tests/test_outputs.py::test_generation_one_output
+PASSED ../../tests/test_outputs.py::test_current_output
+PASSED ../../tests/test_outputs.py::test_full_suite_passes
+PASSED ../../tests/test_outputs.py::test_replay_sessions_unload_classes
+PASSED ../../tests/test_outputs.py::test_replay_sessions_do_not_regress_unloading
+FAILED ../../tests/test_outputs.py::test_runtime_digest_reports_stable_run - ...
+FAILED ../../tests/test_outputs.py::test_first_replay_session_stays_clean - a...
+FAILED ../../tests/test_outputs.py::test_second_replay_session_stays_clean - ...
+=================== 3 failed, 8 passed in 119.86s (0:01:59) ====================

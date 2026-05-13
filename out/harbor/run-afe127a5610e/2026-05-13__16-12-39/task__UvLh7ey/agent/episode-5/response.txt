@@ -1,0 +1,22 @@
+{
+  "analysis": "The stress test with 100 cycles passed (`stress-ok cycles=100`). I suspect that 200 cycles might also pass, or fail later. The `TextDaemon` uses a `TimelineLedger` to manage revisions and a `ThreadBridge` to bind workers to a `WorkerHandle`. \n\nLooking at `TextDaemon.java`:\n```java\n    private ProcessingResult processRecord(\n        String record,\n        CountDownLatch ready,\n        CountDownLatch release\n    ) throws Exception {\n        ready.countDown();\n        if (!release.await(5, TimeUnit.SECONDS)) {\n            throw new IllegalStateException(\"Request release timed out\");\n        }\n\n        WorkerHandle binding = ThreadBridge.current(revisions);\n        return binding.process(record);\n    }\n```\nIt uses `ThreadBridge.current(revisions)`. I need to see how `ThreadBridge` and `TimelineLedger` work, as they likely handle the class loading and caching of processors.",
+  "plan": "1. Run the stress test with 500 cycles (as suggested by the script default) to see if it fails.\n2. Examine `src/main/java/io/harbor/textd/core/TimelineLedger.java`.\n3. Examine `src/main/java/io/harbor/textd/core/ThreadBridge.java`.\n4. Examine `src/main/java/io/harbor/textd/core/ThreadCache.java`.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 20.0
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "analysis": "The stress test failed with `java.lang.OutOfMemoryError: Metaspace`. This confirms that ClassLoaders are being leaked during reloads. Since Metaspace stores class metadata, and we are reloading plugins (which involves new ClassLoaders), the old ClassLoaders and their loaded classes are not being garbage collected.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/TimelineLedger.java` and `src/main/java/io/harbor/textd/core/ThreadBridge.java` to see how ClassLoaders are managed.\n2. Look at `ThreadCache.java` as it might be holding onto old ClassLoaders via `ThreadLocal` or similar mechanisms.\n3. Identify where the reference to the old ClassLoader is being kept.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.2
+    }
+  ],
+  "task_complete": false
+}

@@ -1,0 +1,10 @@
+{
+  "analysis": "The project is a Java-based text processing daemon (`textd`). Based on the file structure and the task description ('repeated processor swaps', 'long refresh run'), the issue likely relates to hot-reloading or plugin management, specifically in how generations are handled or resources are cached during swaps. The `bin/stress` and `bin/run-suite` scripts likely trigger the failure. I see `HotReloadStressRunner.java` and `LoadedGeneration.java` which are strong candidates for where the leak or stability issue resides.",
+  "plan": "I will first attempt to reproduce the failure using the `bin/stress` script to confirm the 'falling over' behavior. Then I will examine the source code, specifically `TextDaemon.java`, `LoadedGeneration.java`, and `ThreadCache.java`, as 'ThreadCache' is often a source of leaks in long-running Java processes.",
+  "commands": [
+    {
+      "keystrokes": "bin/stress\n",
+      "duration": 5.0
+    }
+  ]
+}

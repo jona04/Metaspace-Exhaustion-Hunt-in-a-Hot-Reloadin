@@ -1,0 +1,15 @@
+{
+  "analysis": "I've identified the issue. `ThreadBridge` uses a `ThreadLocal<ThreadCache>`, and `ThreadCache` holds a `WorkerHandle` which refers to a `TimelineFrame`. When a new generation is installed, `TextDaemon` doesn't clear the `ThreadLocal` in its worker threads. \n\nIn `ThreadCache.cursorFor(ledger)`, if the `cursor` doesn't match the new `frame`, it creates a new `WorkerHandle` and overwrites `cursor`. However, the old `WorkerHandle` (and thus the old `TimelineFrame` and its `ClassLoader`) is not closed. `WorkerHandle` might need to be closed to release resources, and more importantly, `TimelineFrame` tracks how many workers are still using it.\n\n`TimelineLedger.pruneShadow()` removes frames that are 'drained'. A frame is likely 'drained' when all `WorkerHandle`s associated with it are closed. Since `ThreadCache` just overwrites `cursor` without closing the old one, the old `TimelineFrame` never becomes 'drained', leading to a leak in `shadow` queue and Metaspace (because the ClassLoader is still referenced).",
+  "plan": "1. Check `src/main/java/io/harbor/textd/core/WorkerHandle.java` and `src/main/java/io/harbor/textd/core/TimelineFrame.java` to confirm how they track usage.\n2. Modify `ThreadCache.java` to close the old `cursor` before replacing it.\n3. Verify if `TextDaemon` should call `ThreadBridge.clear()` or if updating `ThreadCache` is enough.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

@@ -1,0 +1,6 @@
+{
+  "analysis": "The `textd` service was failing during long runs with a `java.lang.OutOfMemoryError: Metaspace`. Analysis revealed that `ThreadCache` was creating new `WorkerHandle` instances during plugin reloads but failing to call `close()` on the previous `WorkerHandle`. Since `WorkerHandle` pins the `TimelineFrame` (and thus the associated `ClassLoader`), these old class loaders were never being garbage collected, leading to the Metaspace leak.\n\nI have modified `src/main/java/io/harbor/textd/core/ThreadCache.java` to properly close the old `WorkerHandle` before replacing it. This ensures that the `TimelineFrame` can be unpinned, allowing the `LoadedGeneration` and its `ClassLoader` to be closed and reclaimed by the JVM.\n\nVerification:\n- `./bin/stress 500` now passes successfully within the 64MB Metaspace limit.\n- `./bin/run-suite` passes, confirming no regressions in deterministic output or other system components.",
+  "plan": "The task is complete. I have fixed the resource leak and verified it with the provided stress tests.",
+  "commands": [],
+  "task_complete": true
+}

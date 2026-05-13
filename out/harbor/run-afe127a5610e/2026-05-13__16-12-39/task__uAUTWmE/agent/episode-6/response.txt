@@ -1,0 +1,15 @@
+{
+  "analysis": "The `ThreadBridge` uses a `ThreadLocal<ThreadCache>`. \n`ThreadBridge.current(ledger)` calls `ROUTES.get().cursorFor(ledger)`.\n\nLet's look at `ThreadCache.java` and `TimelineFrame.java`.\n\n`TimelineLedger.install` creates a new `TimelineFrame`, sets it as `current`, and adds the previous one to `shadow`. It calls `previous.cool()`. `pruneShadow` removes frames that are 'drained'.\n\n`WorkerHandle` calls `frame.pin()` in its constructor and `frame.unpin()` in `close()`. \n\nWait, where is `WorkerHandle.close()` called? In `ThreadBridge.java` or `ThreadCache.java`? \n\nLooking back at `TextDaemon.java`:\n```java\n    private ProcessingResult processRecord(\n        String record,\n        CountDownLatch ready,\n        CountDownLatch release\n    ) throws Exception {\n        // ...\n        WorkerHandle binding = ThreadBridge.current(revisions);\n        return binding.process(record);\n    }\n```\nIt doesn't call `binding.close()`. This means the `TimelineFrame` remains pinned! If it remains pinned, `isDrained()` will likely return false, and `pruneShadow()` will not remove it from the `shadow` queue in `TimelineLedger`. This would cause the `LoadedGeneration` (and its classloader) to never be released, leading to Metaspace exhaustion.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/ThreadCache.java` to see how it manages `WorkerHandle` objects.\n2. Examine `src/main/java/io/harbor/textd/core/TimelineFrame.java` to see how `pin`, `unpin`, and `isDrained` are implemented.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

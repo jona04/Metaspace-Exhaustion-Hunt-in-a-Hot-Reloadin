@@ -1,0 +1,6 @@
+{
+  "analysis": "The task was to fix a reliability issue in the `textd` service where it would fail during long refresh runs due to a Metaspace OOM error. My investigation revealed that `ThreadCache` was failing to close old `WorkerHandle` instances when a new plugin generation was loaded. Since `WorkerHandle` pins the `TimelineFrame` (and thus the `ClassLoader`), failing to close it prevented the old `ClassLoader` from being garbage collected. I have fixed this by ensuring `cursor.close()` is called before replacing the cursor in `ThreadCache.java`. The fix was verified by running the stress test (500 cycles) and the full integration suite, both of which passed.",
+  "plan": "The task is complete. I have verified the fix with the provided stress and integration tests.",
+  "commands": [],
+  "task_complete": true
+}

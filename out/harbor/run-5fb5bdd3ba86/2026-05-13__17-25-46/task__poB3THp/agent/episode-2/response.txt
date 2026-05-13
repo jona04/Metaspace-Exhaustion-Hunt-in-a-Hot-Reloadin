@@ -1,0 +1,15 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with `-XX:MaxMetaspaceSize=64m`. This is a very tight limit for Metaspace, especially if ClassLoaders are being leaked during reloads. The `HotReloadStressRunner` calls `daemon.reload(generation)` in a loop (default 500 cycles). If each reload creates a new ClassLoader that isn't garbage collected, the Metaspace will eventually fill up and cause an `OutOfMemoryError: Metaspace`.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/TextDaemon.java` to see how `reload` is implemented and how ClassLoaders are managed.\n2. Look for `LoadedGeneration.java` as it likely holds the state for a specific version of the loaded plugin.\n3. Try to reproduce the failure by running `bin/stress`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "./bin/stress 100\n",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}

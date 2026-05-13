@@ -1,0 +1,11 @@
+{
+  "analysis": "Yes, `WorkerHandle` calls `frame.pin()` in its constructor and `frame.unpin()` in its `close()` method. In `ThreadCache.cursorFor`, when a new `WorkerHandle` is created to replace the old one, the old one is never closed, so `frame.unpin()` is never called for the old frame. This means the pin count never reaches zero, and `closeLoadedGeneration()` is never called on the `LoadedGeneration` (which likely holds the ClassLoader). This causes a memory leak of the ClassLoader and its associated Metaspace.\n\nTo fix this, `ThreadCache.cursorFor` should close the old `cursor` before creating a new one.",
+  "plan": "Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` when it no longer matches the current frame.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}
