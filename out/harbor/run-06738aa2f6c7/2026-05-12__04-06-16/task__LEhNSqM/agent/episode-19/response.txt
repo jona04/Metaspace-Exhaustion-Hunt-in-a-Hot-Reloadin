@@ -1,0 +1,6 @@
+{
+  "analysis": "The investigation revealed a resource leak in `ThreadCache.java`. Specifically, when the daemon reloads and the `TimelineLedger` advances to a new generation, the `ThreadCache` was creating a new `WorkerHandle` for each worker thread without closing the previous one. Since `WorkerHandle` pins the associated `TimelineFrame`, and a frame only closes its `LoadedGeneration` (and `URLClassLoader`) when its pin count reaches zero, the old ClassLoaders were never being released. This led to a `java.lang.OutOfMemoryError: Metaspace` during long runs. \n\nI have modified `src/main/java/io/harbor/textd/core/ThreadCache.java` to call `cursor.close()` before replacing it with a new handle. This ensures that the old `TimelineFrame` is unpinned and resources are correctly reclaimed. Verification with `bin/stress 1000` and other test suites confirmed the fix works and preserves deterministic results.",
+  "plan": "I have already applied the fix and verified it with a long stress run (1000 cycles) and the full integration suite. No further actions are required.",
+  "commands": [],
+  "task_complete": true
+}

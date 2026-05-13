@@ -1,0 +1,11 @@
+{
+  "analysis": "The leak is confirmed. In `ThreadCache.java`, when `cursorFor` replaces the `cursor` because the revision changed, it fails to call `cursor.close()`. \n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame); // LEAK: old cursor is not closed!\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n\n`WorkerHandle.close()` calls `frame.unpin()`. `TimelineFrame` uses a reference counting mechanism (`pins`). When `pins` reaches zero and the frame is 'cooled' (replaced by a newer one), it calls `loadedGeneration.close()`, which presumably closes the ClassLoader. Since `cursor.close()` is never called for old cursors, the `pins` count never reaches zero, the `TimelineFrame` never becomes 'drained', and the `LoadedGeneration` (and its ClassLoader) is never closed. This leads to the Metaspace exhaustion.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before creating a new one.\n2. Verify `LoadedGeneration.java` to ensure it actually closes the ClassLoader.\n3. Re-run the stress test to confirm the fix.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.2
+    }
+  ],
+  "task_complete": false
+}

@@ -1,0 +1,14 @@
+{
+  "analysis": "The issue is exactly as I suspected. In `ThreadCache.java`, the `cursor` (a `WorkerHandle`) is replaced when a new generation is detected, but the old `WorkerHandle` is never closed. \n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame); // <--- Old cursor is lost and never closed!\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n\n`WorkerHandle.close()` calls `frame.unpin()`. Since it's never called for the old handle, the `pins` count in `TimelineFrame` never reaches zero (after being cooled), and `closeLoadedGeneration()` is never called. This prevents the `URLClassLoader` from being closed, leading to the Metaspace OOM.\n\nI need to modify `ThreadCache.java` to close the old `cursor` before creating a new one.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the existing `cursor` if it doesn't match the current frame.\n2. Verify the fix by running the stress test again.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 10.0
+    }
+  ]
+}

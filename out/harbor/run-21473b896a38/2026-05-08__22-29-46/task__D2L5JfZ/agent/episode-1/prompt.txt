@@ -1,0 +1,60 @@
+New Terminal Output:
+root@574485af7992:/workspace/textd# ls -R
+.:
+bin  plugin-src  src
+
+./bin:
+build  integration  run-suite  stress
+
+./plugin-src:
+io
+
+./plugin-src/io:
+harbor
+
+./plugin-src/io/harbor:
+textd
+
+./plugin-src/io/harbor/textd:
+customer
+
+./plugin-src/io/harbor/textd/customer:
+CustomerPluginFactory.java  CustomerPluginModule.java  PipelineProcessor.java  PipelineStages.java
+
+./src:
+main
+
+./src/main:
+java
+
+./src/main/java:
+io
+
+./src/main/java/io:
+harbor
+
+./src/main/java/io/harbor:
+textd
+
+./src/main/java/io/harbor/textd:
+api  cli  core
+
+./src/main/java/io/harbor/textd/api:
+PluginModule.java  PluginModuleFactory.java  TextProcessor.java
+
+./src/main/java/io/harbor/textd/cli:
+HotReloadIntegrationRunner.java  HotReloadStressRunner.java
+
+./src/main/java/io/harbor/textd/core:
+LoadedGeneration.java  OutputFormat.java  ProcessingResult.java  TextDaemon.java  WorkerState.java
+root@574485af7992:/workspace/textd# grep -rnE "ClassLoader|reload|teardown" .
+./src/main/java/io/harbor/textd/core/TextDaemon.java:28:    public void reload(long generation) throws Exception {
+./src/main/java/io/harbor/textd/core/LoadedGeneration.java:7:import java.net.URLClassLoader;
+./src/main/java/io/harbor/textd/core/LoadedGeneration.java:14:    private final URLClassLoader classLoader;
+./src/main/java/io/harbor/textd/core/LoadedGeneration.java:17:    private LoadedGeneration(long generation, URLClassLoader classLoader, PluginModule module) {
+./src/main/java/io/harbor/textd/core/LoadedGeneration.java:24:        URLClassLoader classLoader = new URLClassLoader(new URL[] {pluginJar.toUri().toURL()}, Plu
+ginModuleFactory.class.getClassLoader());
+./src/main/java/io/harbor/textd/cli/HotReloadIntegrationRunner.java:22:            daemon.reload(1);
+./src/main/java/io/harbor/textd/cli/HotReloadIntegrationRunner.java:33:                daemon.reload(generation);
+./src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java:22:                daemon.reload(generation);
+root@574485af7992:/workspace/textd#

@@ -1,0 +1,18 @@
+{
+  "analysis": "I found the leak! \n\nIn `WorkerBindings.current(registry)`:\n```java\n        if (!binding.matches(activeLease)) {\n            DispatchBinding replacement = new DispatchBinding(activeLease);\n            ACTIVE.set(replacement); // <--- Old binding is replaced but NEVER CLOSED\n            return replacement;\n        }\n```\nWhen a new generation is activated, `binding.matches(activeLease)` will be false. A new `DispatchBinding` is created, which calls `lease.retain()`. However, the old `DispatchBinding` (which also holds a retained `lease`) is simply overwritten in the `ThreadLocal` without calling `close()`. This means the old `GenerationLease` reference count never reaches zero, so the old `LoadedGeneration` (and its `URLClassLoader`) is never closed.\n\nAlso, `TextDaemon.processRecord` calls `WorkerBindings.current(generations)` but never calls `WorkerBindings.releaseCurrent()`. However, since it's a `ThreadLocal`, we only really need to close the *previous* binding when we replace it with a new one for a new generation.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/WorkerBindings.java` to close the old binding when replacing it.\n2. Verify if `TextDaemon` should call `releaseCurrent()` at some point, but the primary leak is in the replacement logic.\n3. Re-run the stress test to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/ACTIVE.set(replacement);/binding.close(); ACTIVE.set(replacement);/' src/main/java/io/harbor/textd/core/WorkerBindings.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerBindings.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/build && ./bin/stress\n",
+      "duration": 15.0
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "analysis": "I found a major issue in `WorkerState.java`. \n\n```java\n    static Scope attach(Object module) {\n        ACTIVE_MODULES.get().push(module);\n        return new Scope();\n    }\n\n    static final class Scope implements AutoCloseable {\n        @Override\n        public void close() {\n        }\n    }\n```\n\nThe `Scope.close()` method is empty! It's supposed to pop the module from the `ACTIVE_MODULES` ThreadLocal. This means every time `processRecord` is called in `TextDaemon.java`, a reference to the `generation.module()` (which likely contains classes from the plugin's ClassLoader) is pushed onto the thread-local stack and never removed. Since the worker threads are reused across reloads, these references keep accumulating, pinning the ClassLoaders and causing a Metaspace leak.\n\nWait, I should also check `LoadedGeneration.java` to see how it loads classes.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/LoadedGeneration.java` to confirm it uses a new ClassLoader for each generation.\n2. Verify the fix by implementing the missing `pop()` in `WorkerState.Scope.close()`.\n3. Run the stress test to confirm the leak and then verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

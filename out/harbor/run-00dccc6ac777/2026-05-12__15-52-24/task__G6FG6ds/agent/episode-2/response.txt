@@ -1,0 +1,10 @@
+{
+  "analysis": "The `bin/stress` script uses a constrained `-XX:MaxMetaspaceSize=64m`. This is a strong hint that the 'repeated processor swaps' are causing a Metaspace leak, likely due to classloader exhaustion. The `HotReloadStressRunner` probably reloads plugins repeatedly.",
+  "plan": "1. Run `./bin/stress` and observe if it fails with an `OutOfMemoryError: Metaspace`.\n2. Examine `io.harbor.textd.cli.HotReloadStressRunner` and `io.harbor.textd.core.TextDaemon` (or wherever the classloading happens) to see how plugins are loaded.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 100\n",
+      "duration": 10.0
+    }
+  ]
+}

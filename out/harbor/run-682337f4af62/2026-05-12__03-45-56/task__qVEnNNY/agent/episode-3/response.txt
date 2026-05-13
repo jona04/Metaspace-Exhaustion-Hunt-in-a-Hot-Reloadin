@@ -1,0 +1,10 @@
+{
+  "analysis": "As suspected, the stress test fails with `java.lang.OutOfMemoryError: Metaspace`. This confirms that the repeated in-place processor swaps are causing a Metaspace leak, likely due to old ClassLoaders not being garbage collected. The stack trace shows the error occurring during class initialization of `PipelineStages` in the plugin code.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/TextDaemon.java` and related classes to see how plugins are loaded and swapped.\n2. Look for where the ClassLoader is created and stored.\n3. Check if there are any static references or thread locals that might be holding onto old ClassLoaders or their classes.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.5
+    }
+  ]
+}

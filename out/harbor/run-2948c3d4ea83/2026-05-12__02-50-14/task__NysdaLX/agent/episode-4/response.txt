@@ -1,0 +1,14 @@
+{
+  "analysis": "I found the issue. \n\nIn `WorkerBindings.java`:\n```java\n    static DispatchBinding current(GenerationRegistry registry) {\n        GenerationLease activeLease = registry.active();\n        DispatchBinding binding = ACTIVE.get();\n        if (binding == null) {\n            DispatchBinding created = new DispatchBinding(activeLease);\n            ACTIVE.set(created);\n            return created;\n        }\n\n        if (!binding.matches(activeLease)) {\n            DispatchBinding replacement = new DispatchBinding(activeLease);\n            ACTIVE.set(replacement);\n            return replacement;\n        }\n\n        return binding;\n    }\n```\nWhen `binding.matches(activeLease)` is false (i.e., a reload happened), a `replacement` is created and set into the `ThreadLocal`. However, the old `binding` is never closed. \n\n`DispatchBinding` holds a `GenerationLease` (retained in its constructor). If the old `binding` is not closed, the `lease.release()` is never called for the previous generation. This prevents the `GenerationLease` from reaching a reference count of 0, which in turn prevents `LoadedGeneration.close()` from being called, leading to a leak of the `URLClassLoader` and its associated Metaspace.\n\nAlso, `WorkerBindings.releaseCurrent()` exists but it's never called anywhere in the `TextDaemon` or worker execution path.",
+  "plan": "1. Modify `WorkerBindings.java` to close the old binding when replacing it.\n2. Verify if `releaseCurrent()` should be called at the end of a worker's task to be safe, although the primary leak is in the replacement logic.\n3. Run the stress test to confirm the fix.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/if (!binding.matches(activeLease)) {/if (!binding.matches(activeLease)) {\\n            binding.close();/' src/main/java/io/harbor/textd/core/WorkerBindings.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerBindings.java\n",
+      "duration": 0.1
+    }
+  ]
+}

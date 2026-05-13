@@ -1,0 +1,14 @@
+{
+  "analysis": "The logic in `ThreadCache.java` is definitely leaking pins on `TimelineFrame`. Each `WorkerHandle` pins the frame upon creation and unpins it upon closing. In `ThreadCache.cursorFor`, when the revision changes, a new `WorkerHandle` is created and assigned to `cursor`, but the previous `WorkerHandle` is never closed. This means the previous `TimelineFrame` never gets its pin count decremented to zero, and thus the `LoadedGeneration` (and its ClassLoader) is never closed.\n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            // The old cursor is lost here without being closed!\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before creating a new one.\n2. Re-run the stress test to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/if (!cursor.matches(frame)) {/if (!cursor.matches(frame)) { cursor.close();/' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ]
+}

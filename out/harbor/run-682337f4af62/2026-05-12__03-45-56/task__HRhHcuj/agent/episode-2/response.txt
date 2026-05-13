@@ -1,0 +1,10 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with a constrained `-XX:MaxMetaspaceSize=64m`. This is a strong hint that the 'deploy soak' failure is likely an `OutOfMemoryError: Metaspace` caused by repeated class loading during in-place processor swaps. When plugins are reloaded, if the old ClassLoaders are not being garbage collected, Metaspace will eventually fill up.",
+  "plan": "1. Run `bin/stress` to confirm it fails with Metaspace OOM.\n2. Examine `io.harbor.textd.cli.HotReloadStressRunner` and `io.harbor.textd.core.TextDaemon` to see how plugins are loaded and if ClassLoaders are being leaked.\n3. Look for typical Metaspace leak causes: static references, thread locals, or unclosed resources that keep a ClassLoader alive.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 200\n",
+      "duration": 5.0
+    }
+  ]
+}

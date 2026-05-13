@@ -1,0 +1,18 @@
+{
+  "analysis": "The `TextDaemon` uses `TimelineLedger` to manage plugin revisions and `ThreadBridge` to bind workers to specific revisions. \n\nIn `processRecord`, it calls `ThreadBridge.current(revisions)` to get a `WorkerHandle`.\n\n```java\n    private ProcessingResult processRecord(\n        String record,\n        CountDownLatch ready,\n        CountDownLatch release\n    ) throws Exception {\n        ready.countDown();\n        if (!release.await(5, TimeUnit.SECONDS)) {\n            throw new IllegalStateException(\"Request release timed out\");\n        }\n\n        WorkerHandle binding = ThreadBridge.current(revisions);\n        return binding.process(record);\n    }\n```\n\nI need to check `ThreadBridge.java`, `TimelineLedger.java`, and `WorkerHandle.java` to see how they handle class loading and if they are leaking references.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/ThreadBridge.java`.\n2. Examine `src/main/java/io/harbor/textd/core/TimelineLedger.java`.\n3. Examine `src/main/java/io/harbor/textd/core/ThreadCache.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ]
+}

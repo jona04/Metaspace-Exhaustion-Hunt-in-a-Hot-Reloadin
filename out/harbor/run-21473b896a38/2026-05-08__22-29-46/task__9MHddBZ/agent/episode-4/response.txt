@@ -1,0 +1,19 @@
+{
+  "analysis": "The stress test failed with `java.lang.OutOfMemoryError: Metaspace` as expected. This confirms the leak. The stack trace shows it happening during class loading for a new generation. The `WorkerState` class is definitely the culprit because it keeps references to the `PluginModule` in a `ThreadLocal` without ever removing them.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/WorkerState.java` to properly pop the module from the `Deque` in the `close()` method.\n2. Rebuild and run the stress test again to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/WorkerState.java\npackage io.harbor.textd.core;\n\nimport java.util.ArrayDeque;\nimport java.util.Deque;\n\nfinal class WorkerState {\n    private static final ThreadLocal<Deque<Object>> ACTIVE_MODULES = ThreadLocal.withInitial(ArrayDeque::new);\n\n    private WorkerState() {\n    }\n\n    static Scope attach(Object module) {\n        ACTIVE_MODULES.get().push(module);\n        return new Scope();\n    }\n\n    static final class Scope implements AutoCloseable {\n        @Override\n        public void close() {\n            ACTIVE_MODULES.get().pop();\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/build\n",
+      "duration": 2.0
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 15.0
+    }
+  ],
+  "task_complete": false
+}

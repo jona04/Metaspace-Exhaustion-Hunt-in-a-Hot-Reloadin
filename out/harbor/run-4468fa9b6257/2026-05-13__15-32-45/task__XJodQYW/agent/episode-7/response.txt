@@ -1,0 +1,15 @@
+{
+  "analysis": "The diagnosis is confirmed. \n\n1. `WorkerHandle` calls `frame.pin()` in its constructor and `frame.unpin()` in its `close()` method.\n2. `TimelineFrame` tracks the number of pins. When the pin count reaches 0 and the frame is 'cooled' (meaning it's no longer the current frame), it closes the `LoadedGeneration` (which presumably closes the ClassLoader).\n3. `ThreadCache.cursorFor` replaces the `cursor` reference without calling `close()` on the old one. This means `frame.unpin()` is never called for the old frames.\n4. Since `unpin()` is never called, the pin count never reaches 0, the `LoadedGeneration` is never closed, and the ClassLoaders leak in Metaspace.\n\nTo fix this, I need to modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `WorkerHandle` before creating a new one.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to call `cursor.close()` when replacing the cursor.\n2. Verify the fix by running the stress test.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/cursor.close(); cursor = new WorkerHandle(frame);/2' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

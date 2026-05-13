@@ -1,0 +1,15 @@
+{
+  "analysis": "Confirmed. `LoadedGeneration.close()` closes the `URLClassLoader`. The leak happens because `RouteState` replaces `cursor` without calling `close()` on the old one, so the `RevisionFrame` pin count never drops to zero for old generations, keeping the `URLClassLoader` open and its classes in Metaspace.",
+  "plan": "1. Fix `src/main/java/io/harbor/textd/core/RouteState.java` to close the existing cursor if it doesn't match the new frame.\n2. Also check if `TextDaemon.java` should be calling `ThreadState.clear()` after each request to avoid holding onto pins longer than necessary, though fixing `RouteState` should be enough to stop the leak during swaps.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/if (!cursor.matches(frame)) {/if (!cursor.matches(frame)) { cursor.close();/' src/main/java/io/harbor/textd/core/RouteState.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/RouteState.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

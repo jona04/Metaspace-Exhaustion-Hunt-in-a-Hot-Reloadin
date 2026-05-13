@@ -1,0 +1,15 @@
+{
+  "analysis": "The `HotReloadLifecycleProbe` checks how many retirements are pending before and after shutdown. \n\nIf my fix works, `pending_retirements_before_shutdown` should be low (ideally equal to the number of generations that haven't been 'swept' yet, but since `current()` now closes the old binding, it should only be the generations that are still active in some thread's `ThreadLocal` or the current active one).\n\nActually, with my fix:\n1. When generation 2 starts, `current()` is called. \n2. It sees generation 1 in `ThreadLocal`. \n3. It calls `binding.close()` (which releases generation 1 lease).\n4. It creates generation 2 binding and sets it in `ThreadLocal`.\n\nSo at any time, each worker thread should hold at most 1 lease. If there are 2 workers, there should be at most 2 old leases held if they haven't been updated yet, plus the 1 active lease.\n\nLet's run the integration suite to see if everything is deterministic and clean.",
+  "plan": "1. Run `bin/integration`.\n2. Run `bin/run-suite` if it exists (it was in the `ls` output).",
+  "commands": [
+    {
+      "keystrokes": "./bin/integration\n",
+      "duration": 5.0
+    },
+    {
+      "keystrokes": "./bin/run-suite\n",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}

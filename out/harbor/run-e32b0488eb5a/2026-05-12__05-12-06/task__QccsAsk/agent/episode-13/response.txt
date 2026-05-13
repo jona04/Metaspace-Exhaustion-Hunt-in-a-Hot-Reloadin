@@ -1,0 +1,10 @@
+{
+  "analysis": "The suite passed. The Metaspace leak was successfully addressed by ensuring that old `WorkerHandle` instances are closed when they are replaced in the `ThreadCache`. This allows the associated `TimelineFrame` to be unpinned and eventually close the `URLClassLoader` of the old generation.",
+  "plan": "Double check if there are any other potential leaks. In `TextDaemon.java`, the `workers` executor uses `WorkerThreadFactory`. The threads are daemon threads. They use `ThreadLocal<ThreadCache>`. When the daemon is closed, `workers.shutdownNow()` is called, but the threads might still exist for a while. However, since they are daemon threads and the main process usually exits, it might be fine. But wait, in a long-running service, if `TextDaemon` itself is created and destroyed repeatedly, we might have a problem with `ThreadLocal` values not being cleared from the worker threads. \n\nIn `TextDaemon.close()`:\n```java\n    @Override\n    public void close() throws Exception {\n        revisions.close();\n        workers.shutdownNow();\n        workers.awaitTermination(5, TimeUnit.SECONDS);\n    }\n```\nThis shuts down the executor. The threads should eventually die, and their `ThreadLocal` maps should be GC'ed. \n\nWait, I noticed `ThreadBridge.clear()` exists but is never called. \n```java\n    static void clear() {\n        ThreadCache routeState = ROUTES.get();\n        routeState.close();\n        ROUTES.remove();\n    }\n```\nShould this be called? The worker threads are part of the `TextDaemon`'s private pool. When the pool is shut down, the threads die. \n\nThe current fix already solved the Metaspace OOM in the stress test. Let's look at `TimelineLedger.java` again to see if `pruneShadow` is effective.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    }
+  ]
+}

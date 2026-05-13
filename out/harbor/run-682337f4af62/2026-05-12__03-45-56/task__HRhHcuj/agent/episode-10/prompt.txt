@@ -1,0 +1,44 @@
+New Terminal Output:
+
+root@ac3e8082d55f:/workspace/textd# sed -i 's/cursor = new RouteCursor(frame);/cursor.close(); cursor = new RouteCursor(frame);/' src/main/java/io/harbor/textd/
+core/RouteState.java
+root@ac3e8082d55f:/workspace/textd# cat src/main/java/io/harbor/textd/core/RouteState.java
+package io.harbor.textd.core;
+
+final class RouteState implements AutoCloseable {
+    private RouteCursor cursor;
+
+    RouteCursor cursorFor(RevisionLedger ledger) {
+        RevisionFrame frame = ledger.current();
+        if (cursor == null) {
+            cursor.close(); cursor = new RouteCursor(frame);
+            return cursor;
+        }
+
+        if (!cursor.matches(frame)) {
+            cursor.close(); cursor = new RouteCursor(frame);
+            return cursor;
+        }
+
+        return cursor;
+    }
+
+    @Override
+    public void close() {
+        if (cursor != null) {
+            cursor.close();
+            cursor = null;
+        }
+    }
+}
+root@ac3e8082d55f:/workspace/textd# ./bin/stress 500
+Exception in thread "main" java.lang.NullPointerException: Cannot invoke "io.harbor.textd.core.RouteCursor.close()" because "this.cursor" is null
+        at io.harbor.textd.core.RouteState.cursorFor(RouteState.java:9)
+        at io.harbor.textd.core.ThreadState.current(ThreadState.java:10)
+        at io.harbor.textd.core.TextDaemon.processRecord(TextDaemon.java:79)
+        at io.harbor.textd.core.TextDaemon.lambda$processBatch$0(TextDaemon.java:43)
+        at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+        at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
+        at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+        at java.base/java.lang.Thread.run(Thread.java:840)
+root@ac3e8082d55f:/workspace/textd#

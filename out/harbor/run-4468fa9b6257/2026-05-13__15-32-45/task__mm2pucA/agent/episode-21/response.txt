@@ -1,0 +1,6 @@
+{
+  "analysis": "The `textd` service was failing during long refresh runs due to a Metaspace leak. The investigation revealed that `ThreadCache` was replacing its cached `WorkerHandle` during processor swaps without calling `close()` on the previous handle. This caused the pin count on the associated `TimelineFrame` to never reach zero, preventing the `URLClassLoader` from being closed and the class metadata from being reclaimed in Metaspace. I modified `ThreadCache.java` to properly close the old `WorkerHandle` before creating a new one. This fix was verified by running the stress test (which now completes 500 cycles successfully) and the full integration suite.",
+  "plan": "The task is completed and verified. No further actions are needed.",
+  "commands": [],
+  "task_complete": true
+}

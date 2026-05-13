@@ -1,0 +1,11 @@
+{
+  "analysis": "Confirmed. `DispatchBinding` retains the `GenerationLease` in its constructor. In `WorkerBindings.current()`, when a new `DispatchBinding` is created because the generation changed, the old `DispatchBinding` is replaced in the `ThreadLocal` without being closed. \n\n```java\n        if (!binding.matches(activeLease)) {\n            DispatchBinding replacement = new DispatchBinding(activeLease);\n            ACTIVE.set(replacement);\n            return replacement;\n        }\n```\nThis means the old `lease` reference count is never decremented, so the old `LoadedGeneration` (and its `ClassLoader`) is never closed. Given the 64MB Metaspace limit and repeated refreshes, this will definitely cause an OOM.\n\nTo fix this, I should close the old binding before replacing it.",
+  "plan": "1. Run the stress test with a higher number of cycles to confirm it fails.\n2. Modify `src/main/java/io/harbor/textd/core/WorkerBindings.java` to close the old binding before replacing it in the `ThreadLocal`.\n3. Run the stress test again to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 200\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

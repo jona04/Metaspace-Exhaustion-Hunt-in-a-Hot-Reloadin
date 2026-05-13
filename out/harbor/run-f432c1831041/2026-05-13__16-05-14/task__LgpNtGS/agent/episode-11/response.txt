@@ -1,0 +1,6 @@
+{
+  "analysis": "The investigation revealed a resource leak in `ThreadCache.java`. When the `textd` service performed a processor swap (hot reload), the `ThreadCache` (which is stored in a `ThreadLocal`) was replacing its `WorkerHandle` with a new one for the new revision without closing the previous handle. Because `WorkerHandle.close()` is responsible for unpinning the `TimelineFrame`, and the `TimelineFrame` only closes its `ClassLoader` when the pin count reaches zero, the old ClassLoaders were never being released. This led to Metaspace exhaustion during long runs with many swaps.\n\nI have modified `ThreadCache.java` to correctly call `close()` on the existing `WorkerHandle` before creating a new one when a revision change is detected. This ensures that old generations are properly drained and their ClassLoaders closed.\n\nVerification:\n1. `bin/stress 500` passed, confirming stability during many swaps under the 64MB Metaspace constraint.\n2. `bin/run-suite` passed, confirming that the deterministic results remain unchanged.",
+  "plan": "Task is complete. I've verified the fix with both the stress test and the integration suite.",
+  "commands": [],
+  "task_complete": true
+}

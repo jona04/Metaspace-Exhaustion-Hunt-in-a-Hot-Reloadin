@@ -1,0 +1,14 @@
+{
+  "analysis": "I found the leak! \nIn `RouteState.java`:\n```java\n    RouteCursor cursorFor(RevisionLedger ledger) {\n        RevisionFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new RouteCursor(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new RouteCursor(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\nWhen `!cursor.matches(frame)`, a new `RouteCursor` is created and assigned to `cursor`, but the old `cursor` is never closed. `RouteCursor.close()` is what unpins the `RevisionFrame`. If it's not unpinned, the `RevisionFrame`'s pin count never reaches zero, so `closeLoadedGeneration()` is never called, and the `URLClassLoader` is never closed. This leads to a Metaspace leak.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/RouteState.java` to close the old cursor before creating a new one.\n2. Verify the fix by running the stress test again.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new RouteCursor(frame);/if (cursor != null) { cursor.close(); } cursor = new RouteCursor(frame);/g' src/main/java/io/harbor/textd/core/RouteState.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/RouteState.java\n",
+      "duration": 0.1
+    }
+  ]
+}

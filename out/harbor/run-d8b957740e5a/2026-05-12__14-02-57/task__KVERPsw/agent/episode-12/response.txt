@@ -1,0 +1,6 @@
+{
+  "analysis": "The `textd` service was failing with a `Metaspace` `OutOfMemoryError` during long runs with frequent plugin reloads. Analysis of the code revealed that `ThreadCache`, which stores a `WorkerHandle` in a `ThreadLocal`, was replacing the `WorkerHandle` during a reload without calling its `close()` method. Since `WorkerHandle.close()` is responsible for unpinning the `TimelineFrame` (which in turn allows the `URLClassLoader` to be closed), the old ClassLoaders were never garbage collected, leading to Metaspace exhaustion. I fixed this by ensuring `cursor.close()` is called before replacing the `WorkerHandle` in `ThreadCache`.",
+  "plan": "The fix has been implemented and verified with both the stress test (`bin/stress`) and the integration suite (`bin/run-suite`). The system now correctly handles repeated processor swaps within the constrained Metaspace limit.",
+  "commands": [],
+  "task_complete": true
+}

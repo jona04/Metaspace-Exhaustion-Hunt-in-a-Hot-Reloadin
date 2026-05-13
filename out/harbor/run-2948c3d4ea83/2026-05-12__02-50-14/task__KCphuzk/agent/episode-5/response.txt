@@ -1,0 +1,15 @@
+{
+  "analysis": "I've analyzed the code. Here's what I've found:\n\n1. `TextDaemon.processRecord` uses `WorkerBindings.current(generations)` to get a `DispatchBinding` for processing a record.\n2. I need to see `WorkerBindings.java` and `DispatchBinding.java`.\n3. `GenerationLease` has a reference counting mechanism. When `references` reaches 0 and the lease is `retired`, it calls `closeLoadedGeneration()`, which closes the `PluginModule` and the `URLClassLoader`.\n4. The `GenerationRegistry.activate` method retires the previous generation. This should trigger the close when all workers have released their leases.\n\nWait, I see a potential issue in `TextDaemon.processRecord`:\n```java\n    private ProcessingResult processRecord(\n        String record,\n        CountDownLatch ready,\n        CountDownLatch release\n    ) throws Exception {\n        ready.countDown();\n        if (!release.await(5, TimeUnit.SECONDS)) {\n            throw new IllegalStateException(\"Request release timed out\");\n        }\n\n        DispatchBinding binding = WorkerBindings.current(generations);\n        return binding.process(record);\n    }\n```\nIt gets a `DispatchBinding`, but it doesn't seem to release it. Let's check `WorkerBindings` and `DispatchBinding`.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/WorkerBindings.java`.\n2. Examine `src/main/java/io/harbor/textd/core/DispatchBinding.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerBindings.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/DispatchBinding.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

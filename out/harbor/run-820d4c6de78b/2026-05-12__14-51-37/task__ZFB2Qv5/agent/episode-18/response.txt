@@ -1,0 +1,6 @@
+{
+  "analysis": "The investigation revealed a Metaspace leak in the `textd` service caused by unreleased ClassLoaders during plugin hot-reloading. The `ThreadCache` class was failing to close its previous `WorkerHandle` when a new plugin generation was loaded. Each `WorkerHandle` pins a `TimelineFrame`, which in turn prevents the associated `URLClassLoader` from being closed. By adding a call to `cursor.close()` before replacing the cursor in `ThreadCache.java`, the old generation is correctly unpinned and its resources (including Metaspace) are reclaimed. The fix was verified using the provided `./bin/stress` and `./bin/run-suite` scripts, both of which now pass successfully.",
+  "plan": "The task is complete. I have identified the leak, implemented the fix, and verified it with the stress test suite.",
+  "commands": [],
+  "task_complete": true
+}

@@ -1,0 +1,15 @@
+New Terminal Output:
+
+root@54160cd22210:/workspace/textd# cat bin/run-suite
+#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+"$ROOT_DIR/bin/build"
+TEXTD_SKIP_BUILD=1 "$ROOT_DIR/bin/integration" 12 >/tmp/textd-integration.json
+TEXTD_SKIP_BUILD=1 "$ROOT_DIR/bin/stress" 500 >/tmp/textd-stress.log
+
+echo "suite-ok"
+root@54160cd22210:/workspace/textd# ./bin/run-suite
+

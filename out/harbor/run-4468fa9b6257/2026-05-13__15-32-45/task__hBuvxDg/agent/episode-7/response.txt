@@ -1,0 +1,15 @@
+{
+  "analysis": "Here's what I've found:\n- `TimelineLedger` manages `TimelineFrame`s. When a new generation is installed, the old one is moved to a `shadow` queue and cooled.\n- `ThreadBridge` uses a `ThreadLocal<ThreadCache>` to store a `WorkerHandle` for each thread.\n- `WorkerHandle` pins a `TimelineFrame`. It seems it doesn't unpin it until it's closed.\n\nLet's look at `ThreadCache.java` to see how it manages `WorkerHandle`s. This is likely where the leak is: if `ThreadCache` keeps old `WorkerHandle`s around, the `TimelineFrame`s (and their associated `LoadedGeneration` / ClassLoaders) will never be drained from the `shadow` queue in `TimelineLedger` because they remain 'pinned'.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/ThreadCache.java`.\n2. Examine `src/main/java/io/harbor/textd/core/TimelineFrame.java` to see how pinning/unpinning and `isDrained` work.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

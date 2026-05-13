@@ -1,0 +1,11 @@
+{
+  "analysis": "I found the leak. In `ThreadCache.java`, when a new `WorkerHandle` is created because the revision changed, the old `WorkerHandle` is not closed.\n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            // The old cursor is being replaced here but not closed!\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n`WorkerHandle.close()` calls `frame.unpin()`. `TimelineFrame` uses a reference counting mechanism (`pins`). When `pins` reaches 0 and the frame is 'cooled', `closeLoadedGeneration()` is called, which in turn calls `loadedGeneration.close()`. `LoadedGeneration` likely closes the `URLClassLoader` (I should verify this).\n\nBecause the old `WorkerHandle` is never closed, the `TimelineFrame` pin count never reaches 0, so the `LoadedGeneration` (and its ClassLoader) is never closed, leading to the Metaspace OOM.",
+  "plan": "1. Verify `LoadedGeneration.java` to confirm it closes the ClassLoader.\n2. Fix `ThreadCache.java` by closing the old `cursor` before replacing it.\n3. Verify the fix by running the stress test again.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

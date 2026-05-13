@@ -1,0 +1,6 @@
+{
+  "analysis": "The `textd` service was failing with a `java.lang.OutOfMemoryError: Metaspace` during long runs involving many processor swaps. Investigation revealed that `ThreadCache`, which holds a `WorkerHandle` for each worker thread, was not closing the old `WorkerHandle` when a new revision was loaded. Since `WorkerHandle` pins the `TimelineFrame`, and `TimelineFrame` only releases the `LoadedGeneration` (and its ClassLoader) when its pin count reaches zero, the old ClassLoaders were never being garbage collected. I have updated `ThreadCache.java` to call `close()` on the old `cursor` before replacing it, ensuring proper resource cleanup.",
+  "plan": "The fix has been implemented and verified with the provided stress and integration tests. No further actions are required.",
+  "commands": [],
+  "task_complete": true
+}

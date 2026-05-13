@@ -1,0 +1,11 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with a 64MB Metaspace limit (`-XX:MaxMetaspaceSize=64m`). This is a strong hint that the 'constrained CI profile' is hitting Metaspace limits, likely due to classloader leaks during the repeated reloads (500 cycles by default). The `TextDaemon` is reloaded in every cycle. If the classloader for each generation isn't being garbage collected, Metaspace will fill up and cause an `OutOfMemoryError: Metaspace`.",
+  "plan": "1. Run the stress test and confirm it fails with Metaspace OOM.\n2. Examine `TextDaemon.java` and `LoadedGeneration.java` to see how they handle reloads and classloaders.\n3. Look for references that might be preventing the old classloaders from being GC'd (e.g., static fields, thread locals, or unclosed resources).",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 100\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

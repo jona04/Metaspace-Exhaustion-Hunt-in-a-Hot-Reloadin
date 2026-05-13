@@ -1,0 +1,15 @@
+{
+  "analysis": "The stress test confirmed the `java.lang.OutOfMemoryError: Metaspace`. As I suspected, `WorkerState.java` is failing to remove the `PluginModule` from the `ThreadLocal` because the `close()` method is empty. Each reload adds a new `LoadedGeneration` and its `PluginModule` to the `ThreadLocal` stack of each worker thread that processes a record in that generation. Since the worker threads are reused and the stack is never popped, the `PluginModule` objects (and their associated `ClassLoader`s) are never garbage collected.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/WorkerState.java` to implement the `close()` method in the `Scope` class. It should pop the module from the `ACTIVE_MODULES` ThreadLocal.\n2. Re-run the stress test to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/WorkerState.java\npackage io.harbor.textd.core;\n\nimport java.util.ArrayDeque;\nimport java.util.Deque;\n\nfinal class WorkerState {\n    private static final ThreadLocal<Deque<Object>> ACTIVE_MODULES = ThreadLocal.withInitial(ArrayDeque::new);\n\n    private WorkerState() {\n    }\n\n    static Scope attach(Object module) {\n        ACTIVE_MODULES.get().push(module);\n        return new Scope();\n    }\n\n    static final class Scope implements AutoCloseable {\n        @Override\n        public void close() {\n            ACTIVE_MODULES.get().pop();\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "bin/stress\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

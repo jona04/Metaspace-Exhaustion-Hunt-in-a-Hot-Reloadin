@@ -1,0 +1,14 @@
+{
+  "analysis": "The leak is confirmed. \n1. `TextDaemon` uses `ThreadBridge` to get a `WorkerHandle` for each request.\n2. `ThreadBridge` stores a `ThreadCache` in a `ThreadLocal`.\n3. `ThreadCache` stores a `WorkerHandle` in its `cursor` field.\n4. When a reload happens, `ThreadCache.cursorFor` sees that the generation has changed and creates a new `WorkerHandle`.\n5. Crucially, `WorkerHandle` has a `close()` method that calls `frame.unpin()`. \n6. `TimelineFrame` uses pinning to track usage. When the pin count reaches 0 and the frame is 'cooled', it closes the `LoadedGeneration`.\n7. `LoadedGeneration.close()` closes the `URLClassLoader`.\n8. **The Bug**: `ThreadCache.cursorFor` replaces `cursor` without calling `cursor.close()` on the old one. This means the old `WorkerHandle` remains pinned, so the pin count never reaches 0, the `LoadedGeneration` is never closed, and the `URLClassLoader` is leaked, leading to Metaspace OOM.\n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame); // Old cursor is never closed!\n            return cursor;\n        }\n\n        return cursor;\n    }\n```",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to call `cursor.close()` before replacing it with a new `WorkerHandle`.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/cursor.close(); cursor = new WorkerHandle(frame);/' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "analysis": "The `TimelineLedger` keeps track of `TimelineFrame`s. When a new revision is installed, the old one is moved to a `shadow` queue and cooled. `pruneShadow` removes frames that are 'drained'.\n\n`ThreadBridge` uses a `ThreadLocal<ThreadCache>`. This is a classic place for leaks in worker pools. If the `ThreadCache` holds onto old `TimelineFrame`s or `WorkerHandle`s, and the worker threads in the `ExecutorService` are never cleared or updated, they will keep the old class loaders alive.\n\nLet's look at `ThreadCache.java` and `TimelineFrame.java`.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/ThreadCache.java`.\n2. Examine `src/main/java/io/harbor/textd/core/TimelineFrame.java`.\n3. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java`.\n4. Observe the output of the stress test (which is still running or just finished).",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

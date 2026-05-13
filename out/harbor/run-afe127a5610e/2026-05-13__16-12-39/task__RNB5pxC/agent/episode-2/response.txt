@@ -1,0 +1,11 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with a limited Metaspace size (`-XX:MaxMetaspaceSize=64m`). This strongly suggests that the issue is a classloader leak or Metaspace exhaustion caused by repeated 'processor swaps' (hot-reloading plugins). The `bin/stress` command is currently running.",
+  "plan": "1. Wait for the stress test to finish or fail to confirm the error.\n2. If it fails with `java.lang.OutOfMemoryError: Metaspace`, it confirms the classloader leak.\n3. Examine `TextDaemon.java` and how it handles plugin loading/unloading.",
+  "commands": [
+    {
+      "keystrokes": "",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

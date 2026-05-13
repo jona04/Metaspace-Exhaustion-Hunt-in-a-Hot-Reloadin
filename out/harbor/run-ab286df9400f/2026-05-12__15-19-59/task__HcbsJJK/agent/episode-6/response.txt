@@ -1,0 +1,19 @@
+{
+  "analysis": "I've analyzed the code:\n1. `TimelineLedger` keeps a `shadow` queue of old `TimelineFrame`s. It prunes them when they are 'drained'.\n2. `ThreadBridge` uses a `ThreadLocal<ThreadCache>` to store a `WorkerHandle` for each thread.\n3. `ThreadCache` holds a reference to a `WorkerHandle` (and thus a `TimelineFrame`). When `cursorFor` is called, if the frame has changed, it creates a new `WorkerHandle`, but it *does not* explicitly close or release the old one, other than overwriting the reference.\n4. However, the `ThreadLocal` itself is never cleared in the worker threads unless `ThreadBridge.clear()` is called. `TextDaemon` uses a fixed thread pool. The worker threads stay alive.\n5. `TimelineFrame.isDrained()` likely checks if there are any active `WorkerHandle`s using it. If a `WorkerHandle` is still in a `ThreadLocal` of a worker thread, that frame might never be considered 'drained'.\n\nWait, in `ThreadCache.cursorFor`:\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\nWhen `cursor` is replaced, the old `WorkerHandle` is discarded. But does `WorkerHandle` have a way to signal it's done? Let's look at `WorkerHandle.java` and `TimelineFrame.java`.",
+  "plan": "1. Examine `WorkerHandle.java` and `TimelineFrame.java` to see how they track usage and if they need to be closed.\n2. Examine `LoadedGeneration.java` to see how it loads classes (presumably using a new ClassLoader).",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

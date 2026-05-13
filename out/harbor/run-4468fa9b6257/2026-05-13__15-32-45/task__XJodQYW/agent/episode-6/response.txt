@@ -1,0 +1,15 @@
+{
+  "analysis": "I found the leak! In `ThreadCache.java`, the `cursorFor` method creates a new `WorkerHandle` when the current one doesn't match the new frame, but it **never closes the old one**. \n\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\n\nIf `WorkerHandle` holds onto resources (like a ClassLoader or a reference to `LoadedGeneration`), and we just replace the `cursor` reference without calling `cursor.close()`, the old `WorkerHandle` and everything it references will leak. Since this is in a `ThreadLocal`, it will persist as long as the worker thread is alive.\n\nAlso, `TimelineLedger` has a `pruneShadow` method that depends on `TimelineFrame.isDrained()`. If `WorkerHandle` objects aren't closed, they probably increment some reference count in `TimelineFrame`, preventing it from being 'drained' and thus preventing the `LoadedGeneration` (and its ClassLoader) from being closed.",
+  "plan": "1. Check `WorkerHandle.java` to see if it has a `close()` method and what it does.\n2. Check `TimelineFrame.java` to see how it tracks active handles.\n3. Verify if `WorkerHandle` indeed needs to be closed.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

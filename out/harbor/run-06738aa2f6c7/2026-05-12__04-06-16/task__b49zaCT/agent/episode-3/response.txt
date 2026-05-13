@@ -1,0 +1,15 @@
+{
+  "analysis": "The stress test failed with `java.lang.OutOfMemoryError: Metaspace`. This confirms that the ClassLoaders (or other Metaspace-resident data) are leaking during the 'processor swaps' (hot reloads). The 64MB limit is being hit.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/TextDaemon.java` to see how it handles plugin reloading and if it clears old ClassLoaders.\n2. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java` and `ThreadCache.java` to see if they hold onto references from old generations.\n3. Look at `src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java` to see how it triggers the reloads.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.2
+    }
+  ],
+  "task_complete": false
+}

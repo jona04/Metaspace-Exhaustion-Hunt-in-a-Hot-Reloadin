@@ -1,0 +1,19 @@
+{
+  "analysis": "I've reviewed `TextDaemon.java` and `ThreadCache.java`. \n\nIn `TextDaemon.processRecord`, it calls `ThreadBridge.current(revisions)`. \nIn `ThreadCache.cursorFor`, if the current `cursor` doesn't match the new `frame`, a new `WorkerHandle` is created and assigned to `cursor`. \n\nCrucially, if a new `WorkerHandle` is created because the `frame` changed (hot-reload), the old `cursor` (which was the old `WorkerHandle`) is simply overwritten: `cursor = new WorkerHandle(frame);`. The old `WorkerHandle` is never closed! `WorkerHandle` likely holds a reference to the plugin's classloader or objects from it. If it's not closed, it might be leaking resources or keeping the classloader alive.",
+  "plan": "1. Check `src/main/java/io/harbor/textd/core/WorkerHandle.java` to see what it does and if it implements `AutoCloseable`.\n2. Check `src/main/java/io/harbor/textd/core/ThreadBridge.java` to see how it uses `ThreadCache`.\n3. Check `src/main/java/io/harbor/textd/core/TimelineLedger.java` and `TimelineFrame.java` to see how they manage classloaders.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

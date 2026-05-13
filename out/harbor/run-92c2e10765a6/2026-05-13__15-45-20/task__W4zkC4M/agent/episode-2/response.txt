@@ -1,0 +1,19 @@
+{
+  "analysis": "The `TextDaemon` uses a `TimelineLedger` to manage plugin revisions and an `ExecutorService` for workers. The `processRecord` method uses `ThreadBridge.current(revisions)` to get a `WorkerHandle`. \n\nCrucially, `bin/stress` sets `-XX:MaxMetaspaceSize=64m`. This is a very tight limit for a Java application that performs hot-reloading (which involves class loading). This suggests the issue is likely a Metaspace leak caused by not properly unloading old plugin classes after a 'processor swap'.\n\nI need to check how `TimelineLedger` and `ThreadBridge` handle plugin versions and class loaders.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/TimelineLedger.java`.\n2. Examine `src/main/java/io/harbor/textd/core/ThreadBridge.java`.\n3. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java`.\n4. Run the stress test to confirm it fails with an `OutOfMemoryError: Metaspace`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/stress 100\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

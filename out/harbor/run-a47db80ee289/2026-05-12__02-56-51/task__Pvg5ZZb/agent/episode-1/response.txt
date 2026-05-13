@@ -1,0 +1,15 @@
+{
+  "analysis": "The project structure is a Java-based daemon (`textd`). \n- `src/main/java/io/harbor/textd/core` contains the core logic: `GenerationRegistry`, `GenerationLease`, `LoadedGeneration`, and `TextDaemon`. These likely handle the lifecycle and rotation.\n- `src/main/java/io/harbor/textd/cli` contains `HotReloadStressRunner.java` and `HotReloadLifecycleProbe.java`, which are likely used for the 'soak' mentioned in the task description.\n- `bin/` contains `stress` and `run-suite` scripts.\n\nThe failure happens during 'in-place processor refreshes' under 'constrained CI runtime profile'. This suggests a leak or a race condition when retiring old generations of processors.",
+  "plan": "1. Run the stress script to see if I can reproduce the failure locally.\n2. Examine `GenerationRegistry.java` and `LoadedGeneration.java` to see how old versions are decommissioned.\n3. Check `HotReloadStressRunner.java` to understand the validation logic that fails.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 5.0
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/GenerationRegistry.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

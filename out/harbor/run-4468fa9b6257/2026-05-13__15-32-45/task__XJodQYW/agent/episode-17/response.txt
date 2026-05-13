@@ -1,0 +1,6 @@
+{
+  "analysis": "The investigation revealed a ClassLoader leak in the `textd` service. Specifically, in `ThreadCache.java`, when a new processor generation was loaded, the existing `WorkerHandle` (which pins the previous generation's `TimelineFrame`) was replaced without being closed. This prevented the old `TimelineFrame` from being unpinned and its associated `LoadedGeneration` and ClassLoader from being closed, eventually exhausting the restricted Metaspace in the CI profile. I have modified `ThreadCache.java` to properly close the old `WorkerHandle` before creating a new one. This was verified by running the stress test for 1000 cycles with the restricted Metaspace limit and running the integration tests.",
+  "plan": "The task is complete. I have verified the fix with both the stress test and the integration suite.",
+  "commands": [],
+  "task_complete": true
+}

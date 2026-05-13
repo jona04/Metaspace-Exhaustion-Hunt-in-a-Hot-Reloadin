@@ -1,0 +1,11 @@
+{
+  "analysis": "Confirmed: `DispatchBinding` calls `lease.retain()` in its constructor and `lease.release()` in its `close()` method. \n\nIn `WorkerBindings.current()`:\n```java\n        if (!binding.matches(activeLease)) {\n            DispatchBinding replacement = new DispatchBinding(activeLease);\n            ACTIVE.set(replacement);\n            return replacement;\n        }\n```\nThe old `binding` is discarded without calling `close()`, so the `lease` is never released. This prevents the `URLClassLoader` from being closed, leading to Metaspace exhaustion.\n\nI am still waiting for the `bin/stress 500` output, but I'm confident this is the issue.",
+  "plan": "1. Wait for `bin/stress 500` to finish/fail.\n2. Modify `src/main/java/io/harbor/textd/core/WorkerBindings.java` to close the old binding before replacing it.\n3. Run `bin/stress 500` again to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}

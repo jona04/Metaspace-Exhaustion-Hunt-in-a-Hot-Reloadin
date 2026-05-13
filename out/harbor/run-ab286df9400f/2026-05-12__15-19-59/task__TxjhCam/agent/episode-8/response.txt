@@ -1,0 +1,11 @@
+{
+  "analysis": "The issue is indeed in `ThreadCache.java`. When a new `WorkerHandle` is created, the old one is discarded without being closed. `WorkerHandle.close()` calls `frame.unpin()`. `TimelineFrame` tracks pins and only closes the `LoadedGeneration` (which presumably closes the ClassLoader) when the pin count reaches zero and the frame is 'cooled'.\n\nIn `ThreadCache.cursorFor`:\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\nIt should be:\n```java\n        if (!cursor.matches(frame)) {\n            cursor.close(); // Release the pin on the old frame\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\nBy not calling `cursor.close()`, the pin count on old `TimelineFrame`s never reaches zero, so `closeLoadedGeneration()` is never called, and the `LoadedGeneration` (and its ClassLoader) is leaked.\n\nI should also check `LoadedGeneration.java` to confirm it closes the ClassLoader.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/LoadedGeneration.java` to confirm it closes the ClassLoader.\n2. Fix `src/main/java/io/harbor/textd/core/ThreadCache.java` by adding `cursor.close()`.\n3. Run the stress test again to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

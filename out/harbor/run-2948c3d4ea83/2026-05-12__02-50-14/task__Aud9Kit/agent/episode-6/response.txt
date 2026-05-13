@@ -1,0 +1,19 @@
+{
+  "analysis": "The stress test failed with `java.lang.OutOfMemoryError: Metaspace`, confirming the leak. As analyzed, the leak is in `WorkerBindings.current()` where the old `DispatchBinding` is not closed when a new generation is loaded.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/WorkerBindings.java` to call `binding.close()` before replacing it with a new one.\n2. Re-run `bin/stress 500` to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/ACTIVE.set(replacement);/binding.close();\\n            ACTIVE.set(replacement);/' src/main/java/io/harbor/textd/core/WorkerBindings.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerBindings.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "bin/stress 500\n",
+      "duration": 15.0
+    }
+  ],
+  "task_complete": false
+}

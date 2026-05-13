@@ -1,0 +1,6 @@
+{
+  "analysis": "The investigation revealed a resource leak in the `WorkerBindings` class. When a worker thread transitioned from an old plugin generation to a new one, the `DispatchBinding` for the old generation was replaced in the `ThreadLocal` storage without being closed. Each `DispatchBinding` holds a reference to a `GenerationLease`, which in turn prevents the `URLClassLoader` of that generation from being closed. Under the constrained Metaspace limit (64m) in the CI environment, repeated refreshes caused the JVM to run out of Metaspace and crash.\n\nI fixed this by ensuring that `binding.close()` is called on the old binding before it is replaced by a new one in `WorkerBindings.current()`. This allows the reference count of the old `GenerationLease` to drop to zero, triggering the closure of the classloader.\n\nThe fix was verified by running `./bin/stress`, which now completes 500 cycles successfully, and `./bin/integration`, which confirms deterministic processing across 12 generations.",
+  "plan": "I have already implemented the fix and verified it with the provided test scripts. The system now correctly rotates processors without leaking memory.",
+  "commands": [],
+  "task_complete": true
+}

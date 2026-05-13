@@ -1,0 +1,11 @@
+{
+  "analysis": "The stress test passed for 100 cycles, but it has a `-XX:MaxMetaspaceSize=64m` limit. If I increase the cycles, it will likely hit that limit because of the classloader leak I identified. The task description says 'long refresh run' and 'constrained CI profile'. 500 cycles is the default. Let's try 500.",
+  "plan": "1. Run the stress test with 500 cycles to confirm it fails.\n2. Apply the fix to `ThreadCache.java` by closing the old cursor.\n3. Verify the fix with 500 cycles.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 20.0
+    }
+  ],
+  "task_complete": false
+}

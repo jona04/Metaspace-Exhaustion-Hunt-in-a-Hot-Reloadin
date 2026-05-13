@@ -1,0 +1,15 @@
+{
+  "analysis": "The stress test failed with `java.lang.OutOfMemoryError: Metaspace` as expected. \n\n```\nCaused by: java.lang.ExceptionInInitializerError: Exception java.lang.OutOfMemoryError: Metaspace [in thread \"textd-worker-2\"]\n```\n\nThis confirms the issue. Now I will fix the leak in `WorkerState.java`.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/WorkerState.java` to pop the module from the `ACTIVE_MODULES` stack in the `close()` method.\n2. Re-run the stress test to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/WorkerState.java\npackage io.harbor.textd.core;\n\nimport java.util.ArrayDeque;\nimport java.util.Deque;\n\nfinal class WorkerState {\n    private static final ThreadLocal<Deque<Object>> ACTIVE_MODULES = ThreadLocal.withInitial(ArrayDeque::new);\n\n    private WorkerState() {\n    }\n\n    static Scope attach(Object module) {\n        ACTIVE_MODULES.get().push(module);\n        return new Scope();\n    }\n\n    static final class Scope implements AutoCloseable {\n        @Override\n        public void close() {\n            ACTIVE_MODULES.get().pop();\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

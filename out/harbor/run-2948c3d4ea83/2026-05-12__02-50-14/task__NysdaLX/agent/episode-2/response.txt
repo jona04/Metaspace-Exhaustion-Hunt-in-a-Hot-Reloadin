@@ -1,0 +1,14 @@
+{
+  "analysis": "The `bin/stress` script runs the JVM with a constrained `-XX:MaxMetaspaceSize=64m`. This is a strong hint that we might be leaking class loaders or classes during hot-reloads, as Metaspace stores class metadata. \n\nIn `GenerationRegistry.java`:\n- `activate` loads a new generation and moves the old one to a `retired` queue.\n- `previous.retire()` is called.\n- `sweepRetired()` removes leases if they are closed (`GenerationLease::isClosed`).\n\nI need to check `GenerationLease.java` and `LoadedGeneration.java` to see how they handle closure and if they actually release the ClassLoader.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/GenerationLease.java`.\n2. Examine `src/main/java/io/harbor/textd/core/LoadedGeneration.java`.\n3. Check how `LoadedGeneration.load` is implemented and if it creates a new ClassLoader for every generation.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/GenerationLease.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.1
+    }
+  ]
+}

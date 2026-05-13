@@ -1,0 +1,14 @@
+{
+  "analysis": "The project structure reveals a Java-based daemon (`TextDaemon.java`) with hot-reload capabilities. \n- `src/main/java/io/harbor/textd/core/` contains lifecycle management classes like `GenerationRegistry`, `LoadedGeneration`, and `GenerationLease`, which likely handle the in-place refreshes.\n- `src/main/java/io/harbor/textd/cli/` contains `HotReloadStressRunner.java`, which probably matches the 'soak' or 'stress' test mentioned in the task.\n- `bin/` contains a `stress` script.\n\nThe problem is described as a 'runtime lifecycle problem' where the daemon dies during repeated refreshes under constrained CI profiles, suggesting potential resource exhaustion (memory/threads) or improper cleanup of old 'generations'.",
+  "plan": "1. Examine `bin/stress` to see how the soak test is executed.\n2. Examine `src/main/java/io/harbor/textd/core/GenerationRegistry.java` and `GenerationLease.java` to understand how old processor versions are retired.\n3. Run the stress test to reproduce the failure if possible.",
+  "commands": [
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/GenerationRegistry.java\n",
+      "duration": 0.2
+    }
+  ]
+}

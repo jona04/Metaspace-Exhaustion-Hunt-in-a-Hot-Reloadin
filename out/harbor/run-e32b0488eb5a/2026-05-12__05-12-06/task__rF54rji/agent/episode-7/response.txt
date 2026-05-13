@@ -1,0 +1,11 @@
+{
+  "analysis": "In `WorkerHandle`, when a new one is created, it calls `frame.pin()`. When it's closed, it calls `frame.unpin()`. In `ThreadCache.java`, when the `cursor` is replaced, `close()` is *not* called on the old `cursor`. This means `frame.unpin()` is never called for the old frames. This is likely the cause of the leak, as 'pinned' frames probably keep the ClassLoaders alive.",
+  "plan": "1. Verify `TimelineFrame.java` to see what `pin()` and `unpin()` do.\n2. Fix `ThreadCache.java` to call `close()` on the old `cursor` before replacing it.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

@@ -1,0 +1,10 @@
+{
+  "analysis": "The `bin/stress` script runs `io.harbor.textd.cli.HotReloadStressRunner` with a 64MB Metaspace limit (`-XX:MaxMetaspaceSize=64m`). This is a very tight limit for a Java application that performs hot-reloading. Metaspace is used to store class metadata. If classes are being reloaded repeatedly without the old ones being garbage collected, the Metaspace will eventually fill up, leading to an `OutOfMemoryError: Metaspace`.",
+  "plan": "1. Run the stress test to confirm it fails with the current configuration.\n2. Examine `HotReloadStressRunner.java` and `TextDaemon.java` to see how plugins are loaded and if classloaders are being properly discarded.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 100\n",
+      "duration": 5.0
+    }
+  ]
+}

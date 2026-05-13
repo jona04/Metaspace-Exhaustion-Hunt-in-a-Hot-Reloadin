@@ -1,0 +1,6 @@
+{
+  "analysis": "The Metaspace OOM was caused by a leak of ClassLoaders during plugin hot-reloading. Specifically, `ThreadCache` was replacing its `WorkerHandle` without closing the old one. Since `WorkerHandle` pins a `TimelineFrame`, and the frame only closes its `LoadedGeneration` (and `URLClassLoader`) when the pin count reaches zero, the old ClassLoaders were never being released. I modified `ThreadCache.java` to call `close()` on the old `WorkerHandle` before replacing it. This ensures that the pin count is properly decremented, allowing the Metaspace to be reclaimed.",
+  "plan": "The fix has been verified with both the `bin/stress` test (which now completes 500 cycles within 64MB Metaspace) and the `bin/run-suite` integration tests.",
+  "commands": [],
+  "task_complete": true
+}

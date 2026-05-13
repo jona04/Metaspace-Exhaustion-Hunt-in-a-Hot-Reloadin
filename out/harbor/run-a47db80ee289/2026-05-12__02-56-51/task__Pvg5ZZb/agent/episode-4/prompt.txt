@@ -1,0 +1,290 @@
+New Terminal Output:
+
+cat src/main/java/io/harbor/textd/core/LoadedGeneration.java
+cat bin/stress
+cat src/main/java/io/harbor/textd/core/GenerationRegistry.java
+cat src/main/java/io/harbor/textd/core/LoadedGeneration.java
+Exception in thread "main" java.lang.NoClassDefFoundError: Could not initialize class io.harbor.textd.customer.PipelineStages
+        at io.harbor.textd.customer.PipelineProcessor.process(PipelineProcessor.java:22)
+        at io.harbor.textd.core.DispatchBinding.process(DispatchBinding.java:21)
+        at io.harbor.textd.core.TextDaemon.processRecord(TextDaemon.java:80)
+        at io.harbor.textd.core.TextDaemon.lambda$processBatch$0(TextDaemon.java:43)
+        at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+        at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
+        at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+        at java.base/java.lang.Thread.run(Thread.java:840)
+Caused by: java.lang.ExceptionInInitializerError: Exception java.lang.OutOfMemoryError: Metaspace [in thread "textd-worker-1"]
+        at io.harbor.textd.customer.PipelineStages.<clinit>(PipelineStages.java:10)
+        at io.harbor.textd.customer.PipelineProcessor.process(PipelineProcessor.java:22)
+        at io.harbor.textd.core.DispatchBinding.process(DispatchBinding.java:21)
+        at io.harbor.textd.core.TextDaemon.processRecord(TextDaemon.java:80)
+        at io.harbor.textd.core.TextDaemon.lambda$processBatch$0(TextDaemon.java:43)
+        at io.harbor.textd.core.TextDaemon$$Lambda$1/0x00007d4671001c58.call(Unknown Source)
+        ... 4 more
+root@fdec75227c26:/workspace/textd# cat src/main/java/io/harbor/textd/core/GenerationRegistry.java
+package io.harbor.textd.core;
+
+import java.nio.file.Path;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicReference;
+
+final class GenerationRegistry {
+    private final Path pluginJar;
+    private final AtomicReference<GenerationLease> active = new AtomicReference<>();
+    private final Queue<GenerationLease> retired = new ConcurrentLinkedQueue<>();
+
+    GenerationRegistry(Path pluginJar) {
+        this.pluginJar = pluginJar;
+    }
+
+    void activate(long generation) throws Exception {
+        GenerationLease next = new GenerationLease(LoadedGeneration.load(pluginJar, generation));
+        GenerationLease previous = active.getAndSet(next);
+        if (previous != null) {
+            retired.add(previous);
+            previous.retire();
+            sweepRetired();
+        }
+    }
+
+    GenerationLease active() {
+        GenerationLease lease = active.get();
+        if (lease == null) {
+            throw new IllegalStateException("No plugin generation is loaded");
+        }
+        return lease;
+    }
+
+    int pendingRetirements() {
+        sweepRetired();
+        return retired.size();
+    }
+
+    void close() {
+        GenerationLease current = active.getAndSet(null);
+        if (current != null) {
+            retired.add(current);
+            current.retire();
+        }
+        sweepRetired();
+    }
+
+    private void sweepRetired() {
+        retired.removeIf(GenerationLease::isClosed);
+    }
+}
+root@fdec75227c26:/workspace/textd# ps aux | grep java
+root         603  0.0  0.0   3912  2120 pts/1    S+   03:02   0:00 grep --color=auto java
+root@fdec75227c26:/workspace/textd# cat src/main/java/io/harbor/textd/core/GenerationRegistry.java
+package io.harbor.textd.core;
+
+import java.nio.file.Path;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicReference;
+
+final class GenerationRegistry {
+    private final Path pluginJar;
+    private final AtomicReference<GenerationLease> active = new AtomicReference<>();
+    private final Queue<GenerationLease> retired = new ConcurrentLinkedQueue<>();
+
+    GenerationRegistry(Path pluginJar) {
+        this.pluginJar = pluginJar;
+    }
+
+    void activate(long generation) throws Exception {
+        GenerationLease next = new GenerationLease(LoadedGeneration.load(pluginJar, generation));
+        GenerationLease previous = active.getAndSet(next);
+        if (previous != null) {
+            retired.add(previous);
+            previous.retire();
+            sweepRetired();
+        }
+    }
+
+    GenerationLease active() {
+        GenerationLease lease = active.get();
+        if (lease == null) {
+            throw new IllegalStateException("No plugin generation is loaded");
+        }
+        return lease;
+    }
+
+    int pendingRetirements() {
+        sweepRetired();
+        return retired.size();
+    }
+
+    void close() {
+        GenerationLease current = active.getAndSet(null);
+        if (current != null) {
+            retired.add(current);
+            current.retire();
+        }
+        sweepRetired();
+    }
+
+    private void sweepRetired() {
+        retired.removeIf(GenerationLease::isClosed);
+    }
+}
+root@fdec75227c
+[... output limited to 10000 bytes; 68 interior bytes omitted ...]
+java
+package io.harbor.textd.core;
+
+import io.harbor.textd.api.PluginModule;
+import io.harbor.textd.api.PluginModuleFactory;
+
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Path;
+
+final class LoadedGeneration implements AutoCloseable {
+    private static final String FACTORY_CLASS = "io.harbor.textd.customer.CustomerPluginFactory";
+
+    private final long generation;
+    private final URLClassLoader classLoader;
+    private final PluginModule module;
+
+    private LoadedGeneration(long generation, URLClassLoader classLoader, PluginModule module) {
+        this.generation = generation;
+        this.classLoader = classLoader;
+        this.module = module;
+    }
+
+    static LoadedGeneration load(Path pluginJar, long generation) throws Exception {
+        URLClassLoader classLoader = new URLClassLoader(new URL[] {pluginJar.toUri().toURL()}, PluginModuleFactory.class.getClassLoader());
+        Class<?> factoryType = classLoader.loadClass(FACTORY_CLASS);
+        PluginModuleFactory factory = (PluginModuleFactory) factoryType.getDeclaredConstructor().newInstance();
+        return new LoadedGeneration(generation, classLoader, factory.open());
+    }
+
+    long generation() {
+        return generation;
+    }
+
+    PluginModule module() {
+        return module;
+    }
+
+    @Override
+    public void close() throws Exception {
+        module.close();
+        classLoader.close();
+    }
+}
+root@fdec75227c26:/workspace/textd# cat bin/stress
+#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+if [[ "${TEXTD_SKIP_BUILD:-0}" != "1" ]]; then
+  "$ROOT_DIR/bin/build"
+fi
+
+java -XX:MaxMetaspaceSize=64m -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.HotReloadStressRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" \
+  "${1:-500}"
+root@fdec75227c26:/workspace/textd# cat src/main/java/io/harbor/textd/core/GenerationRegistry.java
+package io.harbor.textd.core;
+
+import java.nio.file.Path;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicReference;
+
+final class GenerationRegistry {
+    private final Path pluginJar;
+    private final AtomicReference<GenerationLease> active = new AtomicReference<>();
+    private final Queue<GenerationLease> retired = new ConcurrentLinkedQueue<>();
+
+    GenerationRegistry(Path pluginJar) {
+        this.pluginJar = pluginJar;
+    }
+
+    void activate(long generation) throws Exception {
+        GenerationLease next = new GenerationLease(LoadedGeneration.load(pluginJar, generation));
+        GenerationLease previous = active.getAndSet(next);
+        if (previous != null) {
+            retired.add(previous);
+            previous.retire();
+            sweepRetired();
+        }
+    }
+
+    GenerationLease active() {
+        GenerationLease lease = active.get();
+        if (lease == null) {
+            throw new IllegalStateException("No plugin generation is loaded");
+        }
+        return lease;
+    }
+
+    int pendingRetirements() {
+        sweepRetired();
+        return retired.size();
+    }
+
+    void close() {
+        GenerationLease current = active.getAndSet(null);
+        if (current != null) {
+            retired.add(current);
+            current.retire();
+        }
+        sweepRetired();
+    }
+
+    private void sweepRetired() {
+        retired.removeIf(GenerationLease::isClosed);
+    }
+}
+root@fdec75227c26:/workspace/textd# cat src/main/java/io/harbor/textd/core/LoadedGeneration.java
+package io.harbor.textd.core;
+
+import io.harbor.textd.api.PluginModule;
+import io.harbor.textd.api.PluginModuleFactory;
+
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Path;
+
+final class LoadedGeneration implements AutoCloseable {
+    private static final String FACTORY_CLASS = "io.harbor.textd.customer.CustomerPluginFactory";
+
+    private final long generation;
+    private final URLClassLoader classLoader;
+    private final PluginModule module;
+
+    private LoadedGeneration(long generation, URLClassLoader classLoader, PluginModule module) {
+        this.generation = generation;
+        this.classLoader = classLoader;
+        this.module = module;
+    }
+
+    static LoadedGeneration load(Path pluginJar, long generation) throws Exception {
+        URLClassLoader classLoader = new URLClassLoader(new URL[] {pluginJar.toUri().toURL()}, PluginModuleFactory.class.getClassLoader());
+        Class<?> factoryType = classLoader.loadClass(FACTORY_CLASS);
+        PluginModuleFactory factory = (PluginModuleFactory) factoryType.getDeclaredConstructor().newInstance();
+        return new LoadedGeneration(generation, classLoader, factory.open());
+    }
+
+    long generation() {
+        return generation;
+    }
+
+    PluginModule module() {
+        return module;
+    }
+
+    @Override
+    public void close() throws Exception {
+        module.close();
+        classLoader.close();
+    }
+}
+root@fdec75227c26:/workspace/textd# ls -lR | grep .log
+root@fdec75227c26:/workspace/textd#

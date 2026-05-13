@@ -1,0 +1,19 @@
+{
+  "analysis": "In `TextDaemon.java`, `processRecord` calls `ThreadBridge.current(revisions)`. I need to see `ThreadBridge.java`. \n\nIn `ThreadCache.java`, there is a `cursor` of type `WorkerHandle`. If `cursor.matches(frame)` is false, it creates a new `WorkerHandle`. However, it doesn't seem to close the old `cursor` before replacing it. Wait, `cursor = new WorkerHandle(frame);` just overwrites the reference. If `WorkerHandle` or the objects it holds have references to classes from the plugin's classloader, and those are stored in a `ThreadLocal` (which `ThreadBridge` likely uses), then they won't be GC'd.\n\nLet's look at `ThreadBridge.java` and `WorkerHandle.java`.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/ThreadBridge.java`.\n2. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java`.\n3. Examine `src/main/java/io/harbor/textd/core/TimelineLedger.java` and `src/main/java/io/harbor/textd/core/TimelineFrame.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

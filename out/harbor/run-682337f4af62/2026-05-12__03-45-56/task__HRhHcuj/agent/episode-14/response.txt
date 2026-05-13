@@ -1,0 +1,6 @@
+{
+  "analysis": "The task was to fix a failure during repeated in-place processor swaps in the `textd` daemon, specifically occurring in a constrained CI profile. Investigation revealed a Metaspace leak caused by failing to close old `RouteCursor` instances when a new plugin generation was loaded. This kept the old `ClassLoader` pinned and prevented garbage collection of Metaspace. I modified `io.harbor.textd.core.RouteState` to correctly close the previous cursor before creating a new one. Both the `stress` test (500 cycles) and the full `run-suite` now pass successfully.",
+  "plan": "I have already verified the fix with the provided stress and suite scripts. The system is now stable under the refresh load.",
+  "commands": [],
+  "task_complete": true
+}

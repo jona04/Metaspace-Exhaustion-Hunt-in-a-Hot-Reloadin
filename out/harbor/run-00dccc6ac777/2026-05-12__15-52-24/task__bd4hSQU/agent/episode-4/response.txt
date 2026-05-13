@@ -1,0 +1,19 @@
+{
+  "analysis": "The stress test with 100 cycles passed (`stress-ok cycles=100`). The task mentioned a 'long refresh run'. I should try a larger number of cycles. \n\nLooking at the code:\n- `TimelineLedger` keeps track of `shadow` revisions and prunes them if `TimelineFrame::isDrained` returns true.\n- `ThreadBridge` uses a `ThreadLocal<ThreadCache>`.\n- `ThreadCache` probably holds references to `TimelineFrame` or `WorkerHandle`.\n- If `ThreadLocal` isn't cleared and it holds references to old class loaders, we'll get a Metaspace leak.\n\nI need to check `ThreadCache.java` and `TimelineFrame.java`.",
+  "plan": "1. Run the stress test with a much higher number of cycles to trigger the failure (e.g., 1000 or 2000).\n2. Read `src/main/java/io/harbor/textd/core/ThreadCache.java` and `src/main/java/io/harbor/textd/core/TimelineFrame.java`.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 1000\n",
+      "duration": 10.0
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

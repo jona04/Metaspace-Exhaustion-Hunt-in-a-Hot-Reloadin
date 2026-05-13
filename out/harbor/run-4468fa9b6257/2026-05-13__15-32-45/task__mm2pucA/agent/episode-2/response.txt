@@ -1,0 +1,11 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with a limited `MaxMetaspaceSize` of 64m. This strongly suggests that the 'processor swaps' (hot reloading) are causing a Metaspace leak, likely because old ClassLoaders are not being garbage collected. Metaspace is where Java stores class metadata, and if ClassLoaders are leaked, the metadata for the classes they loaded stays in Metaspace until the ClassLoader is GC'd.",
+  "plan": "1. Wait for the stress test to complete or fail to confirm the Metaspace OOM.\n2. Examine `HotReloadStressRunner.java` and `TextDaemon.java` to see how plugins are loaded and swapped.\n3. Look for references to `ClassLoader` or custom class loading logic.",
+  "commands": [
+    {
+      "keystrokes": "",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}

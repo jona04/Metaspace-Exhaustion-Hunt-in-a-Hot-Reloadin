@@ -1,0 +1,105 @@
+New Terminal Output:
+
+root@b44bb1a22491:/workspace/textd# cat src/main/java/io/harbor/textd/core/RevisionLedger.java
+package io.harbor.textd.core;
+
+import java.nio.file.Path;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicReference;
+
+final class RevisionLedger {
+    private final Path pluginJar;
+    private final AtomicReference<RevisionFrame> current = new AtomicReference<>();
+    private final Queue<RevisionFrame> shadow = new ConcurrentLinkedQueue<>();
+
+    RevisionLedger(Path pluginJar) {
+        this.pluginJar = pluginJar;
+    }
+
+    void install(long revision) throws Exception {
+        RevisionFrame next = new RevisionFrame(LoadedGeneration.load(pluginJar, revision));
+        RevisionFrame previous = current.getAndSet(next);
+        if (previous != null) {
+            shadow.add(previous);
+            previous.cool();
+            pruneShadow();
+        }
+    }
+
+    RevisionFrame current() {
+        RevisionFrame frame = current.get();
+        if (frame == null) {
+            throw new IllegalStateException("No plugin generation is loaded");
+        }
+        return frame;
+    }
+
+    boolean isSteady() {
+        pruneShadow();
+        return shadow.isEmpty();
+    }
+
+    void close() {
+        RevisionFrame frame = current.getAndSet(null);
+        if (frame != null) {
+            shadow.add(frame);
+            frame.cool();
+        }
+        pruneShadow();
+    }
+
+    private void pruneShadow() {
+        shadow.removeIf(RevisionFrame::isDrained);
+    }
+}
+root@b44bb1a22491:/workspace/textd# cat src/main/java/io/harbor/textd/core/ThreadState.java
+package io.harbor.textd.core;
+
+final class ThreadState {
+    private static final ThreadLocal<RouteState> ROUTES = ThreadLocal.withInitial(RouteState::new);
+
+    private ThreadState() {
+    }
+
+    static RouteCursor current(RevisionLedger ledger) {
+        return ROUTES.get().cursorFor(ledger);
+    }
+
+    static void clear() {
+        RouteState routeState = ROUTES.get();
+        routeState.close();
+        ROUTES.remove();
+    }
+}
+root@b44bb1a22491:/workspace/textd# cat src/main/java/io/harbor/textd/core/RouteCursor.java
+package io.harbor.textd.core;
+
+import io.harbor.textd.api.TextProcessor;
+
+final class RouteCursor implements AutoCloseable {
+    private final RevisionFrame frame;
+    private final long revision;
+    private final TextProcessor processor;
+
+    RouteCursor(RevisionFrame frame) {
+        this.frame = frame.pin();
+        this.revision = frame.revision();
+        this.processor = frame.module().processorFor(revision);
+    }
+
+    boolean matches(RevisionFrame frame) {
+        return revision == frame.revision();
+    }
+
+    ProcessingResult process(String record) {
+        String output = processor.process(record);
+        return new ProcessingResult(revision, output, Thread.currentThread().getName());
+    }
+
+    @Override
+    public void close() {
+        frame.unpin();
+    }
+}
+root@b44bb1a22491:/workspace/textd#

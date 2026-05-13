@@ -1,0 +1,23 @@
+{
+  "analysis": "The stress test passed for 100 cycles, but the task mentions a 'long refresh run'. Let's try 500 cycles (the default in `bin/stress`). \n\nLooking at `TextDaemon.java`:\n- It uses `TimelineLedger` to manage revisions.\n- `processRecord` calls `ThreadBridge.current(revisions)` to get a `WorkerHandle`.\n- `TextDaemon` has a `close()` method that closes `revisions`.\n\nI need to check `TimelineLedger.java`, `ThreadBridge.java`, and `WorkerHandle.java` to see how they handle memory and class loading.",
+  "plan": "1. Run the stress test with 500 cycles to see if it fails.\n2. Read `TimelineLedger.java`, `ThreadBridge.java`, and `WorkerHandle.java`.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 10.0
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

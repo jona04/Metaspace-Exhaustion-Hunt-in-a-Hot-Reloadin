@@ -1,0 +1,15 @@
+{
+  "analysis": "The project is a Java-based text processing daemon (`textd`). \nKey components identified:\n- `io.harbor.textd.core.TextDaemon`: Likely the main entry point.\n- `io.harbor.textd.cli.HotReloadStressRunner`: This probably corresponds to the 'long refresh run' and 'repeated processor swaps' mentioned in the task description.\n- `io.harbor.textd.core.ThreadCache` and `ThreadBridge`: Potential areas for resource leaks if not handled correctly during swaps.\n- `bin/stress` and `bin/run-suite`: Shell scripts to trigger the tests.",
+  "plan": "1. Run the `bin/stress` script to reproduce the failure and observe the error (e.g., OutOfMemoryError, resource exhaustion).\n2. Examine `bin/stress` to see how it invokes the Java code.\n3. Examine `HotReloadStressRunner.java` and `TextDaemon.java` to understand how 'processor swaps' (reloading) are implemented.",
+  "commands": [
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}

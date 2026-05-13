@@ -1,0 +1,91 @@
+New Terminal Output:
+
+root@84ae2dbe9a68:/workspace/textd# cat src/main/java/io/harbor/textd/core/WorkerBindings.java
+package io.harbor.textd.core;
+
+final class WorkerBindings {
+    private static final ThreadLocal<DispatchBinding> ACTIVE = new ThreadLocal<>();
+
+    private WorkerBindings() {
+    }
+
+    static DispatchBinding current(GenerationRegistry registry) {
+        GenerationLease activeLease = registry.active();
+        DispatchBinding binding = ACTIVE.get();
+        if (binding == null) {
+            DispatchBinding created = new DispatchBinding(activeLease);
+            ACTIVE.set(created);
+            return created;
+        }
+
+        if (!binding.matches(activeLease)) {
+            DispatchBinding replacement = new DispatchBinding(activeLease);
+            ACTIVE.set(replacement);
+            return replacement;
+        }
+
+        return binding;
+    }
+
+    static void releaseCurrent() {
+        DispatchBinding binding = ACTIVE.get();
+        if (binding != null) {
+            binding.close();
+            ACTIVE.remove();
+        }
+    }
+}
+root@84ae2dbe9a68:/workspace/textd# cat src/main/java/io/harbor/textd/core/GenerationRegistry.java
+package io.harbor.textd.core;
+
+import java.nio.file.Path;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicReference;
+
+final class GenerationRegistry {
+    private final Path pluginJar;
+    private final AtomicReference<GenerationLease> active = new AtomicReference<>();
+    private final Queue<GenerationLease> retired = new ConcurrentLinkedQueue<>();
+
+    GenerationRegistry(Path pluginJar) {
+        this.pluginJar = pluginJar;
+    }
+
+    void activate(long generation) throws Exception {
+        GenerationLease next = new GenerationLease(LoadedGeneration.load(pluginJar, generation));
+        GenerationLease previous = active.getAndSet(next);
+        if (previous != null) {
+            retired.add(previous);
+            previous.retire();
+            sweepRetired();
+        }
+    }
+
+    GenerationLease active() {
+        GenerationLease lease = active.get();
+        if (lease == null) {
+            throw new IllegalStateException("No plugin generation is loaded");
+        }
+        return lease;
+    }
+
+    int pendingRetirements() {
+        sweepRetired();
+        return retired.size();
+    }
+
+    void close() {
+        GenerationLease current = active.getAndSet(null);
+        if (current != null) {
+            retired.add(current);
+            current.retire();
+        }
+        sweepRetired();
+    }
+
+    private void sweepRetired() {
+        retired.removeIf(GenerationLease::isClosed);
+    }
+}
+root@84ae2dbe9a68:/workspace/textd#

@@ -1,0 +1,14 @@
+{
+  "analysis": "I found the leak! In `RouteState.cursorFor`:\n\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new RouteCursor(frame);\n            return cursor;\n        }\n```\n\nWhen the revision changes, `cursorFor` creates a new `RouteCursor`. The `RouteCursor` constructor calls `frame.pin()`. However, the old `cursor` is simply overwritten without being closed. This means the `RevisionFrame` associated with the old `cursor` never has its `unpin()` method called, so its `pin` count never reaches zero, and the `LoadedGeneration` (and its `URLClassLoader`) is never closed. This causes the Metaspace OOM.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/RouteState.java` to call `cursor.close()` before creating a new `RouteCursor` when the revision matches fail.\n2. Verify the fix by running the stress test again.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new RouteCursor(frame);/cursor.close(); cursor = new RouteCursor(frame);/' src/main/java/io/harbor/textd/core/RouteState.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/RouteState.java\n",
+      "duration": 0.1
+    }
+  ]
+}

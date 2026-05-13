@@ -1,0 +1,11 @@
+{
+  "analysis": "The stress test failed with `java.lang.OutOfMemoryError: Metaspace`. This confirms a classloader leak. \n\nAnalysis of the code:\n1. `TextDaemon.processRecord` calls `ThreadBridge.current(revisions)`, which returns a `WorkerHandle` from `ThreadCache`.\n2. `ThreadCache` is stored in a `ThreadLocal` in `ThreadBridge`.\n3. `ThreadCache` holds a reference to a `WorkerHandle` called `cursor`.\n4. `WorkerHandle` (I haven't seen its source yet, but I can infer) likely pins a `TimelineFrame`.\n5. When `TimelineLedger.install` is called, it creates a new `TimelineFrame` and 'cools' the previous one.\n6. `TimelineFrame` is only closed when its `pins` count reaches 0 and it has been 'cooled'.\n7. `ThreadCache.cursorFor` updates the `cursor` if it doesn't match the current frame. \n8. The leak: When `ThreadCache` replaces its `cursor`, it doesn't seem to unpin the old `WorkerHandle` or `TimelineFrame`. Looking at `ThreadCache.java`, it just overwrites `cursor = new WorkerHandle(frame)`. If `WorkerHandle` pins the frame on creation, the old `WorkerHandle` (and its pinned frame) is leaked until the thread dies (which doesn't happen in a fixed thread pool) or `ThreadBridge.clear()` is called (which isn't called during normal operation).",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java` to confirm it pins the frame.\n2. Modify `ThreadCache.java` to properly close the old `WorkerHandle` before replacing it.\n3. Verify if `WorkerHandle.close()` unpins the frame.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

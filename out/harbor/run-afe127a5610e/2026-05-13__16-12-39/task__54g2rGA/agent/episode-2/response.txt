@@ -1,0 +1,11 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with a restricted `-XX:MaxMetaspaceSize=64m`. This strongly suggests that the 'processor swaps' (likely involving dynamic class loading or plugin reloading) are leaking memory in the Metaspace, causing the daemon to crash during long runs. The `bin/stress` command is currently running; I need to wait for it to finish or crash to confirm the failure mode.",
+  "plan": "1. Wait for the `./bin/stress` command to complete or fail.\n2. Observe the error message (expecting `java.lang.OutOfMemoryError: Metaspace`).\n3. If it fails as expected, examine `HotReloadStressRunner.java` and `TextDaemon.java` to see how plugins are loaded and if ClassLoaders are being leaked.",
+  "commands": [
+    {
+      "keystrokes": "",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

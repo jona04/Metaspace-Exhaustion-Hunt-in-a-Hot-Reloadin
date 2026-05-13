@@ -1,0 +1,20 @@
+New Terminal Output:
+
+root@ce00a33f67fb:/workspace/textd# ls bin/
+build  integration  run-suite  stress
+root@ce00a33f67fb:/workspace/textd# cat bin/run-suite
+#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+"$ROOT_DIR/bin/build"
+TEXTD_SKIP_BUILD=1 "$ROOT_DIR/bin/integration" 12 >/tmp/textd-integration.json
+java -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.RuntimeDigestRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" \
+  12 >/tmp/textd-session.json
+TEXTD_SKIP_BUILD=1 "$ROOT_DIR/bin/stress" 500 >/tmp/textd-stress.log
+
+echo "suite-ok"
+root@ce00a33f67fb:/workspace/textd#

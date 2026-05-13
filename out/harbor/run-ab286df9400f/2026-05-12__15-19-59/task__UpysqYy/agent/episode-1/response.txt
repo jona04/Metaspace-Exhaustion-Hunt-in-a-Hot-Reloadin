@@ -1,0 +1,14 @@
+{
+  "analysis": "The project is a Java-based text processing daemon (`textd`). \n- `src/main/java/io/harbor/textd/core/TextDaemon.java` likely contains the main logic.\n- `bin/stress` and `bin/run-suite` are available, which probably trigger the 'long refresh run' mentioned in the task.\n- The task mentions 'repeated processor swaps', which aligns with the presence of `HotReloadStressRunner.java` and `HotReloadIntegrationRunner.java` in the `cli` package.\n- The crash happens in a 'constrained CI profile', suggesting a memory leak or resource exhaustion during hot-reloading of plugins.",
+  "plan": "1. Examine `bin/stress` to see how the stress test is executed.\n2. Run the stress test to observe the failure.\n3. Examine `TextDaemon.java` and `ThreadCache.java` to understand how processors are swapped and how resources are managed.",
+  "commands": [
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 5.0
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "analysis": "The stress test failed with `java.lang.OutOfMemoryError: Metaspace`. This confirms my suspicion that ClassLoaders are not being garbage collected. \n\nLet's analyze the code:\n1. `TimelineLedger` keeps a `shadow` queue of old `TimelineFrame`s.\n2. `TimelineFrame` has a `cool()` method and an `isDrained()` method.\n3. `TimelineLedger.pruneShadow()` removes frames if they are 'drained'.\n4. `WorkerHandle` pins a `TimelineFrame` and unpins it when closed.\n5. `ThreadBridge` uses a `ThreadLocal<ThreadCache>` to store `WorkerHandle`s.\n\nI need to check `ThreadCache.java` and `TimelineFrame.java` to see how pinning and draining work.",
+  "plan": "1. Read `src/main/java/io/harbor/textd/core/ThreadCache.java`.\n2. Read `src/main/java/io/harbor/textd/core/TimelineFrame.java`.\n3. Read `src/main/java/io/harbor/textd/core/LoadedGeneration.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

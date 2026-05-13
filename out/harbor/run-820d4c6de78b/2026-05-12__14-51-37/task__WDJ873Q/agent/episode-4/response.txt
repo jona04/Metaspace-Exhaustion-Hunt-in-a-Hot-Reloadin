@@ -1,0 +1,10 @@
+{
+  "analysis": "In `TextDaemon.java`, `processRecord` calls `ThreadBridge.current(revisions)` to get a `WorkerHandle`. \nIn `ThreadCache.java`, there is a `cursor` of type `WorkerHandle`. When `cursorFor` is called, it checks if the current `cursor` matches the current `frame` of the `TimelineLedger`. If it doesn't match, it creates a new `WorkerHandle` and assigns it to `cursor`.\n\nHowever, `ThreadCache`'s `cursor` field is just a single reference. Where is `ThreadCache` stored? It's likely in a `ThreadLocal` in `ThreadBridge`.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/ThreadBridge.java` to see how `ThreadCache` is managed.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.2
+    }
+  ]
+}

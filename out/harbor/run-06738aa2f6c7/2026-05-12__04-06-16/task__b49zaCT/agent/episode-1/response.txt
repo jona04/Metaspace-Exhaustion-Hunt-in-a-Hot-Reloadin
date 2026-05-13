@@ -1,0 +1,15 @@
+{
+  "analysis": "The project structure is a Java-based daemon called `textd`. \nKey files identified:\n- `bin/stress` and `bin/run-suite`: Likely scripts to run the tests.\n- `src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java`: Likely the 'long refresh run' mentioned in the task.\n- `src/main/java/io/harbor/textd/core/TextDaemon.java`: The main daemon logic.\n- `src/main/java/io/harbor/textd/core/ThreadBridge.java`, `ThreadCache.java`, `WorkerHandle.java`: Components likely involved in concurrency and resource management.\n- `plugin-src/.../CustomerPluginFactory.java`: A plugin implementation.\n\nThe problem involves 'repeated processor swaps' and 'constrained CI profile', which strongly suggests a resource leak (possibly ClassLoaders or Threads) during hot-reloading of plugins.",
+  "plan": "1. Run the stress test to confirm the failure.\n2. Examine `bin/stress` to see how it's invoked.\n3. Examine `HotReloadStressRunner.java` and `TextDaemon.java` to understand the reloading mechanism.",
+  "commands": [
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}

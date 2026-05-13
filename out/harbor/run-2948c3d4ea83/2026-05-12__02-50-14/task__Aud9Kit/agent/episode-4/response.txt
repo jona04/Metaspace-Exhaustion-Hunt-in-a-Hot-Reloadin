@@ -1,0 +1,15 @@
+{
+  "analysis": "I found the leak! \n\nIn `WorkerBindings.java`:\n```java\n    static DispatchBinding current(GenerationRegistry registry) {\n        GenerationLease activeLease = registry.active();\n        DispatchBinding binding = ACTIVE.get();\n        if (binding == null) {\n            DispatchBinding created = new DispatchBinding(activeLease);\n            ACTIVE.set(created);\n            return created;\n        }\n\n        if (!binding.matches(activeLease)) {\n            DispatchBinding replacement = new DispatchBinding(activeLease);\n            ACTIVE.set(replacement);\n            return replacement;\n        }\n\n        return binding;\n    }\n```\nWhen `binding.matches(activeLease)` is false, it creates a `replacement` and overwrites the `ThreadLocal`. However, it **never calls `close()` on the old `binding`**. \n\nLooking at `DispatchBinding.java` (I haven't seen it yet, but I can guess): it likely holds a `GenerationLease` and `retain()`ed it. If it's not closed, the lease is never released, and the `LoadedGeneration` (and its `URLClassLoader`) is never closed.\n\nAlso, `WorkerBindings.releaseCurrent()` exists but I don't see it being called anywhere in `TextDaemon.java` or `HotReloadStressRunner.java`.\n\nWait, `TextDaemon.processRecord` calls `WorkerBindings.current(generations)` but never calls `releaseCurrent()`. Since `workers` is a fixed thread pool, these `ThreadLocal` variables persist across tasks. \n\nIf a worker thread gets a task, it calls `current()`. If the generation has changed, it replaces the `DispatchBinding` in the `ThreadLocal`. If the old one isn't closed, its lease is leaked.",
+  "plan": "1. Read `src/main/java/io/harbor/textd/core/DispatchBinding.java` to confirm it holds a lease and needs closing.\n2. Verify if `DispatchBinding.matches()` is implemented correctly.\n3. Run `bin/stress 500` to see it fail (the previous 50 cycles might have been too few for 64MB metaspace).\n4. Fix `WorkerBindings.java` to close the old binding when replacing it.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/DispatchBinding.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "bin/stress 500\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

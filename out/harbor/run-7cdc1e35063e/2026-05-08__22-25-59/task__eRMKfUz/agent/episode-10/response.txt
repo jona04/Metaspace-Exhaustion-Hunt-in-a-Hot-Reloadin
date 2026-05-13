@@ -1,0 +1,6 @@
+{
+  "analysis": "The Metaspace leak was caused by a `ThreadLocal<Deque<Object>>` in `WorkerState` that was being pushed to during every record processing but never popped. Since the worker threads are part of a fixed pool and reused across plugin reloads, these `ThreadLocal` deques kept growing and holding references to `PluginModule` objects. Each `PluginModule` was loaded by a unique `URLClassLoader` for its generation. Because the modules remained reachable through the worker threads' `ThreadLocal`s, the classloaders could not be garbage collected, leading to `java.lang.OutOfMemoryError: Metaspace`.\n\nI have fixed this by implementing the `close()` method in the `WorkerState.Scope` inner class to call `pop()` on the deque. The `TextDaemon` already uses a try-with-resources block with this scope, ensuring that every `push` is now matched by a `pop`. The stress test now completes successfully under the 64MB Metaspace limit.",
+  "plan": "The task is complete. I have verified the fix with the provided stress test and integration suite.",
+  "commands": [],
+  "task_complete": true
+}

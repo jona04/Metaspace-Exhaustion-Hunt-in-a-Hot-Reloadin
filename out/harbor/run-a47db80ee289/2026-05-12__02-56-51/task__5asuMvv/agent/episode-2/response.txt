@@ -1,0 +1,11 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with a constrained `-XX:MaxMetaspaceSize=64m`. This is a strong hint that the problem might be a Metaspace leak caused by classloaders not being garbage collected after reloads. In Java, when you load classes dynamically (e.g., via a custom ClassLoader for each plugin generation), if the ClassLoader itself is not GC'd, the Metaspace will eventually fill up and cause an `OutOfMemoryError`.",
+  "plan": "1. Run `bin/stress` and see if it fails with `java.lang.OutOfMemoryError: Metaspace`.\n2. Examine `io.harbor.textd.core.GenerationRegistry` and `io.harbor.textd.core.LoadedGeneration` to see how ClassLoaders are managed.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 50\n",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}

@@ -1,0 +1,19 @@
+{
+  "analysis": "In `TextDaemon.java`, `processRecord` calls `ThreadBridge.current(revisions)`. `ThreadBridge` likely uses a `ThreadLocal<ThreadCache>`. `ThreadCache` holds a `WorkerHandle`, which in turn likely holds references to the loaded plugin classes or ClassLoader. When `revisions.install(generation)` is called, a new generation is created, but the old `WorkerHandle` objects in the `ThreadCache` for each thread might still be holding onto the old ClassLoaders until that thread processes another record and `cursorFor` updates the `cursor`. However, even if they are updated, we need to see how `ThreadBridge` and `ThreadCache` are managed.",
+  "plan": "1. Examine `ThreadBridge.java` to see how it uses `ThreadCache`.\n2. Examine `WorkerHandle.java` to see what it holds.\n3. Examine `TimelineLedger.java` and `TimelineFrame.java` to see how they manage generations.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

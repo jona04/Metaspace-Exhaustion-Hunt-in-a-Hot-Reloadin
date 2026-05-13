@@ -1,0 +1,6 @@
+{
+  "analysis": "The investigation revealed a memory leak in the `ThreadCache` class. Specifically, when the daemon swapped to a new processor revision, the `ThreadCache` discarded the old `WorkerHandle` without calling its `close()` method. This prevented the associated `TimelineFrame` from being unpinned, which in turn prevented the `URLClassLoader` for that revision from being closed. In a constrained environment with limited Metaspace, this led to a crash during long runs with many reloads. I have modified `ThreadCache.java` to properly close the old `WorkerHandle` before replacing it.",
+  "plan": "The fix has been verified with both the `bin/stress` script and the full `bin/run-suite`. Both passed successfully. No further changes are required.",
+  "commands": [],
+  "task_complete": true
+}

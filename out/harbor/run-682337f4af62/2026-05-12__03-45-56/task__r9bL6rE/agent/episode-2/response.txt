@@ -1,0 +1,15 @@
+{
+  "analysis": "The `bin/stress` script reveals a key constraint: `-XX:MaxMetaspaceSize=64m`. This is a very tight limit for a Java application performing repeated hot reloads. In Java, hot reloading typically involves creating new ClassLoaders, which consume Metaspace. If the old ClassLoaders or their associated classes are not being garbage collected, the Metaspace will eventually exhaust, causing the daemon to fall over. The task mentions 'repeated in-place processor swaps' and 'constrained CI profile', which aligns perfectly with a Metaspace leak.",
+  "plan": "1. Wait for the build to complete.\n2. Run the stress test and confirm it fails with an OutOfMemoryError: Metaspace (or similar).\n3. Examine `HotReloadStressRunner.java` and `TextDaemon.java` to see how ClassLoaders are managed during a swap.\n4. Look for references to the plugin jar and how it's loaded.",
+  "commands": [
+    {
+      "keystrokes": "",
+      "duration": 5.0
+    },
+    {
+      "keystrokes": "./bin/stress 100\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

@@ -1,0 +1,18 @@
+{
+  "analysis": "The `TextDaemon` uses a `RevisionLedger` to handle reloads. It also uses `ThreadState.current(revisions)` to get a `RouteCursor`. The `HotReloadStressRunner` performs many cycles of `reload` followed by `processBatch` or `process`. The Metaspace OOM suggests that old generations of the plugin (loaded via ClassLoaders) are not being collected.",
+  "plan": "1. Examine `RevisionLedger.java` and `ThreadState.java` to see how generations are managed and if they are properly closed/released.\n2. Look for any static `ThreadLocal` or other long-lived references that might be holding onto old ClassLoaders.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/RevisionLedger.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadState.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/RouteCursor.java\n",
+      "duration": 0.1
+    }
+  ]
+}

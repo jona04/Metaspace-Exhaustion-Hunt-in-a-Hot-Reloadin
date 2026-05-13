@@ -1,0 +1,15 @@
+{
+  "analysis": "The suspicion is confirmed. `ThreadCache.cursorFor` creates a new `WorkerHandle` when the revision changes, but it fails to call `close()` on the previous `WorkerHandle`. \n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame); // <--- Old cursor is lost and never closed!\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n\nWhen a `WorkerHandle` is created, it calls `frame.pin()`, which increments the pin count. When `close()` is called on a `WorkerHandle`, it calls `frame.unpin()`. If the pin count never reaches zero (after being 'cooled'), `TimelineFrame` will never call `loadedGeneration.close()`, and the `URLClassLoader` will remain open, leaking Metaspace.\n\nI need to modify `ThreadCache.java` to close the old cursor before replacing it.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old cursor before creating a new one.\n2. Run the stress test to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/stress 100\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

@@ -1,0 +1,15 @@
+{
+  "analysis": "I found the leak! \nIn `ThreadCache.cursorFor(TimelineLedger ledger)`:\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\nWhen the `cursor` (the old `WorkerHandle`) doesn't match the new frame, a new `WorkerHandle` is created and assigned to `cursor`, but the old `WorkerHandle` is **never closed**. \n\n`WorkerHandle.close()` calls `frame.unpin()`. If `unpin()` is not called, the `TimelineFrame`'s pin count remains above 0, and `closeLoadedGeneration()` is never called. This prevents the `URLClassLoader` from being closed and the classes from being unloaded, leading to the Metaspace OOM.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before replacing it.\n2. Run the stress test again to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 15.0
+    }
+  ],
+  "task_complete": false
+}

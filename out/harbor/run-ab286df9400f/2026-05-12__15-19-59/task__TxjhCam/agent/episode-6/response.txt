@@ -1,0 +1,19 @@
+{
+  "analysis": "The `stress-ok cycles=50` output indicates that 50 cycles pass. The task description mentions a 'long refresh run'. Let's try a larger number of cycles to trigger the failure, e.g., 200. \n\nLooking at `TextDaemon.java`:\n- `processRecord` calls `ThreadBridge.current(revisions)`.\n- `revisions` is a `TimelineLedger`.\n- `ThreadBridge.current(revisions)` likely returns a `WorkerHandle` associated with the current generation of the plugin.\n\nI need to check `ThreadBridge.java` and `ThreadCache.java` to see how they manage these `WorkerHandle` objects and if they are leaking ClassLoaders or instances between generations.",
+  "plan": "1. Run the stress test with more cycles (e.g., 200) to confirm failure.\n2. Examine `src/main/java/io/harbor/textd/core/ThreadBridge.java` and `src/main/java/io/harbor/textd/core/ThreadCache.java`.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 200\n",
+      "duration": 20.0
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

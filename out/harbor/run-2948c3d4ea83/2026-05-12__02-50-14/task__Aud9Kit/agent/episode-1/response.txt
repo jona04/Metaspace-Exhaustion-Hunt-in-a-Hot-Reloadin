@@ -1,0 +1,19 @@
+{
+  "analysis": "The project structure reveals a Java-based daemon (`TextDaemon.java`) with a core logic for handling 'Generations' (`GenerationRegistry.java`, `LoadedGeneration.java`, `GenerationLease.java`). There are also CLI tools specifically for testing hot-reloading: `HotReloadIntegrationRunner.java`, `HotReloadLifecycleProbe.java`, and `HotReloadStressRunner.java`. The `bin` directory contains scripts like `run-suite` and `stress`, which likely trigger the failure mentioned in the task description.",
+  "plan": "1. Examine the `bin/stress` and `bin/run-suite` scripts to see how the soak test is executed.\n2. Read `src/main/java/io/harbor/textd/core/GenerationRegistry.java` and `LoadedGeneration.java` to understand how processors are rotated and if resources are being leaked (e.g., classloaders not being closed, threads not being shut down).",
+  "commands": [
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat bin/run-suite\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/GenerationRegistry.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

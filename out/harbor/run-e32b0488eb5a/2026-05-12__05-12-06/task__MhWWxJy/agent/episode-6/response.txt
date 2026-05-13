@@ -1,0 +1,19 @@
+{
+  "analysis": "In `LoadedGeneration.java`, a new `URLClassLoader` is created for each generation. It implements `AutoCloseable` and closes the classloader in its `close()` method. In `TextDaemon.java`, `processRecord` calls `ThreadBridge.current(revisions)` to get a `WorkerHandle`. I need to see how `ThreadBridge` and `TimelineLedger` manage these `LoadedGeneration` objects and if they are properly closed when a new generation is installed.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/TimelineLedger.java` to see how it manages generations.\n2. Examine `src/main/java/io/harbor/textd/core/ThreadBridge.java` and `src/main/java/io/harbor/textd/core/ThreadCache.java` to see how workers hold onto generations.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

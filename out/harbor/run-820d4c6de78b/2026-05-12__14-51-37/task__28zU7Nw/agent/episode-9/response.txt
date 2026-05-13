@@ -1,0 +1,11 @@
+{
+  "analysis": "The `TimelineFrame` uses a pin count. When it's created, it has 1 pin. When it's 'cooled' (moved out of being the current generation), it's unpinned once. Each `WorkerHandle` also pins it. When a `WorkerHandle` is replaced in `ThreadCache`, the old one is closed, which unpins the frame. When the pin count reaches 0 and it's cooled, it's closed, which closes the `URLClassLoader`.\n\nThe problem is that `ThreadLocal` variables in the worker threads are holding onto `ThreadCache` objects, which hold `WorkerHandle` objects, which pin the `TimelineFrame`. If a worker thread is not used after a new generation is installed, its `ThreadLocal` will still hold the `WorkerHandle` from the previous generation, keeping that generation's ClassLoader alive.\n\nIn `TextDaemon.processBatch`, it submits tasks to the `workers` thread pool. If the number of records in the batch is less than the number of threads in the pool, some threads won't be used and will keep holding onto their old `WorkerHandle`s.",
+  "plan": "1. Check `HotReloadStressRunner.java` to see how it calls `processBatch`.\n2. Verify the number of worker threads and the batch size.\n3. A possible fix is to ensure all worker threads update their `ThreadCache` or to clear the `ThreadLocal` periodically.\n4. Alternatively, `TimelineLedger.install` could trigger a cleanup in all worker threads.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

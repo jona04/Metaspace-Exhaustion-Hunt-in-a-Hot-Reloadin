@@ -1,0 +1,15 @@
+{
+  "analysis": "The issue is confirmed: \nIn `WorkerBindings.current(GenerationRegistry registry)`:\n```java\n        if (!binding.matches(activeLease)) {\n            DispatchBinding replacement = new DispatchBinding(activeLease);\n            ACTIVE.set(replacement);\n            return replacement;\n        }\n```\nWhen the generation changes, a new `DispatchBinding` is created, but the old one is never closed. `DispatchBinding.close()` calls `lease.release()`. If `release()` isn't called, the `references` count in `GenerationLease` stays above 0, and the `LoadedGeneration` (which contains the `URLClassLoader`) is never closed. This causes a Metaspace leak.\n\nAlso, `GenerationLease.release()` only calls `closeLoadedGeneration()` if `remaining == 0 && retired.get()`. When `GenerationRegistry.activate` is called, it calls `previous.retire()`, which sets `retired` to true and calls `release()`. If there are still active `DispatchBinding`s, `remaining` will be $>0$. When those bindings are eventually replaced/closed, they should call `release()`, and the last one should trigger `closeLoadedGeneration()`.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/WorkerBindings.java` to call `binding.close()` before replacing it in the `ThreadLocal`.\n2. Re-run the stress test to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/ACTIVE.set(replacement);/binding.close();\\n            ACTIVE.set(replacement);/' src/main/java/io/harbor/textd/core/WorkerBindings.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerBindings.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

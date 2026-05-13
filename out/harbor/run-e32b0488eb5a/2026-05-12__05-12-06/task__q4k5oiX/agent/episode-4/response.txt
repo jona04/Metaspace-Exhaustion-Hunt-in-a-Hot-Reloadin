@@ -1,0 +1,19 @@
+{
+  "analysis": "In `TextDaemon.java`, the `processRecord` method calls `ThreadBridge.current(revisions)`. `ThreadBridge` likely uses a `ThreadLocal` of `ThreadCache`. In `ThreadCache.java`, the `cursorFor` method updates the `cursor` when the frame changes: `if (!cursor.matches(frame)) { cursor = new WorkerHandle(frame); return cursor; }`. However, it doesn't call `cursor.close()` before overwriting the old `cursor`. This means the old `WorkerHandle` (and its associated class loader/plugin instance) is leaked until the thread is destroyed, which doesn't happen in a fixed thread pool. Even worse, the `ThreadLocal` itself might never be cleared.",
+  "plan": "1. Examine `ThreadBridge.java` to confirm it uses `ThreadLocal` and check if it has a way to clean up.\n2. Examine `WorkerHandle.java` to see what resources it holds and what `close()` does.\n3. Examine `TimelineLedger.java` to see how it manages generations and if it holds onto old ones.\n4. Fix the leak in `ThreadCache.java` by calling `cursor.close()` before creating a new `WorkerHandle`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

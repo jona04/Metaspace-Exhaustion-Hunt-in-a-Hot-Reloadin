@@ -1,0 +1,6 @@
+{
+  "analysis": "The `TimelineLedger` looks solid. `install` adds the previous frame to `shadow` and calls `cool()`. `pruneShadow` removes frames that are 'drained'. A frame is 'drained' when its pin count reaches 0 and it has been 'cooled'. \n\nWith my fix in `ThreadCache`, the `WorkerHandle` for the old generation will be closed, which calls `frame.unpin()`. This will eventually allow pin count to reach 0 and the frame to be 'drained' and removed from `shadow`, allowing the `ClassLoader` to be GC'd.\n\nThe task is complete.",
+  "plan": "Submit the fix.",
+  "commands": [],
+  "task_complete": true
+}

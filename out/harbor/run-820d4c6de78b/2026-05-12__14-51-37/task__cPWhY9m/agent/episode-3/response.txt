@@ -1,0 +1,19 @@
+{
+  "analysis": "I've analyzed the code. Here's what I found:\n\n1. `ThreadBridge` uses a `ThreadLocal<ThreadCache>`.\n2. `ThreadCache` holds a `WorkerHandle cursor`.\n3. In `ThreadCache.cursorFor(ledger)`, if the current `cursor` doesn't match the new `frame` (which happens after a reload), it creates a new `WorkerHandle` and assigns it to `cursor`.\n4. **CRITICAL ISSUE**: When `cursor` is replaced in `ThreadCache.cursorFor`, the old `cursor` is **not** closed. `cursor.close()` is only called in `ThreadCache.close()`, which is only called by `ThreadBridge.clear()`. But `ThreadBridge.clear()` is never called in the normal processing flow.\n\n`WorkerHandle` likely holds onto resources. Let's see `WorkerHandle.java` and `TimelineFrame.java` to confirm what `close()` does.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java`.\n2. Examine `src/main/java/io/harbor/textd/core/TimelineFrame.java`.\n3. Examine `src/main/java/io/harbor/textd/core/LoadedGeneration.java`.\n4. Run the stress test to confirm it fails as expected.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.2
+    }
+  ],
+  "task_complete": false
+}

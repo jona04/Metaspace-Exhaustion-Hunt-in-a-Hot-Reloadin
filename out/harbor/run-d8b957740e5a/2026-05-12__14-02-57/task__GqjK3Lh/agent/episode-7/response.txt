@@ -1,0 +1,15 @@
+{
+  "analysis": "Confirmed. `LoadedGeneration` has a `close()` method that closes the `URLClassLoader`. `TimelineFrame` calls `LoadedGeneration.close()` when its pin count reaches 0 and it's cooled. `WorkerHandle` pins the frame on creation and unpins it on `close()`. \n\nIn `ThreadCache.java`, the `cursor` (a `WorkerHandle`) is replaced without being closed, which prevents the pin count from ever reaching zero for old generations.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to call `cursor.close()` if it's not null and the frame doesn't match.\n2. Run the stress test again to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

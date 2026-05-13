@@ -1,0 +1,15 @@
+{
+  "analysis": "I've identified a likely source of the Metaspace leak. \n\n1. `ThreadBridge` uses a `ThreadLocal<ThreadCache>`. \n2. `ThreadCache` holds a `WorkerHandle cursor`.\n3. In `ThreadCache.cursorFor`, if the `cursor` doesn't match the current `frame`, a new `WorkerHandle` is created: `cursor = new WorkerHandle(frame);`. \n4. Crucially, the old `cursor` is NOT closed before being replaced. \n5. `WorkerHandle` likely holds a reference to the `TimelineFrame`, which holds the `LoadedGeneration`. `LoadedGeneration` likely contains the `ClassLoader` for that generation.\n6. `TimelineLedger.pruneShadow()` removes frames that are 'drained'. A frame is probably drained when all `WorkerHandle`s associated with it are closed.\n7. Since `ThreadCache` replaces the `cursor` without closing the old one, the old `WorkerHandle` (and thus the old `TimelineFrame` and its `ClassLoader`) is never closed/drained, leading to a Metaspace leak as more and more classloaders are kept in memory.",
+  "plan": "1. Verify `WorkerHandle.java` and `TimelineFrame.java` to confirm they have `close()` methods and how they affect the 'drained' state.\n2. If confirmed, the fix will be to call `cursor.close()` in `ThreadCache.cursorFor` before replacing it.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

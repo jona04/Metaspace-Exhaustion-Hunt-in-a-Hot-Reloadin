@@ -1,0 +1,15 @@
+{
+  "analysis": "In `TextDaemon.java`, the `processRecord` method uses `ThreadBridge.current(revisions)` to get a `WorkerHandle`. \n```java\n        WorkerHandle binding = ThreadBridge.current(revisions);\n        return binding.process(record);\n```\nThis looks like it might be using `ThreadLocal` or some other thread-bound storage. If `ThreadBridge` or `WorkerHandle` holds onto the plugin's `ClassLoader` and doesn't release it when a new generation is installed, that would explain the Metaspace leak.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/ThreadBridge.java`.\n2. Examine `src/main/java/io/harbor/textd/core/ThreadCache.java`.\n3. Examine `src/main/java/io/harbor/textd/core/TimelineLedger.java` to see how generations are managed.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.2
+    }
+  ],
+  "task_complete": false
+}

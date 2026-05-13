@@ -1,0 +1,6 @@
+{
+  "analysis": "The investigation revealed a resource leak in `WorkerBindings.java`. Specifically, when a worker thread encountered a new processor generation, it replaced the stale `DispatchBinding` in its `ThreadLocal` without calling `close()`. This prevented the `GenerationLease` from being released, which in turn prevented the `URLClassLoader` of the old generation from being closed. Under the constrained CI runtime (64MB Metaspace), this leak caused the daemon to crash during repeated refreshes. I have modified `WorkerBindings.java` to properly close the old binding before replacing it. Verification via `bin/run-suite` confirms the stress test now completes successfully.",
+  "plan": "I have already implemented and verified the fix. No further actions are required.",
+  "commands": [],
+  "task_complete": true
+}

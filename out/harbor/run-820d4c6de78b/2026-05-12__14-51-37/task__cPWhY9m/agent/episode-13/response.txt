@@ -1,0 +1,6 @@
+{
+  "analysis": "The `textd` service was failing during long runs due to a Metaspace OutOfMemoryError. Investigation revealed that each 'processor swap' (reloading the plugin) was leaking a `URLClassLoader`. This occurred because `ThreadCache` was discarding old `WorkerHandle` objects without closing them. Since `WorkerHandle` holds a 'pin' on a `TimelineFrame`, and a `TimelineFrame` only closes its `LoadedGeneration` (and `URLClassLoader`) when its pin count reaches zero, the resources were never released. I have modified `ThreadCache.java` to explicitly close the old `WorkerHandle` before creating a new one when a revision change is detected.",
+  "plan": "The fix has been verified by running the stress test with 500 cycles (which previously failed) and by running the full integration suite. Both now pass successfully.",
+  "commands": [],
+  "task_complete": true
+}

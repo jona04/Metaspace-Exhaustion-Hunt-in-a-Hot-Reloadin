@@ -1,0 +1,19 @@
+{
+  "analysis": "In `ThreadCache.java`, when `cursorFor` is called, it checks if the existing `cursor` matches the current `frame` from the `ledger`. If they don't match (meaning a reload happened), it creates a *new* `WorkerHandle(frame)` and assigns it to `cursor`. \n\nCrucially, it **does not close the old cursor** before replacing it. `WorkerHandle` likely holds a reference to the `LoadedGeneration` (and thus the `ClassLoader`). If the old `WorkerHandle` is not closed, it might not be decrementing a reference count in `TimelineFrame`, which would prevent `isDrained()` from ever returning true, and thus preventing `TimelineLedger` from pruning the old `TimelineFrame` from its `shadow` queue. This would lead to a Metaspace leak as old class loaders are never garbage collected.\n\nLet's verify `WorkerHandle.java` and `TimelineFrame.java`.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java`.\n2. Examine `src/main/java/io/harbor/textd/core/TimelineFrame.java`.\n3. Examine `src/main/java/io/harbor/textd/core/LoadedGeneration.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.2
+    }
+  ],
+  "task_complete": false
+}

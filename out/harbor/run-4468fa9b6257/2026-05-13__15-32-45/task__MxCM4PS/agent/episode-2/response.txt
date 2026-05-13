@@ -1,0 +1,11 @@
+{
+  "analysis": "The `bin/stress` script runs `io.harbor.textd.cli.HotReloadStressRunner` with a 64MB Metaspace limit (`-XX:MaxMetaspaceSize=64m`). This is a very small Metaspace, and the task mentions 'repeated processor swaps', which usually involves loading new classes. If classes are not being unloaded, Metaspace will fill up quickly, causing a crash.",
+  "plan": "1. Wait for the stress test to finish (or fail) to confirm the issue.\n2. Analyze the `HotReloadStressRunner.java` and related core classes like `TextDaemon.java` or `LoadedGeneration.java` to see how class loaders are handled.\n3. Look for signs that ClassLoaders are being leaked.",
+  "commands": [
+    {
+      "keystrokes": "",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}

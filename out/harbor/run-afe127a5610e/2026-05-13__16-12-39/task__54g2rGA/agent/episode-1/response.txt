@@ -1,0 +1,15 @@
+{
+  "analysis": "The project is a Java-based text processing daemon. Based on the file structure and the task description ('processor swaps', 'long refresh run'), the issue likely resides in how the daemon handles hot-reloading or swapping of plugins/processors. I see `HotReloadStressRunner.java` and `HotReloadIntegrationRunner.java` in the `cli` package, which probably correspond to the `bin/stress` and `bin/integration` scripts. The core logic for management seems to be in `io.harbor.textd.core`.",
+  "plan": "1. Examine the `bin/stress` script to see how the long run is executed.\n2. Run the stress test to observe the failure (likely an OutOfMemoryError or resource exhaustion).\n3. Inspect `TextDaemon.java`, `WorkerHandle.java`, and `ThreadCache.java` for potential leaks during processor swaps.",
+  "commands": [
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}

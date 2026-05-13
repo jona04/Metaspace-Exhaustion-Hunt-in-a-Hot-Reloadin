@@ -1,0 +1,11 @@
+{
+  "analysis": "The stress runner reloads the plugin in each cycle and processes a batch of records. With 1000 cycles, if there was a leak, it would almost certainly hit the 64MB Metaspace limit, as each generation creates a new `URLClassLoader` and loads several classes. The fix I applied in `WorkerState.java` (popping the module from the ThreadLocal) should prevent the leak.",
+  "plan": "Wait for the 1000-cycle stress test to complete. If it passes, I'm confident the fix is correct.",
+  "commands": [
+    {
+      "keystrokes": "",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

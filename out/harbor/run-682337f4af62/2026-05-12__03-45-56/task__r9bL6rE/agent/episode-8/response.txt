@@ -1,0 +1,11 @@
+{
+  "analysis": "The logic in `RouteState.java` shows that when a new `RevisionFrame` is encountered, a new `RouteCursor` is created. However, the old `RouteCursor` is *not* closed before being replaced:\n\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new RouteCursor(frame);\n            return cursor;\n        }\n```\n\nThe `RouteCursor` holds a `pin` on the `RevisionFrame`. When a new cursor is created, the old one is leaked, and its pin on the old `RevisionFrame` is never released. This prevents `RevisionFrame.unpin()` from reaching zero, which in turn prevents `LoadedGeneration.close()` from being called. `LoadedGeneration` likely holds the `URLClassLoader`. This is the cause of the Metaspace leak.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/RouteState.java` to close the old cursor before creating a new one.\n2. Also, it might be good to ensure `ThreadState.clear()` is called when the daemon is closed, but the primary leak is the un-closed cursors during swaps.\n3. Verify `LoadedGeneration.java` to confirm it closes the ClassLoader.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

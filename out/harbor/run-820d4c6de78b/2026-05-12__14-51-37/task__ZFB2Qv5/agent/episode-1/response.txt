@@ -1,0 +1,15 @@
+{
+  "analysis": "The project is a Java-based text processing daemon. It has a core engine and a plugin system. Based on the task description and the file structure, there is a `HotReloadStressRunner` and a `stress` script in `bin/`. The issue is likely related to resource leaks during 'processor swaps' (hot reloading). I see `ThreadCache.java`, `WorkerHandle.java`, and `LoadedGeneration.java`, which are common places for leaks in hot-reloading systems (e.g., ClassLoader leaks or thread pool exhaustion).",
+  "plan": "I will first try to reproduce the failure by running the stress test script. I'll also check the contents of the `bin/stress` script to see how it's invoked.",
+  "commands": [
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}

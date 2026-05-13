@@ -1,0 +1,11 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with a restricted `-XX:MaxMetaspaceSize=64m`. This suggests the issue is likely a Metaspace leak caused by classloaders not being garbage collected after processor swaps (hot reloading). In Java, if a ClassLoader is leaked, all classes it loaded stay in Metaspace, eventually exhausting it.",
+  "plan": "1. Wait for the stress test to finish or fail to see the exact error.\n2. Examine `HotReloadStressRunner.java` and `TextDaemon.java` to see how plugins are loaded and if classloaders are being properly discarded.\n3. Look for thread locals, static collections, or unclosed resources that might be holding onto classloaders.",
+  "commands": [
+    {
+      "keystrokes": "",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

@@ -1,0 +1,15 @@
+{
+  "analysis": "I've identified the components involved in plugin loading and lifecycle management:\n1. `TimelineLedger` manages generations of plugins. When a new generation is installed, the old one is moved to a `shadow` queue and marked as 'cool'. It's pruned when `isDrained()` returns true.\n2. `LoadedGeneration` holds the `URLClassLoader` and the `PluginModule`. Its `close()` method correctly closes both.\n3. `ThreadCache` holds a `WorkerHandle`. When a new generation is detected, it replaces the `cursor` with a new `WorkerHandle` for the new frame.\n4. `WorkerHandle` likely holds a reference to the `TimelineFrame` or `LoadedGeneration`.\n\nWait, in `ThreadCache.cursorFor`:\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\nThe old `cursor` (which is a `WorkerHandle`) is just replaced and not closed. Let's see `WorkerHandle.java` and `TimelineFrame.java` to see what they do and how they track usage.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java`.\n2. Examine `src/main/java/io/harbor/textd/core/TimelineFrame.java`.\n3. Check if `WorkerHandle` needs to be closed to release resources or decrement reference counts.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

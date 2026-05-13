@@ -1,0 +1,19 @@
+{
+  "analysis": "The `bin/stress` script reveals a critical constraint: `-XX:MaxMetaspaceSize=64m`. This is quite small for a Java application that performs repeated hot-reloading of classes (via plugins). If the `textd` daemon is loading new class loaders for each generation but failing to release the old ones, it will quickly hit a `java.lang.OutOfMemoryError: Metaspace`. The task description mentions that the soak 'keeps dying' during repeated refreshes, which aligns with a resource leak in a constrained environment.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/GenerationRegistry.java` and `LoadedGeneration.java` to see how ClassLoaders are managed and if they are being closed or leaked.\n2. Look at how `HotReloadStressRunner` triggers refreshes and what the failure symptoms are by running the stress test manually.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/GenerationRegistry.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "./bin/stress 50\n",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}

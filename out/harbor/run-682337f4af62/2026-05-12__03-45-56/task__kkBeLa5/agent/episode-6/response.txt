@@ -1,0 +1,14 @@
+{
+  "analysis": "I've analyzed the core logic:\n1. `LoadedGeneration` creates a `URLClassLoader` and closes it on `close()`.\n2. `RevisionFrame` uses a reference-counting mechanism (`pins`) to close the `LoadedGeneration` when it's no longer used.\n3. `ThreadState` uses a `ThreadLocal<RouteState>` to cache `RouteCursor` objects.\n\nNow I need to see `RouteState.java` and `RouteCursor.java` to see how they interact with `RevisionFrame` and if they ever release their pins. If `RouteState` keeps a `RouteCursor` (and thus a `RevisionFrame` pin) indefinitely for a thread, the old generations will never be closed.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/RouteState.java` and `src/main/java/io/harbor/textd/core/RouteCursor.java` to see how pins are managed.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/RouteState.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/RouteCursor.java\n",
+      "duration": 0.1
+    }
+  ]
+}

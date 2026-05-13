@@ -1,0 +1,6 @@
+{
+  "analysis": "The `textd` service was failing with a `java.lang.OutOfMemoryError: Metaspace` during long runs involving many plugin reloads. The investigation revealed that each reload created a new `ClassLoader`, but the old ones were never being released. This was because `ThreadCache`, which is stored in a `ThreadLocal` for each worker thread, was replacing its `WorkerHandle` (cursor) without closing the old one. Since `WorkerHandle` holds a 'pin' on the `TimelineFrame` (and thus the class loader), the old generations remained pinned and were never cleaned up from the `TimelineLedger`'s shadow queue. I have modified `ThreadCache.java` to explicitly close the old `WorkerHandle` before replacing it, which releases the pin and allows the class loader to be garbage collected.",
+  "plan": "The fix has been verified with the provided stress test (500 cycles) and the integration suite. No further actions are required.",
+  "commands": [],
+  "task_complete": true
+}

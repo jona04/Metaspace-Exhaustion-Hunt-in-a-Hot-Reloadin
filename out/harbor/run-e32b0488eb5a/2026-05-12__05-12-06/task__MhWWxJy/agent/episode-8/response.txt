@@ -1,0 +1,15 @@
+{
+  "analysis": "I've found the bug. \n\nIn `ThreadCache.java`:\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame); // Old cursor is never closed!\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n`WorkerHandle`'s constructor calls `frame.pin()`. `WorkerHandle.close()` calls `frame.unpin()`. Since `ThreadCache` replaces `cursor` without closing the old one, the old `TimelineFrame` never gets its pin count decremented to zero. This means `closeLoadedGeneration()` is never called, and the `URLClassLoader` is never closed, leading to the Metaspace OOM.\n\nAlso, `TimelineFrame` starts with `pins = 1`. This 1 is for the 'active' period before it is 'cooled'. `TimelineLedger.install` calls `previous.cool()`, which calls `unpin()`, decrementing that initial 1.\n\nSo, if a worker thread holds a `WorkerHandle` for revision N, and the ledger moves to revision N+1, the worker thread will create a new `WorkerHandle` for N+1 and just drop the reference to the `WorkerHandle` for N. The `WorkerHandle` for N is still 'pinned', so revision N's classloader is never closed.\n\nI need to modify `ThreadCache.java` to close the old `cursor` before replacing it.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before creating a new one.\n2. Rebuild and run the stress test to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

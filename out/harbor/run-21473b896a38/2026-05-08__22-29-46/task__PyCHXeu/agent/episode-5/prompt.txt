@@ -1,0 +1,29 @@
+New Terminal Output:
+
+root@56cb0ac734dd:/workspace/textd# cat <<EOF > src/main/java/io/harbor/textd/core/WorkerState.java
+> package io.harbor.textd.core;
+>
+> import java.util.ArrayDeque;
+> import java.util.Deque;
+>
+> final class WorkerState {
+>     private static final ThreadLocal<Deque<Object>> ACTIVE_MODULES = ThreadLocal.withInitial(ArrayDeque::new);
+>
+>     private WorkerState() {
+>     }
+>
+>     static Scope attach(Object module) {
+>         ACTIVE_MODULES.get().push(module);
+>         return new Scope();
+>     }
+>
+>     static final class Scope implements AutoCloseable {
+>         @Override
+>         public void close() {
+>             ACTIVE_MODULES.get().pop();
+>         }
+>     }
+> }
+> EOF
+root@56cb0ac734dd:/workspace/textd# bin/stress
+

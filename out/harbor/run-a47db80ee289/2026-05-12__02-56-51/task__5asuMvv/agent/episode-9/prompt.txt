@@ -1,0 +1,33 @@
+New Terminal Output:
+
+root@4b17642b2f73:/workspace/textd# cat src/main/java/io/harbor/textd/core/DispatchBinding.java
+package io.harbor.textd.core;
+
+import io.harbor.textd.api.TextProcessor;
+
+final class DispatchBinding implements AutoCloseable {
+    private final GenerationLease lease;
+    private final long generation;
+    private final TextProcessor processor;
+
+    DispatchBinding(GenerationLease lease) {
+        this.lease = lease.retain();
+        this.generation = lease.generation();
+        this.processor = lease.module().processorFor(generation);
+    }
+
+    boolean matches(GenerationLease lease) {
+        return generation == lease.generation();
+    }
+
+    ProcessingResult process(String record) {
+        String output = processor.process(record);
+        return new ProcessingResult(generation, output, Thread.currentThread().getName());
+    }
+
+    @Override
+    public void close() {
+        lease.release();
+    }
+}
+root@4b17642b2f73:/workspace/textd#

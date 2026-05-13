@@ -1,0 +1,11 @@
+{
+  "analysis": "In `HotReloadStressRunner`, a single `TextDaemon` is used for all cycles. Since I fixed `ThreadCache.cursorFor` to close the old `cursor` when the generation changes, the old `TimelineFrame` will be unpinned and can be closed/GC'd. This matches the behavior observed in the successful stress test run.",
+  "plan": "I am confident in the fix. I'll do a final check of the code for any other obvious leaks.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

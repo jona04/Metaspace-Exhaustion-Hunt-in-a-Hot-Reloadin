@@ -1,0 +1,14 @@
+{
+  "analysis": "In `TextDaemon.java`, the `processRecord` method calls `ThreadState.current(revisions)`. This suggests that state related to the current revision might be stored in a `ThreadLocal` or similar mechanism within `ThreadState`. If `ThreadState` holds references to classes or ClassLoaders from older revisions and doesn't clear them, it would prevent them from being garbage collected.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/ThreadState.java` to see how it manages state across reloads.\n2. Also check `src/main/java/io/harbor/textd/core/RevisionLedger.java` and `src/main/java/io/harbor/textd/core/RouteCursor.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadState.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/RevisionLedger.java\n",
+      "duration": 0.2
+    }
+  ]
+}

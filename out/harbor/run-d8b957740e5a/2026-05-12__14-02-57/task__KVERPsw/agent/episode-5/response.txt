@@ -1,0 +1,19 @@
+{
+  "analysis": "The logic seems to be:\n1. `TimelineFrame` starts with `pins = 1`.\n2. `TimelineLedger.install` calls `previous.cool()`. `cool()` decrements `pins`. If `pins` reaches 0, the generation is closed.\n3. `WorkerHandle` calls `frame.pin()` on creation and `frame.unpin()` on `close()`.\n4. `ThreadCache` holds a `WorkerHandle cursor`. When `cursor` is replaced, the old `cursor`'s `close()` method is NOT called!\n\nIn `ThreadCache.java`:\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\nIt should be:\n```java\n        if (!cursor.matches(frame)) {\n            cursor.close(); // <--- Missing!\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\n\nBecause `cursor.close()` is never called when replacing the cursor, the `TimelineFrame`'s `pins` count never drops to 0, so `closeLoadedGeneration()` is never called, and the `URLClassLoader` is never closed. This explains the Metaspace OOM.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to call `cursor.close()` before replacing it.\n2. Rebuild and run the stress test to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/cursor.close(); cursor = new WorkerHandle(frame);/' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

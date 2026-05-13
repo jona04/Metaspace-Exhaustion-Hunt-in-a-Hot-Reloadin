@@ -1,0 +1,15 @@
+{
+  "analysis": "The stress test with 1000 cycles passed successfully (`stress-ok cycles=1000`). This indicates that the Metaspace leak is fixed by properly closing the old `WorkerHandle` when the revision changes, which in turn releases the pin on the old `TimelineFrame` and allows the class loader to be closed.\n\nI should also check if there are any other potential leaks. The `TimelineLedger` has a `shadow` queue that is pruned in `isBalanced()` and `close()`. The `TextDaemon` calls `isBalanced()` but doesn't seem to use the result for anything other than reporting. However, `pruneShadow()` is called during `install(long revision)`, which is called during `reload`. This seems correct.\n\nOne more thing: the `ThreadBridge` has a `clear()` method that removes the `ThreadLocal`. Is it ever called? Let's check `TextDaemon.java` again or the runners.",
+  "plan": "1. Check if `ThreadBridge.clear()` is used.\n2. Run a final suite check if available.",
+  "commands": [
+    {
+      "keystrokes": "grep -r \"ThreadBridge.clear\" src\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/run-suite\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

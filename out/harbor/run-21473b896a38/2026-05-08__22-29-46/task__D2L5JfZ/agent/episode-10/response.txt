@@ -1,0 +1,6 @@
+{
+  "analysis": "The investigation revealed a Metaspace memory leak caused by a `ThreadLocal` in `WorkerState.java`. Specifically, the `WorkerState.Scope` class, which is used in a try-with-resources block to manage the active plugin module on worker threads, had an empty `close()` method. This meant that every time a worker thread processed a record, a reference to the `PluginModule` (and its associated `URLClassLoader`) was pushed onto a `Deque` in a `ThreadLocal` but never removed. Over many reloads, these accumulated references prevented old `ClassLoader` instances from being garbage collected, eventually exhausting the Metaspace.\n\nI fixed this by implementing `ACTIVE_MODULES.get().pop()` in the `WorkerState.Scope.close()` method. Testing with `./bin/stress 1000` under a 64MB Metaspace cap now passes successfully, whereas it would previously fail.",
+  "plan": "The task is complete. I have identified the leak, implemented the fix, and verified it with the provided stress test.",
+  "commands": [],
+  "task_complete": true
+}

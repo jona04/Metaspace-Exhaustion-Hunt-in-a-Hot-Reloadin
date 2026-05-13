@@ -1,0 +1,15 @@
+{
+  "analysis": "My analysis was correct. \n\n1. `TimelineFrame` tracks 'pins'. It is initialized with 1 pin.\n2. When `TimelineLedger` installs a new revision, it calls `cool()` on the old `TimelineFrame`. `cool()` calls `unpin()`. If pins reach 0, the `LoadedGeneration` (and its `URLClassLoader`) is closed.\n3. When `WorkerHandle` is created, it calls `frame.pin()`, incrementing the pin count.\n4. `WorkerHandle.close()` calls `frame.unpin()`.\n5. **The leak**: In `ThreadCache.cursorFor`, when a new `WorkerHandle` is created for a new generation, the previous `WorkerHandle` is simply discarded without calling `close()`. This means the `TimelineFrame` for the previous generation remains pinned, its pin count never reaches 0, and the `URLClassLoader` is never closed. \n\nWith 500 cycles in the stress test, we'll have 500 open `URLClassLoader`s and many pinned frames, leading to a leak.\n\nI need to fix `ThreadCache.java` to close the old cursor before creating a new one.\n\nFirst, let's verify the failure by running the stress test.",
+  "plan": "1. Compile the project.\n2. Run the stress test and observe the failure (likely OutOfMemoryError: Metaspace or just a hang/crash due to too many open files/resource exhaustion).",
+  "commands": [
+    {
+      "keystrokes": "./bin/build\n",
+      "duration": 5.0
+    },
+    {
+      "keystrokes": "./bin/stress 100\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

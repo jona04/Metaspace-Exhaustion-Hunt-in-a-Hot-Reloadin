@@ -1,0 +1,19 @@
+{
+  "analysis": "The code uses a `ThreadLocal<ThreadCache>` in `ThreadBridge`. The `ThreadCache` holds a `WorkerHandle`, which holds a `TimelineFrame`. Each `TimelineFrame` likely contains a reference to the class loader for that generation. \n\nIn `TimelineLedger.install()`, when a new version is installed, the previous `TimelineFrame` is moved to a `shadow` queue and `cool()` is called on it. `pruneShadow()` removes frames that are 'drained'.\n\nHowever, `ThreadCache` keeps a reference to the `WorkerHandle` (and thus the `TimelineFrame` and its class loader) until that specific thread happens to call `cursorFor` again and notices the revision has changed. If a thread is idle or doesn't process anything for a while, it will keep holding onto the old `WorkerHandle`. \n\nWait, even if it *does* call `cursorFor`, it just replaces `cursor` with a new `WorkerHandle`. The old `WorkerHandle` is not explicitly closed in `cursorFor`. \n\nLet's check `WorkerHandle.java` and `TimelineFrame.java` to see how they track usage and what `cool()` and `isDrained()` do.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java` and `src/main/java/io/harbor/textd/core/TimelineFrame.java`.\n2. Check `src/main/java/io/harbor/textd/core/LoadedGeneration.java` to see how class loaders are created.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

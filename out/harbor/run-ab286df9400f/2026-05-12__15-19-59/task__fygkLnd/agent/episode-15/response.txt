@@ -1,0 +1,6 @@
+{
+  "analysis": "The fix is correct. By calling `cursor.close()` before replacing it with a new `WorkerHandle`, we ensure that the old `TimelineFrame` is unpinned. When a `TimelineFrame` is unpinned and its pin count reaches zero (after being 'cooled' by the `TimelineLedger`), it closes its `LoadedGeneration`, which in turn closes the `URLClassLoader`. This allows the Metaspace occupied by the loaded classes to be reclaimed.",
+  "plan": "The task is complete. I have identified the leak, fixed it, and verified the fix with the provided stress test and integration tests.",
+  "commands": [],
+  "task_complete": true
+}

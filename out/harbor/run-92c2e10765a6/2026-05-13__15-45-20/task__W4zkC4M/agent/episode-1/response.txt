@@ -1,0 +1,15 @@
+{
+  "analysis": "The project is a Java-based text processing daemon (`textd`). The file structure suggests a core engine (`src/main/java/io/harbor/textd/core`) and a plugin system (`plugin-src`). The mention of 'processor swaps' and 'long refresh run' in the task description aligns with the presence of `HotReloadStressRunner.java` and `HotReloadIntegrationRunner.java` in the CLI package. The failure occurs during repeated swaps, which often points to a resource leak (like thread pools, file handles, or memory) in the hot-reloading logic.",
+  "plan": "1. Examine `TextDaemon.java` to see how it manages generations and swaps.\n2. Examine `HotReloadStressRunner.java` to understand how the 'long refresh run' is simulated.\n3. Check `bin/stress` to see how to execute the stress test.\n4. Look for resource management issues in `ThreadBridge.java` or `WorkerHandle.java` as these names suggest concurrency management.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.2
+    }
+  ],
+  "task_complete": false
+}

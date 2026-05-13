@@ -1,0 +1,11 @@
+{
+  "analysis": "The `bin/stress` script builds the project and then runs `io.harbor.textd.cli.HotReloadStressRunner`. \nCrucially, it sets `-XX:MaxMetaspaceSize=64m`. This is a very tight limit for a JVM application that performs hot reloading (which usually involves creating new ClassLoaders). If the old ClassLoaders or their classes aren't being garbage collected, it will quickly run out of Metaspace.\n\nThe task says: \"The service needs to complete the reload soak and keep returning the same deterministic text-processing results across processor generations and across the already-running workers that continue serving requests before and after each refresh.\"",
+  "plan": "1. Look at `src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java` to see how it performs the refreshes.\n2. Look at `src/main/java/io/harbor/textd/core/GenerationRegistry.java` and `LoadedGeneration.java` to see how ClassLoaders are managed.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

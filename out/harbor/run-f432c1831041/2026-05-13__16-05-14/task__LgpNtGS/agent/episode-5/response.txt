@@ -1,0 +1,19 @@
+{
+  "analysis": "The code analysis confirms the leak:\n\n1. `ThreadCache.java` stores a `WorkerHandle`. \n2. When `cursorFor(ledger)` is called, if the ledger has a new revision, `ThreadCache` creates a new `WorkerHandle` and overwrites the old one without calling `close()` on it.\n3. `WorkerHandle.close()` is responsible for calling `frame.unpin()`.\n4. `TimelineFrame.unpin()` decrements the pin count. When the pin count reaches 0 and the frame is 'cooled', `closeLoadedGeneration()` is called, which finally closes the `ClassLoader`.\n5. Since `WorkerHandle.close()` is never called for old handles in `ThreadCache`, the pin count never reaches 0, the `ClassLoader` is never closed, and the Metaspace leaks classes from every revision.\n\nThe `bin/stress 50` passed because 50 cycles might not be enough to fill 64MB of Metaspace. The task description mentions a 'long refresh run'.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to call `cursor.close()` before overwriting it.\n2. Run a longer stress test (e.g., 500 cycles as suggested by the default in `bin/stress`) to verify the fix and ensure it doesn't crash.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/if (cursor != null) { cursor.close(); }\\n            cursor = new WorkerHandle(frame);/' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 20.0
+    }
+  ],
+  "task_complete": false
+}

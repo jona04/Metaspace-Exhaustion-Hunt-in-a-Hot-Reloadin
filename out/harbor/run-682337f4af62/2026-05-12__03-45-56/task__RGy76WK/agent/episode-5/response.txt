@@ -1,0 +1,14 @@
+{
+  "analysis": "The stress test failed with `java.lang.OutOfMemoryError: Metaspace`. This confirms that repeated loading of classes during processor swaps is exhausting the Metaspace, which is limited to 64MB in the `bin/stress` script. The error occurs when initializing `io.harbor.textd.customer.PipelineStages`.",
+  "plan": "1. Examine `io.harbor.textd.core.TextDaemon` and how it handles plugin reloading.\n2. Examine `io.harbor.textd.cli.HotReloadStressRunner` to see how it triggers the swaps.\n3. Identify why old class loaders are not being garbage collected. This usually happens if there are static references or threads still holding onto classes from the old loader.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.1
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "analysis": "The stress test failed with `java.lang.OutOfMemoryError: Metaspace`. This is a classic symptom of a classloader leak during hot-reloading. The daemon is likely loading new versions of the plugin but failing to unload the old ones, and the `-XX:MaxMetaspaceSize=64m` limit is being hit. The stack trace points to `PipelineStages.<clinit>` and `PipelineProcessor.process`.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/TextDaemon.java` and `RevisionLedger.java` to see how classloaders are managed during plugin swaps.\n2. Look for where the plugin jar is loaded and if the classloader is being closed or leaked.\n3. Examine `plugin-src/io/harbor/textd/customer/PipelineStages.java` to see if it's doing something that prevents class unloading (e.g., static references, threads, or registration in global registries).",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/RevisionLedger.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.1
+    }
+  ]
+}

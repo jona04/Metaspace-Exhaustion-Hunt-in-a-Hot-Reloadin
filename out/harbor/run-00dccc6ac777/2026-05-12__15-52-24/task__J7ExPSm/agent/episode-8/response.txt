@@ -1,0 +1,14 @@
+{
+  "analysis": "I see a few potential issues:\n1. `ThreadBridge` uses a `ThreadLocal<ThreadCache>`. `ThreadCache` holds a `WorkerHandle`, which in turn holds a `TimelineFrame` (and thus a `LoadedGeneration` and its `ClassLoader`).\n2. When `TextDaemon.reload` is called, it installs a new `TimelineFrame` in `TimelineLedger`. The old frame is moved to a `shadow` queue and cooled.\n3. `TimelineFrame.isDrained()` is used to prune the shadow queue, but I haven't seen the code for `TimelineFrame` or `WorkerHandle` yet.\n4. In `TextDaemon.processRecord`, it calls `ThreadBridge.current(revisions)`, which gets the `WorkerHandle` from the `ThreadLocal`. If the frame has changed, it creates a new `WorkerHandle`.\n5. The old `WorkerHandle` in `ThreadCache` is just overwritten: `cursor = new WorkerHandle(frame);`. It is *not* closed. If `WorkerHandle` or `TimelineFrame` track active references, this could be the leak.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/TimelineFrame.java` and `src/main/java/io/harbor/textd/core/WorkerHandle.java`.\n2. Check if `WorkerHandle` needs to be closed when it's replaced in `ThreadCache`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    }
+  ]
+}

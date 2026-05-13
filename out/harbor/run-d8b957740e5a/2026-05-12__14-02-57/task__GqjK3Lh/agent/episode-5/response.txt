@@ -1,0 +1,15 @@
+{
+  "analysis": "The `ThreadBridge` uses a `ThreadLocal<ThreadCache>`. `ThreadCache` holds a `WorkerHandle`. When `cursorFor(ledger)` is called, it checks if the current `cursor` matches the current `frame` from the `ledger`. If it doesn't match (meaning a new generation has been installed), it creates a new `WorkerHandle` and overwrites the old one.\n\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\n\nThe old `WorkerHandle` (and thus the old `ClassLoader` it likely references via `frame`) is just dropped. However, `WorkerHandle` has a `close()` method, and `ThreadCache` also has a `close()` method, but `cursorFor` does NOT call `cursor.close()` before overwriting it. If `WorkerHandle` holds resources that need explicit cleanup, or if the `ClassLoader` is somehow kept alive by the old `WorkerHandle` not being properly disposed of, this could be the issue.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java` to see what `close()` does.\n2. Examine `src/main/java/io/harbor/textd/core/TimelineFrame.java` and `src/main/java/io/harbor/textd/core/LoadedGeneration.java` to see how class loaders are stored.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.2
+    }
+  ],
+  "task_complete": false
+}

@@ -1,0 +1,15 @@
+{
+  "analysis": "Confirmed: `java.lang.OutOfMemoryError: Metaspace`. This means the ClassLoaders created for each plugin swap are not being garbage collected. This usually happens when a reference to a class loaded by the ClassLoader (or the ClassLoader itself) is held by a long-lived object, like a thread-local or a static collection in a class loaded by a parent ClassLoader.",
+  "plan": "1. Examine `TextDaemon.java` to see how it manages plugin lifecycles.\n2. Examine `ThreadBridge.java` and `ThreadCache.java` since they seem relevant to thread-based caching, which is a common source of leaks.\n3. Examine `LoadedGeneration.java` and `WorkerHandle.java` to see how they handle the loaded classes.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

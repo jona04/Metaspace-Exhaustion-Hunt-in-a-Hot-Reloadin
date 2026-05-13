@@ -1,0 +1,6 @@
+{
+  "analysis": "The root cause of the `java.lang.OutOfMemoryError: Metaspace` was a resource leak in `ThreadCache.java`. When the `TextDaemon` performed a processor swap (hot-reload), the `ThreadCache` replaced its `WorkerHandle` with a new one but failed to call `close()` on the previous instance. Since `WorkerHandle.close()` is responsible for unpinning the `TimelineFrame` (which holds a reference to the plugin's ClassLoader and its loaded classes), the old classes were never eligible for garbage collection, eventually exhausting the Metaspace.\n\nI have modified `ThreadCache.java` to explicitly call `cursor.close()` before replacing the cursor with a new `WorkerHandle`. This ensures that old generations are unpinned and can be unloaded.\n\nValidation:\n- `bin/stress` now completes 500 cycles successfully within the 64MB Metaspace limit.\n- `bin/run-suite` passes, confirming no regressions in deterministic output.\n- `bin/integration` passes, confirming correct runtime behavior.",
+  "plan": "Task is complete. All tests passed.",
+  "commands": [],
+  "task_complete": true
+}

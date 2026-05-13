@@ -1,0 +1,15 @@
+{
+  "analysis": "Confirmed: `java.lang.OutOfMemoryError: Metaspace`. This means the old ClassLoaders (from previous 'processor swaps') are not being garbage collected. Metaspace holds class metadata. If a ClassLoader is still reachable, all classes it loaded remain in Metaspace.",
+  "plan": "1. Examine `HotReloadStressRunner.java` to see how it performs swaps.\n2. Examine `TextDaemon.java` to see how it manages the lifecycle of the plugins/classloaders.\n3. Look for anything that might keep a reference to a ClassLoader or a class from a previous generation (e.g., ThreadLocals, static caches, or threads that haven't stopped).",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

@@ -1,0 +1,6 @@
+{
+  "analysis": "The investigation revealed a resource leak in `ThreadCache.java` where `WorkerHandle` instances (which pin `TimelineFrame` objects) were being replaced without being closed. This prevented the underlying `LoadedGeneration` and its `ClassLoader` from being garbage collected, leading to a `java.lang.OutOfMemoryError: Metaspace` during repeated plugin reloads. I have fixed this by ensuring the old `WorkerHandle` is closed before a new one is created. The fix has been verified with both the stress test (500 cycles) and the full integration suite.",
+  "plan": "I have already verified the fix and the suite passes. I am now marking the task as complete.",
+  "commands": [],
+  "task_complete": true
+}

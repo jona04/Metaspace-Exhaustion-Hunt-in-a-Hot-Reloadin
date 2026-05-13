@@ -1,0 +1,19 @@
+{
+  "analysis": "Confirmed. `WorkerHandle` pins the `TimelineFrame` in its constructor and unpins it in `close()`. In `ThreadCache.java`, when the revision changes, the old `cursor` is replaced without being closed, leading to a leaked pin and thus a leaked class loader (Metaspace OOM).\n\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\nShould be:\n```java\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old cursor when it doesn't match the current frame.\n2. Re-run the stress test with 1000 cycles to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "sed -i '12i\\            cursor.close();' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/stress 1000\n",
+      "duration": 20.0
+    }
+  ],
+  "task_complete": false
+}
