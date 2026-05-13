@@ -1,0 +1,51 @@
+package io.harbor.textd.cli;
+
+import io.harbor.textd.core.OutputFormat;
+import io.harbor.textd.core.ProcessingResult;
+import io.harbor.textd.core.TextDaemon;
+
+import java.nio.file.Path;
+import java.util.List;
+public final class HotReloadIntegrationRunner {
+    private static final String SAMPLE = "alpha beta gamma";
+
+    private HotReloadIntegrationRunner() {
+    }
+
+    public static void main(String[] args) throws Exception {
+        Path pluginJar = Path.of(args[0]);
+        int revision = args.length > 1 ? Integer.parseInt(args[1]) : 24;
+
+        try (TextDaemon daemon = new TextDaemon(pluginJar, 4)) {
+            daemon.reload(1);
+            List<ProcessingResult> baselineResults = daemon.processBatch(List.of(SAMPLE, SAMPLE, SAMPLE, SAMPLE));
+            assertOutputs(1, baselineResults);
+
+            List<ProcessingResult> currentResults = baselineResults;
+            for (int current = 2; current <= revision; current++) {
+                daemon.reload(current);
+                currentResults = daemon.processBatch(List.of(SAMPLE, SAMPLE, SAMPLE, SAMPLE));
+                assertOutputs(current, currentResults);
+            }
+
+            String baseline = baselineResults.get(0).output();
+            String current = currentResults.get(0).output();
+
+            System.out.println("{");
+            System.out.println("  \"input\": \"" + SAMPLE + "\",");
+            System.out.println("  \"baseline\": \"" + baseline + "\",");
+            System.out.println("  \"revision\": " + revision + ",");
+            System.out.println("  \"current\": \"" + current + "\"");
+            System.out.println("}");
+        }
+    }
+
+    private static void assertOutputs(long revision, List<ProcessingResult> results) {
+        String expected = OutputFormat.expectedFor(revision, SAMPLE);
+        for (ProcessingResult result : results) {
+            if (!expected.equals(result.output())) {
+                throw new IllegalStateException("Unexpected output at revision " + revision + ": " + result.output());
+            }
+        }
+    }
+}

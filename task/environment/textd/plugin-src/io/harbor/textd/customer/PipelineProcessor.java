@@ -1,0 +1,24 @@
+package io.harbor.textd.customer;
+
+import io.harbor.textd.api.TextProcessor;
+
+import java.util.Arrays;
+import java.util.Locale;
+import java.util.stream.Collectors;
+
+public final class PipelineProcessor implements TextProcessor {
+    private final long generation;
+
+    public PipelineProcessor(long generation) {
+        this.generation = generation;
+    }
+
+    @Override
+    public String process(String record) {
+        String normalized = Arrays.stream(record.trim().split("\\s+"))
+            .filter(token -> !token.isBlank())
+            .map(token -> token.toUpperCase(Locale.ROOT))
+            .collect(Collectors.joining(">"));
+        return String.format(Locale.ROOT, "GEN-%03d|%s|PIPE-%d", generation, normalized, PipelineStages.pipelineWeight());
+    }
+}
