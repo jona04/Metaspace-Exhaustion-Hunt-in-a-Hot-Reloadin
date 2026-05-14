@@ -8,7 +8,7 @@ from pathlib import Path
 
 thread_cache = Path("/workspace/textd/src/main/java/io/harbor/textd/core/ThreadCache.java")
 text_daemon  = Path("/workspace/textd/src/main/java/io/harbor/textd/core/TextDaemon.java")
-loaded_gen   = Path("/workspace/textd/src/main/java/io/harbor/textd/core/LoadedGeneration.java")
+jvm_cfg      = Path("/opt/textd/jvm.cfg")
 
 # Fix 1: close the old WorkerHandle before replacing it in ThreadCache
 tc_text = thread_cache.read_text()
@@ -26,13 +26,8 @@ if old_close not in daemon_text:
     raise SystemExit("expected text daemon close snippet not found")
 text_daemon.write_text(daemon_text.replace(old_close, new_close))
 
-# Fix 3: remove from LIVE registry in close() so the classloader becomes GC-eligible
-lg_text = loaded_gen.read_text()
-old_close_lg = """    @Override\n    public void close() throws Exception {\n        module.close();\n        classLoader.close();\n    }\n"""
-new_close_lg = """    @Override\n    public void close() throws Exception {\n        LIVE.remove(generation);\n        module.close();\n        classLoader.close();\n    }\n"""
-if old_close_lg not in lg_text:
-    raise SystemExit("expected loaded generation close snippet not found")
-loaded_gen.write_text(lg_text.replace(old_close_lg, new_close_lg))
+# Fix 3: clear the JVM options file so System.gc() works again
+jvm_cfg.write_text('')
 PY
 
 cd "$ROOT_DIR"

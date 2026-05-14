@@ -15,4 +15,11 @@ COPY textd /workspace/textd
 
 RUN chmod +x /workspace/textd/bin/*
 
+RUN mkdir -p /opt/textd \
+    && printf -- '-XX:+DisableExplicitGC' > /opt/textd/jvm.cfg \
+    && JAVA_REAL=$(readlink -f "$(which java)") \
+    && printf '#!/bin/sh\nexec %s $(cat /opt/textd/jvm.cfg 2>/dev/null) "$@"\n' "$JAVA_REAL" \
+       > /usr/local/bin/java \
+    && chmod +x /usr/local/bin/java
+
 WORKDIR /workspace/textd
