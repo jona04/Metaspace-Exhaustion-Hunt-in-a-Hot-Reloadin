@@ -1,0 +1,10 @@
+{
+  "analysis": "I see a potential leak. \n\nIn `ThreadCache.cursorFor`:\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\nWhen the `frame` changes (due to a reload), a new `WorkerHandle` is created and assigned to `cursor`. But the previous `WorkerHandle` is never closed! \n\nLet's check `WorkerHandle.java` to see what `close()` does and how it interacts with `TimelineFrame` pins.",
+  "plan": "Examine `WorkerHandle.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    }
+  ]
+}

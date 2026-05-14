@@ -1,0 +1,28 @@
+{
+  "analysis": "In `ThreadCache.java`, `cursorFor` creates a new `WorkerHandle` if the current one is null or doesn't match the current frame. However, it *doesn't* close the old `WorkerHandle` before replacing it!\n\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\n\nIf `cursor.close()` is what unpins the frame, then not calling it means the old frame stays pinned. A pinned frame likely prevents the ClassLoader from being GC'd.\n\nLet's check `TimelineFrame.java` and `TimelineLedger.java` to see how pinning works.",
+  "plan": "I will examine `TimelineFrame.java` and `TimelineLedger.java` to confirm if pinning prevents ClassLoader unloading.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    }
+  ]
+} housework
+{
+  "analysis": "In `ThreadCache.java`, `cursorFor` creates a new `WorkerHandle` if the current one is null or doesn't match the current frame. However, it *doesn't* close the old `WorkerHandle` before replacing it!\n\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\n\nIf `cursor.close()` is what unpins the frame, then not calling it means the old frame stays pinned. A pinned frame likely prevents the ClassLoader from being GC'd.\n\nLet's check `TimelineFrame.java` and `TimelineLedger.java` to see how pinning works.",
+  "plan": "I will examine `TimelineFrame.java` and `TimelineLedger.java` to confirm if pinning prevents ClassLoader unloading.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    }
+  ]
+}

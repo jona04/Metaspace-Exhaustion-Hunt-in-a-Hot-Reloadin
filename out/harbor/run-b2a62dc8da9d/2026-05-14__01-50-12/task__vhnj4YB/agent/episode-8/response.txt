@@ -1,0 +1,10 @@
+{
+  "analysis": "I see a potential issue in `ThreadBridge.java`. It uses a `ThreadLocal<ThreadCache>`. `ThreadCache` seems to hold `WorkerHandle`s. If these `WorkerHandle`s are not cleared or updated correctly, they might keep old `TimelineFrame`s (and thus old class loaders) pinned.\n\n`ThreadBridge.current(ledger)` calls `ROUTES.get().cursorFor(ledger)`.\n\nLet's look at `ThreadCache.java`.",
+  "plan": "Examine `ThreadCache.java` to see how it manages `WorkerHandle`s.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ]
+}

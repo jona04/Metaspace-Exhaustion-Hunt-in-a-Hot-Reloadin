@@ -1,0 +1,10 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with a limited `MaxMetaspaceSize` of 64m. This is likely where the 'constrained CI profile' comes in. Metaspace is used for class metadata in Java, and a limit of 64m is quite small, especially if classes are being reloaded frequently (as suggested by 'hot reload' and 'processor swaps').",
+  "plan": "I'll try to run the stress test to see if it fails with an `OutOfMemoryError: Metaspace`.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 100\n",
+      "duration": 5.0
+    }
+  ]
+}

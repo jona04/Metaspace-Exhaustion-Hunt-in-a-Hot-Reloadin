@@ -1,0 +1,6 @@
+{
+  "analysis": "The full suite passed, including the stress test with 500 cycles. The issue was indeed a Metaspace leak caused by unclosed `WorkerHandle` instances in `ThreadCache`, which prevented the `TimelineFrame` and its associated `URLClassLoader` from being garbage collected. By closing the previous `cursor` before creating a new one in `ThreadCache`, I've ensured that the old frames are unpinned and can be drained and closed.",
+  "plan": "The task is complete. I have identified the cause of the failure, implemented a fix, and verified it with the provided stress test and suite.",
+  "task_complete": true,
+  "commands": []
+}

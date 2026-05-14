@@ -1,0 +1,6 @@
+{
+  "analysis": "The issue was identified as a Metaspace leak caused by unclosed `WorkerHandle` instances in `ThreadCache`. Each `WorkerHandle` held a pin on a `TimelineFrame`, preventing the associated `URLClassLoader` from being closed even after a new generation was loaded. By adding a call to `cursor.close()` before replacing the cursor in `ThreadCache.cursorFor`, the old pins are now correctly released, allowing the `TimelineFrame` to be drained and its resources (including the class loader) to be freed. This fix was verified with the provided stress test and the full integration suite.",
+  "plan": "The task is complete. No further actions are needed.",
+  "commands": [],
+  "task_complete": true
+}

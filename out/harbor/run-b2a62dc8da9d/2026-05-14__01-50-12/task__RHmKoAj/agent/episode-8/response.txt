@@ -1,0 +1,20 @@
+{
+  "analysis": "The code uses a reference counting mechanism (`pins`) to manage the lifecycle of `TimelineFrame`. When a `TimelineFrame` is replaced by a new one in `TimelineLedger.install`, the old frame is moved to a `shadow` queue and `cool()` is called on it. `cool()` decrements the pin count. When the pin count reaches zero and the frame is 'cooled', `closeLoadedGeneration()` is called, which should close the `LoadedGeneration` and presumably release the ClassLoader.\n\nIn `ThreadCache.java`, `cursorFor` gets a `WorkerHandle`. The `WorkerHandle` constructor pins the frame:\n```java\n    WorkerHandle(TimelineFrame frame) {\n        this.frame = frame.pin();\n        this.revision = frame.revision();\n        this.processor = frame.module().processorFor(revision);\n    }\n```\nAnd `WorkerHandle.close()` unpins it:\n```java\n    @Override\n    public void close() {\n        frame.unpin();\n    }\n```\n\nAs I suspected, `ThreadCache.cursorFor` replaces the `cursor` without closing the old one:\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame); // LEAK: old cursor not closed!\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\nThis means the old frame remains pinned forever, preventing its `LoadedGeneration` from being closed and its ClassLoader from being GC'd.",
+  "plan": "I will fix the leak in `src/main/java/io/harbor/textd/core/ThreadCache.java` by calling `cursor.close()` before replacing it with a new `WorkerHandle`.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/cursor.close(); cursor = new WorkerHandle(frame);/' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ]
+} housework
+{
+  "analysis": "The code uses a reference counting mechanism (`pins`) to manage the lifecycle of `TimelineFrame`. When a `TimelineFrame` is replaced by a new one in `TimelineLedger.install`, the old frame is moved to a `shadow` queue and `cool()` is called on it. `cool()` decrements the pin count. When the pin count reaches zero and the frame is 'cooled', `closeLoadedGeneration()` is called, which should close the `LoadedGeneration` and presumably release the ClassLoader.\n\nIn `ThreadCache.java`, `cursorFor` gets a `WorkerHandle`. The `WorkerHandle` constructor pins the frame:\n```java\n    WorkerHandle(TimelineFrame frame) {\n        this.frame = frame.pin();\n        this.revision = frame.revision();\n        this.processor = frame.module().processorFor(revision);\n    }\n```\nAnd `WorkerHandle.close()` unpins it:\n```java\n    @Override\n    public void close() {\n        frame.unpin();\n    }\n```\n\nAs I suspected, `ThreadCache.cursorFor` replaces the `cursor` without closing the old one:\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame); // LEAK: old cursor not closed!\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\nThis means the old frame remains pinned forever, preventing its `LoadedGeneration` from being closed and its ClassLoader from being GC'd.",
+  "plan": "I will fix the leak in `src/main/java/io/harbor/textd/core/ThreadCache.java` by calling `cursor.close()` before replacing it with a new `WorkerHandle`.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/cursor.close(); cursor = new WorkerHandle(frame);/' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ]
+}

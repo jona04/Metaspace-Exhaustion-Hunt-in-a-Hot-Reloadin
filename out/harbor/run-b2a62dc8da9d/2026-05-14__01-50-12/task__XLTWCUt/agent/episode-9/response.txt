@@ -1,0 +1,14 @@
+{
+  "analysis": "Each generation creates a new `URLClassLoader`. `LoadedGeneration.close()` calls `classLoader.close()`, which is good, but if something still holds references to classes from that class loader, it won't be collected. I see `ThreadBridge.current(revisions)` being called in `processRecord`. Let's look at `ThreadBridge.java` and `TimelineLedger.java`.",
+  "plan": "Examine `src/main/java/io/harbor/textd/core/ThreadBridge.java` and `src/main/java/io/harbor/textd/core/TimelineLedger.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    }
+  ]
+}

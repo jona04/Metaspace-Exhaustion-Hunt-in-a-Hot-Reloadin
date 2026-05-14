@@ -1,0 +1,10 @@
+{
+  "analysis": "The `bin/stress` script runs `io.harbor.textd.cli.HotReloadStressRunner` with a `MaxMetaspaceSize` of 64MB. This is quite small and often leads to `OutOfMemoryError: Metaspace` if classes are being loaded repeatedly without being unloaded. The task mentions 'repeated processor swaps', which fits this scenario.",
+  "plan": "I will run the stress test to confirm it fails and see the error message. I'll start with a smaller number of iterations if possible, but the default is 50. I'll try 20 first to see if it fails early.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 20\n",
+      "duration": 5.0
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "analysis": "I've identified a significant leak. In `ThreadCache.java`, when `cursorFor` is called, if the current `cursor` doesn't match the new `frame`, a new `WorkerHandle` is created and assigned to `cursor`. However, the previous `cursor` is never closed!\n\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\n\n`WorkerHandle`'s constructor calls `frame.pin()`, and its `close()` method calls `frame.unpin()`. If `close()` is not called, the `TimelineFrame` remains pinned. \n\nIn `TimelineLedger.java`, `pruneShadow()` only removes frames that are 'drained'.\n\n```java\n    private void pruneShadow() {\n        shadow.removeIf(TimelineFrame::isDrained);\n    }\n```\n\nI should check `TimelineFrame.java` to see what `pin()`, `unpin()`, and `isDrained()` do. It's likely that as long as a frame is pinned, it's not considered drained, and thus it stays in the `shadow` queue, keeping its `LoadedGeneration` (and thus its ClassLoader and classes) alive.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/TimelineFrame.java`.\n2. Confirm that `WorkerHandle` should be closed before being replaced in `ThreadCache.java`.\n3. Verify `LoadedGeneration.java` to see how it loads classes.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.5
+    }
+  ]
+}

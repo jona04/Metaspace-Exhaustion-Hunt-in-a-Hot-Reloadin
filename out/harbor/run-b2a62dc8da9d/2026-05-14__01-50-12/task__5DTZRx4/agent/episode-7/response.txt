@@ -1,0 +1,14 @@
+{
+  "analysis": "Here's what I've found:\n1. `TimelineLedger` keeps a `shadow` queue of old `TimelineFrame` objects.\n2. `TimelineLedger.install` adds the previous frame to the `shadow` queue and calls `previous.cool()`.\n3. `pruneShadow` removes frames from the `shadow` queue if they are 'drained' (`TimelineFrame::isDrained`).\n4. `ThreadBridge` uses a `ThreadLocal<ThreadCache>` to store something called `cursorFor(ledger)`.\n5. `LoadedGeneration` creates a new `URLClassLoader` for each generation and implements `AutoCloseable`, which closes the `classLoader`.\n\nI need to check `TimelineFrame.java` and `ThreadCache.java` to see how frames are marked as drained and how they are closed.",
+  "plan": "Examine `TimelineFrame.java` and `ThreadCache.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ]
+}

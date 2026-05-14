@@ -1,0 +1,10 @@
+{
+  "analysis": "Yes, `WorkerHandle` pins the `TimelineFrame` in its constructor and unpins it in `close()`. \n\nIn `ThreadCache.java`:\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\nWhen `cursor.matches(frame)` is false, a new `WorkerHandle` is created, but the old one is not closed. This means the old `TimelineFrame` remains pinned forever (or until the thread dies and `ThreadBridge.clear()` is called, but `ThreadBridge.clear()` is never called in the stress test). Since the old `TimelineFrame` remains pinned, its `LoadedGeneration` (and thus its `URLClassLoader`) is never closed, leading to a Metaspace leak.\n\nWait, I should also check if `ThreadBridge.clear()` is used anywhere.",
+  "plan": "Search for usages of `ThreadBridge.clear()`.",
+  "commands": [
+    {
+      "keystrokes": "grep -r \"ThreadBridge.clear\" src\n",
+      "duration": 0.1
+    }
+  ]
+}
