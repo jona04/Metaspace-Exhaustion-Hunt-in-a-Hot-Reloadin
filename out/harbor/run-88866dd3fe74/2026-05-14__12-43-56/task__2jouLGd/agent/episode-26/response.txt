@@ -1,0 +1,10 @@
+{
+  "analysis": "`TimelineLedger` uses a `shadow` queue to keep track of old frames until they are drained. `pruneShadow()` removes drained frames. A frame is drained when it's closed, which happens when its pin count reaches zero and it has been 'cooled'. My fix in `ThreadCache` ensures that pins are released when a new generation is used by a thread.",
+  "plan": "Is there any other place where frames are pinned but not unpinned? Let's check `TextDaemon.java` again.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.5
+    }
+  ]
+}

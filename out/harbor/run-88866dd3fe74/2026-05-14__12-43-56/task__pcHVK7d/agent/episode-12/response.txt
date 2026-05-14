@@ -1,0 +1,10 @@
+{
+  "analysis": "In `ThreadCache.java`, `cursorFor` checks if the current `cursor` matches the current `TimelineFrame`. If it doesn't match, it creates a new `WorkerHandle`. Crucially, it doesn't call `close()` on the old `cursor` before replacing it. This might be part of the problem if `WorkerHandle` or the objects it references need to be closed to release resources (like classloaders).",
+  "plan": "Check `WorkerHandle.java` and `TimelineFrame.java` to see what they do and if they need explicit closing.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    }
+  ]
+}

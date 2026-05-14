@@ -1,0 +1,30 @@
+New Terminal Output:
+
+root@71fd5a51cd9b:/workspace/textd# cat > src/main/java/io/harbor/textd/core/ThreadBridge.java <<EOF
+> package io.harbor.textd.core;
+>
+> final class ThreadBridge {
+>     private static final ThreadLocal<ThreadCache> ROUTES = new ThreadLocal<>();
+>
+>     private ThreadBridge() {
+>     }
+>
+>     static WorkerHandle current(TimelineLedger ledger) {
+>         ThreadCache cache = ROUTES.get();
+>         if (cache == null) {
+>             cache = new ThreadCache();
+>             ROUTES.set(cache);
+>         }
+>         return cache.cursorFor(ledger);
+>     }
+>
+>     static void clear() {
+>         ThreadCache cache = ROUTES.get();
+>         if (cache != null) {
+>             cache.close();
+>             ROUTES.remove();
+>         }
+>     }
+> }
+> EOF
+root@71fd5a51cd9b:/workspace/textd#

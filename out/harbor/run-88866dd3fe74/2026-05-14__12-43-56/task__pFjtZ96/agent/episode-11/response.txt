@@ -1,0 +1,16 @@
+{
+  "analysis": "The suite passed. I've identified the leak in `ThreadCache.java`, fixed it by ensuring old `WorkerHandle`s are closed when a new generation is loaded, and verified the fix with both the stress test and the full suite.",
+  "plan": "Double check the requirements. 'Old plugin generations must be fully reclaimed by the runtime once sessions close.' My fix ensures that when a thread moves to a new generation, it unpins the old one. If all threads have moved on, the old generation will have 0 pins and will be closed, allowing it to be GC'd. The `TimelineLedger.isBalanced()` check (which I saw in `TextDaemon.java`) probably relies on `pruneShadow()` which removes drained frames. \n\nLet's verify `TimelineLedger.isBalanced()` is used in the tests and that it actually returns true.",
+  "commands": [
+    {
+      "keystrokes": "grep -r \"isBalanced\" .\n",
+      "duration": 0.2
+    }
+  ]
+}Briefly summarize your work and conclude.
+
+I have identified and fixed a resource leak in the `textd` service. The issue was located in `ThreadCache.java`, where old `WorkerHandle` instances were being replaced by new ones without being closed. Since `WorkerHandle.close()` is responsible for unpinning the `TimelineFrame`, old plugin generations remained pinned indefinitely, preventing their `URLClassLoader` from being garbage collected and eventually leading to Metaspace exhaustion.
+
+I modified `ThreadCache.java` to explicitly call `close()` on the existing `WorkerHandle` before creating a new one when a generation swap occurs. I have verified the fix by running the provided stress test and the full integration suite, both of which now pass successfully.
+
+{"analysis": "I have identified and fixed a resource leak in the `textd` service. The issue was located in `ThreadCache.java`, where old `WorkerHandle` instances were being replaced by new ones without being closed. Since `WorkerHandle.close()` is responsible for unpinning the `TimelineFrame`, old plugin generations remained pinned indefinitely, preventing their `URLClassLoader` from being garbage collected and eventually leading to Metaspace exhaustion. I modified `ThreadCache.java` to explicitly call `close()` on the existing `WorkerHandle` before creating a new one when a generation swap occurs. I have verified the fix by running the provided stress test and the full integration suite, both of which now pass successfully.", "plan": "The task is complete. I will submit my changes.", "commands": [], "task_complete": true}

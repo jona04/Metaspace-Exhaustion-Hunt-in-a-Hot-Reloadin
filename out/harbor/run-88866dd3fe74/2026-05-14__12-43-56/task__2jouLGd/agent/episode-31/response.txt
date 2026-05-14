@@ -1,0 +1,10 @@
+{
+  "analysis": "If we want to avoid keeping frames pinned while threads are idle, we should not hold the pin in `WorkerHandle` indefinitely. But `WorkerHandle` itself is cached in `ThreadCache`.\n\nWait, if I change `ThreadCache` to not cache the `WorkerHandle` but instead get it and close it every time? No, that would defeat the purpose of caching the `TextProcessor`.\n\nActually, the `TextProcessor` is specific to a generation. It's okay to cache it, but we need a way to release the pin when the generation is no longer current AND the thread is idle.\n\nBut how do we know when the thread is idle? The thread is idle when it's not executing `processRecord`.\n\nIf we move the pin/unpin to `processRecord`, we'd still want to cache the `TextProcessor`. But the `TextProcessor` is obtained from the `PluginModule`, which is held by the `TimelineFrame`.\n\nIf the `TimelineFrame` is closed, its `LoadedGeneration` is closed, which closes the `PluginModule` and the `URLClassLoader`. If we still have a reference to a `TextProcessor` from that closed module, can we still use it? Probably not safely, especially if it needs to load more classes.\n\nSo the pin *must* be held as long as we want to use the `TextProcessor`.\n\nIf we want to allow old generations to be reclaimed even if some threads are idle, those idle threads must release their pins on old generations.\n\nOne way to do this is to have a way to \"flush\" the `ThreadCache` of all worker threads. But `TextDaemon` doesn't have an easy way to do that for all threads in the pool without submitting a task to each of them.\n\nWait, I see `ThreadBridge.clear()`. Who calls that? Let's check.",
+  "plan": "Search for usages of `ThreadBridge.clear()`.",
+  "commands": [
+    {
+      "keystrokes": "grep -r \"ThreadBridge.clear\" src\n",
+      "duration": 0.5
+    }
+  ]
+}

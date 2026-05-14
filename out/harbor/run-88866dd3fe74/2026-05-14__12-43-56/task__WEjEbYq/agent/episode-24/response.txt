@@ -1,0 +1,10 @@
+{
+  "analysis": "In `TextDaemon.close()`, it calls `workers.shutdownNow()` and `revisions.close()`. `revisions.close()` will cool the current frame and prune shadows. But the worker threads might still have a `WorkerHandle` in their `ThreadLocal` that pins the frame. If the worker threads don't exit immediately or if they are kept in some pool (though they are created by a `newFixedThreadPool` inside the `TextDaemon` constructor, so they should be specific to this daemon), they might still hold the reference.\n\nWait! I see `ThreadBridge.clear()`! It exists but it's never called.",
+  "plan": "I should call `ThreadBridge.clear()` from each worker thread before they exit. But they are managed by an `ExecutorService`. A better way might be to ensure that when `TextDaemon` is closing, we tell the workers to clear their `ThreadLocal`s.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    }
+  ]
+}

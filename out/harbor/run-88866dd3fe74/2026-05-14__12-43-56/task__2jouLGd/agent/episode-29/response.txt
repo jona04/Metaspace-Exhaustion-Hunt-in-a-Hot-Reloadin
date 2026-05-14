@@ -1,0 +1,10 @@
+{
+  "analysis": "The `HotReloadStressRunner` uses a single `TextDaemon` instance and calls `reload` and `process`/`processBatch` repeatedly. In this case, the worker threads are reused. My fix in `ThreadCache` ensures that when `processRecord` is called on a worker thread after a `reload`, the old `WorkerHandle` (and thus the old `TimelineFrame`) is closed/unpinned.\n\nWait! I see a potential issue. If a thread is NOT used in a particular generation, its `ThreadLocal` will still hold the `WorkerHandle` from an older generation, keeping that generation pinned!\n\nIn `HotReloadStressRunner`, it calls `processBatch` with 4 samples. Since the daemon has 4 worker threads, it's likely that all 4 threads are used in each `processBatch` call. But if `workerCount` was larger than the number of records in the batch, some threads would stay on the old generation.\n\nActually, even with 4 threads and 4 records, there's no guarantee that each record will be picked up by a different thread, although `newFixedThreadPool` with a `CountDownLatch` in `processBatch` makes it very likely.\n\nLet's check `processBatch` again in `TextDaemon.java`.",
+  "plan": "Review `processBatch` in `TextDaemon.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.1
+    }
+  ]
+}

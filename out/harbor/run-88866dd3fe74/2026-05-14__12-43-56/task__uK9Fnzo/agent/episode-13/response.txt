@@ -1,0 +1,10 @@
+{
+  "analysis": "I've applied both fixes. \n1. In `ThreadCache.java` (earlier), I ensured the old `WorkerHandle` is closed when the revision changes.\n2. In `TextDaemon.java`, I ensured `ThreadBridge.clear()` is called when a worker thread exits.\n3. In `WorkerHandle.java`, I changed `matches` to use frame instance equality.\n\nNow I'll run the `SessionReplayRunner` again to see if it's balanced after close.",
+  "plan": "Run `SessionReplayRunner` again to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "bin/build && java -cp build/main-classes io.harbor.textd.cli.SessionReplayRunner build/plugins/customer-default.jar 10\n",
+      "duration": 5.0
+    }
+  ]
+}

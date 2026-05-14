@@ -1,0 +1,15 @@
+New Terminal Output:
+
+root@71fd5a51cd9b:/workspace/textd# grep -r "ThreadBridge.current" src
+src/main/java/io/harbor/textd/core/TextDaemon.java:        WorkerHandle binding = ThreadBridge.current(revisions);
+root@71fd5a51cd9b:/workspace/textd# grep -r "pin" src
+src/main/java/io/harbor/textd/core/WorkerHandle.java:        this.frame = frame.pin();
+src/main/java/io/harbor/textd/core/WorkerHandle.java:        frame.unpin();
+src/main/java/io/harbor/textd/core/TimelineFrame.java:    private final AtomicInteger pins = new AtomicInteger(1);
+src/main/java/io/harbor/textd/core/TimelineFrame.java:    TimelineFrame pin() {
+src/main/java/io/harbor/textd/core/TimelineFrame.java:            int current = pins.get();
+src/main/java/io/harbor/textd/core/TimelineFrame.java:            if (pins.compareAndSet(current, current + 1)) {
+src/main/java/io/harbor/textd/core/TimelineFrame.java:            unpin();
+src/main/java/io/harbor/textd/core/TimelineFrame.java:    void unpin() {
+src/main/java/io/harbor/textd/core/TimelineFrame.java:        int remaining = pins.decrementAndGet();
+root@71fd5a51cd9b:/workspace/textd#

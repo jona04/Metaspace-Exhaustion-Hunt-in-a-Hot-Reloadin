@@ -1,0 +1,14 @@
+{
+  "analysis": "I've reviewed `TextDaemon.java`, `LoadedGeneration.java`, and `bin/stress`. \n\n`TextDaemon` uses `TimelineLedger` to manage revisions and uses `ThreadBridge` to get a `WorkerHandle` for processing. \n`LoadedGeneration` wraps a `URLClassLoader` and a `PluginModule`. It implements `AutoCloseable`, closing both the module and the class loader.\n`bin/stress` runs `HotReloadStressRunner` with a 64MB Metaspace limit, which is quite small and likely intended to trigger Metaspace OOM if class loaders are not being reclaimed.\n\nThe issue is likely that `LoadedGeneration` instances (and thus their `URLClassLoader`s) are being leaked. I need to investigate `TimelineLedger.java` and `ThreadBridge.java` to see how generations are managed and if they are properly closed.",
+  "plan": "I will now read `src/main/java/io/harbor/textd/core/TimelineLedger.java` and `src/main/java/io/harbor/textd/core/ThreadBridge.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    }
+  ]
+}

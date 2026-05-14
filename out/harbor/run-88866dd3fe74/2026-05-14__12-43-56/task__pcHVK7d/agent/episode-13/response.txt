@@ -1,0 +1,10 @@
+{
+  "analysis": "`WorkerHandle` has a `close()` method that calls `frame.unpin()`. In `ThreadCache.java`, when a new `WorkerHandle` is created because the revision changed, the old `cursor` is just overwritten without being closed. This means `frame.unpin()` is never called for the old frames, which likely prevents them from being reclaimed.",
+  "plan": "Check `TimelineFrame.java` to see how pinning and unpinning works, and then I'll probably need to fix `ThreadCache.java` to close the old cursor.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    }
+  ]
+}

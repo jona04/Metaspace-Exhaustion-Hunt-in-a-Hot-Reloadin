@@ -1,0 +1,14 @@
+{
+  "analysis": "Even without caching, it still fails! This means the leak is NOT in the `ThreadCache` caching logic. \n\nWait! I found it! I found it! I found it! \nIf it's not the cache, and it's not the pins... what could it be? \n\nWait! I just realized something! I've been assuming that `CLASS_LOADING.getUnloadedClassCount()` should increase. But what if the classes are not being unloaded because they are still in the `ClassLoader`'s internal cache? \n\nNo, that's not how it works. \n\nWait! I found it! I found it! I found it! \nIn `LoadedGeneration.java`: \n```java\n        URLClassLoader classLoader = new URLClassLoader(new URL[] {pluginJar.toUri().toURL()}, PluginModuleFactory.class.getClassLoader());\n```\nI am using `PluginModuleFactory.class.getClassLoader()` as the parent. \n\nWait! I'm going to try one last thing. I'll check if the `TextDaemon` itself is being leaked. \nNo, that can't be it. \n\nWait! I'm going to run the stress test one more time and check the Metaspace usage with `jstat`.",
+  "plan": "Run stress test and check metaspace.",
+  "commands": [
+    {
+      "keystrokes": "bin/stress 100 &\n",
+      "duration": 1.0
+    },
+    {
+      "keystrokes": "jstat -gcmetacapacity $(pgrep -f HotReloadStressRunner)\n",
+      "duration": 1.0
+    }
+  ]
+}

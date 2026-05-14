@@ -1,0 +1,10 @@
+{
+  "analysis": "`ThreadBridge` uses a `ThreadLocal` of `ThreadCache`. The `current` method calls `ROUTES.get().cursorFor(ledger)`. This seems to be where the `WorkerHandle` is retrieved or created for the current thread. If `ThreadCache` keeps references to old generations, that would explain the leak.",
+  "plan": "Examine `src/main/java/io/harbor/textd/core/ThreadCache.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    }
+  ]
+}
