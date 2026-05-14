@@ -1,0 +1,14 @@
+{
+  "analysis": "In `TimelineLedger`, when a new version is installed, the old `TimelineFrame` is added to a `shadow` queue and `cool()` is called on it. `pruneShadow()` removes frames that are 'drained'.\n\nIn `ThreadCache`, `cursorFor` checks if the current `cursor` matches the current `frame` from the ledger. If not, it creates a new `WorkerHandle` and replaces the old one. However, the old `WorkerHandle` is not closed!",
+  "plan": "I need to check `WorkerHandle` and `TimelineFrame` to see how they track usage and what `cool()` and `isDrained()` do. It seems `ThreadCache` is leaking `WorkerHandle` objects, and those `WorkerHandle` objects probably hold references to `TimelineFrame` which in turn hold `LoadedGeneration` (and thus `ClassLoader`).",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "analysis": "Wait! I didn't see ANY \"Closing generation\" messages! This means `LoadedGeneration.close()` is NEVER called! \n\nIf `LoadedGeneration.close()` is never called, then `TimelineFrame.closeLoadedGeneration()` is never called. \nIf `TimelineFrame.closeLoadedGeneration()` is never called, then `pins` never reached 0 while `cooled` was true (or vice-versa). \n\nBut wait, `after_close` is true! \n```java\n            return new Session(\n                // ...\n                beforeClose, // daemon.isBalanced() before close\n                daemon.isBalanced(), // after close\n                // ...\n            );\n```\nWait, I should check `before_close` and `after_close` in the output. \nIn the output: `\"before_close\":true,\"after_close\":true`. \n\nIf `after_close` is true, then `isBalanced()` returned true. \nIf `isBalanced()` returned true, then `shadow.isEmpty()` is true. \nIf `shadow.isEmpty()` is true, then all frames were removed by `pruneShadow()`. \n`pruneShadow()` removes frames if `isDrained()` is true. \n`isDrained()` returns `closed.get()`. \n`closed` is only set to true in `closeLoadedGeneration()`. \n\nWait! If `closed` is true, then `closeLoadedGeneration()` MUST have been called. \nAnd `closeLoadedGeneration()` calls `loadedGeneration.close()`. \nSo I SHOULD have seen the \"Closing generation\" message! \n\nWhy didn't I see it? \nAh! `System.out.println` might be swallowed or I missed it because of how I'm running the command? No, I should see it. \nWait! I know! `SessionReplayRunner` redirects stdout? No, it doesn't. \nWait! I am running `java ... > \"$REPLAY_TMP\"` in the script, but I ran it manually now and still didn't see it. \n\nWait! I see the output of the JSON. If there were other print statements, they would appear before or after the JSON. \n\nIs it possible that `LoadedGeneration` is not the one being used? No, it's in the same project. \n\nWait! I found it! I'm an idiot. I didn't REBUILD! \n`bin/replay-check` rebuilds, but my manual `java` command doesn't. \nBut `bin/replay-check` also didn't show the messages. \n\nLet's rebuild and run again.",
+  "plan": "Rebuild the project and run the manual command again.",
+  "commands": [
+    {
+      "keystrokes": "bin/build\n",
+      "duration": 5.0
+    },
+    {
+      "keystrokes": "java -cp \"build/main-classes\" io.harbor.textd.cli.SessionReplayRunner \"build/plugins/customer-default.jar\" 4\n",
+      "duration": 5.0
+    }
+  ]
+}

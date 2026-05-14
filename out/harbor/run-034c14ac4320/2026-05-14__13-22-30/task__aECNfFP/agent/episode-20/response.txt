@@ -1,0 +1,10 @@
+{
+  "analysis": "It's not a git repository. I'll manually revert the changes to `HotReloadStressRunner.java`.",
+  "plan": "I will rewrite `src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java` to its original state.",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java <<EOF\npackage io.harbor.textd.cli;\n\nimport io.harbor.textd.core.OutputFormat;\nimport io.harbor.textd.core.ProcessingResult;\nimport io.harbor.textd.core.TextDaemon;\n\nimport java.nio.file.Path;\nimport java.util.List;\n\npublic final class HotReloadStressRunner {\n    private static final String SAMPLE = \"alpha beta gamma\";\n\n    private HotReloadStressRunner() {\n    }\n\n    public static void main(String[] args) throws Exception {\n        Path pluginJar = Path.of(args[0]);\n        int cycles = args.length > 1 ? Integer.parseInt(args[1]) : 500;\n\n        try (TextDaemon daemon = new TextDaemon(pluginJar, 4)) {\n            for (int generation = 1; generation <= cycles; generation++) {\n                daemon.reload(generation);\n                assertOutputs(generation, daemon.processBatch(List.of(SAMPLE, SAMPLE, SAMPLE, SAMPLE)));\n                assertOutput(generation, daemon.process(SAMPLE));\n                if (generation % 3 == 0) {\n                    assertOutputs(generation, daemon.processBatch(List.of(SAMPLE, SAMPLE, SAMPLE, SAMPLE)));\n                }\n            }\n        }\n\n        System.out.println(\"stress-ok cycles=\" + cycles);\n    }\n\n    private static void assertOutputs(long generation, List<ProcessingResult> results) {\n        for (ProcessingResult result : results) {\n            assertOutput(generation, result);\n        }\n    }\n\n    private static void assertOutput(long generation, ProcessingResult result) {\n        String expected = OutputFormat.expectedFor(generation, SAMPLE);\n        if (!expected.equals(result.output())) {\n            throw new IllegalStateException(\"Unexpected output at generation \" + generation + \": \" + result.output());\n        }\n    }\n}\nEOF\n",
+      "duration": 0.1
+    }
+  ]
+}

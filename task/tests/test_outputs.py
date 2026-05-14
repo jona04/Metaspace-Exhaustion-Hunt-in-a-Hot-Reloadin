@@ -14,6 +14,7 @@ LATEST_GENERATION = 24
 PRISTINE_HASHES = {
     "bin/build": "d30c8c505f3771343176879ee02bef48b272c7abb2f73c317aabb516d3c2289f",
     "bin/integration": "6c77011e97beb056d141550a0082f540c53fb662e495e281581a8060cdf607da",
+    "bin/replay-check": "fcb3cf9b23c5038a5243d304e88b2463782640e3a3cbee33d1d5c0bc9d594c15",
     "bin/run-suite": "037ad0eade3428f31b2e659017dd76ca55611fb606ca1364bc09cc721337d749",
     "bin/stress": "0636862d43d0dda597bad2014be3b62b0ac775cef2dbb34017e551641fdab192",
     "src/main/java/io/harbor/textd/cli/HotReloadIntegrationRunner.java": "42b743fa308066b053f31cc3fd62afd769fa8b2789f905b669f2e2042e7ecec6",
@@ -85,6 +86,11 @@ def digest_result(build_once: None) -> dict:
     return json.loads(completed.stdout)
 
 
+@pytest.fixture(scope="session")
+def replay_check_result(build_once: None) -> subprocess.CompletedProcess[str]:
+    return run_command(["bash", "./bin/replay-check"], env={"TEXTD_SKIP_BUILD": "1"})
+
+
 def test_public_runner_surfaces_are_pristine(pristine_surfaces: None) -> None:
     pass
 
@@ -119,6 +125,11 @@ def test_runtime_digest_reports_stable_run(digest_result: dict) -> None:
     assert digest_result["same_workers"] is True
     assert digest_result["before_close"] is True
     assert digest_result["after_close"] is True
+
+
+def test_replay_check_reports_unloading(replay_check_result: subprocess.CompletedProcess[str]) -> None:
+    assert replay_check_result.stdout.startswith("replay-ok unloaded-first=")
+    assert "unloaded-second=" in replay_check_result.stdout
 
 
 @pytest.fixture(scope="session")

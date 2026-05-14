@@ -1,0 +1,10 @@
+{
+  "analysis": "In `ThreadCache.java`, the `cursor` (a `WorkerHandle`) is replaced when the `TimelineFrame` changes. However, the old `cursor` is never closed! This is likely the cause of the leak. When `cursor = new WorkerHandle(frame);` is called, the previous `WorkerHandle` (if any) is just discarded, but it might still hold a reference to the previous `TimelineFrame` through a pin.\n\nLet's check `WorkerHandle.java` to see how it interacts with `TimelineFrame`.",
+  "plan": "Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 1.0
+    }
+  ]
+}

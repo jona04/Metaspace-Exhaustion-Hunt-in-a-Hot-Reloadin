@@ -1,0 +1,14 @@
+{
+  "analysis": "The `HotReloadStressRunner` doesn't check for balance. I should check if `TextDaemon` has a way to check for balance. Yes, it has `isBalanced()`. I can check it after the loop.",
+  "plan": "I will modify `HotReloadStressRunner.java` to check `daemon.isBalanced()` at the end of the test. This will confirm that old generations are being properly reclaimed.",
+  "commands": [
+    {
+      "keystrokes": "sed -i '/System.out.println(\"stress-ok cycles=\" + cycles);/i \\        if (!daemon.isBalanced()) { throw new IllegalStateException(\"Daemon is not balanced\"); }' src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.1
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "analysis": "In `TimelineLedger`, old `TimelineFrame`s are added to a `shadow` queue and pruned when they are 'drained'.\nIn `ThreadCache`, `cursor` is updated to a new `WorkerHandle` when the frame changes. However, the old `WorkerHandle` is simply replaced: `cursor = new WorkerHandle(frame);`. The old `WorkerHandle` is not closed.\n\nLet's see `WorkerHandle.java` and `TimelineFrame.java`.",
+  "plan": "I will examine `src/main/java/io/harbor/textd/core/WorkerHandle.java` and `src/main/java/io/harbor/textd/core/TimelineFrame.java` to see how they track usage and whether they need to be closed to allow the `TimelineFrame` to be 'drained'.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    }
+  ]
+}

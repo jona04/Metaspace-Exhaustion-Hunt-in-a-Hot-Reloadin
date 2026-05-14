@@ -1,0 +1,10 @@
+{
+  "analysis": "`ThreadBridge.clear()` is never called. This might be a problem if threads are reused or if we want to ensure everything is cleaned up when the daemon is closed. However, in `HotReloadStressRunner`, only one `TextDaemon` is created and used for many reloads. The threads in the `TextDaemon`'s pool will hold the `ThreadCache` which now correctly closes the old `WorkerHandle` on each reload. When the `TextDaemon` is closed, the pool is shut down, which should eventually let the threads be GCed, along with their `ThreadLocal` maps.\n\nLet's try running the stress test.",
+  "plan": "Run the stress test to see if it now passes with the fixed `ThreadCache`.",
+  "commands": [
+    {
+      "keystrokes": "bin/stress 100\n",
+      "duration": 10.0
+    }
+  ]
+}

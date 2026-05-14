@@ -1,0 +1,14 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with a limited `-XX:MaxMetaspaceSize=64m`. This confirms that the problem is likely a leak in the Metaspace, probably due to old ClassLoaders not being garbage collected. The `HotReloadStressRunner` repeatedly calls `daemon.reload(generation)` and then processes some text.",
+  "plan": "I will examine `io.harbor.textd.core.TextDaemon` and `io.harbor.textd.core.LoadedGeneration` to see how plugins are reloaded and how old generations are handled.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.1
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "analysis": "In `TimelineLedger.java`, `pruneShadow()` removes frames from the `shadow` queue if they are 'drained'.\nIn `ThreadBridge.java`, a `ThreadLocal<ThreadCache>` is used to store `WorkerHandle`s.\nIn `ThreadCache.java`, `cursorFor(ledger)` creates a new `WorkerHandle` if the current one doesn't match the latest frame.\nHowever, the old `WorkerHandle` is simply replaced: `cursor = new WorkerHandle(frame);`. It is not closed! `WorkerHandle.close()` likely decrements a reference count or something similar in `TimelineFrame` to signal that it's no longer in use.\n\nLet's check `WorkerHandle.java` and `TimelineFrame.java` to confirm.",
+  "plan": "I will examine `WorkerHandle.java` and `TimelineFrame.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    }
+  ]
+}

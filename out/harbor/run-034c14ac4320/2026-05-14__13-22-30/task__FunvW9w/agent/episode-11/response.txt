@@ -1,0 +1,10 @@
+{
+  "analysis": "Yes, `WorkerHandle` pins the `TimelineFrame` in its constructor and unpins it in `close()`. In `ThreadCache.java`, when `cursor` is replaced, the old `WorkerHandle` is not closed, so the `TimelineFrame` remains pinned forever, preventing it from being drained and closed.\n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame); // Old cursor is not closed!\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n\nTo fix this, I should close the old `cursor` before creating a new one.",
+  "plan": "I will modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `WorkerHandle` when it's replaced.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/if (cursor != null) cursor.close(); cursor = new WorkerHandle(frame);/' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    }
+  ]
+}
