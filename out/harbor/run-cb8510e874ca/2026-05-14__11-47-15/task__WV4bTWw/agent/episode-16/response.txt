@@ -1,0 +1,10 @@
+{
+  "analysis": "Wait, I just realized something. In `TimelineLedger.close()`, it sets `current` to `null` and adds the last frame to `shadow`. Then it calls `pruneShadow()`. `pruneShadow()` removes frames if `isDrained()` is true. `isDrained()` is true if `closed` is true in `TimelineFrame`. `closed` is set to true in `closeLoadedGeneration()`, which is called when `pins` reaches 0 AND `cooled` is true.\n\nIn `TextDaemon.close()`, it shuts down the workers. But does it clear the `ThreadLocal` in those worker threads? If not, the `WorkerHandle` in each worker thread's `ThreadCache` will still be pinning the frame. \n\nHowever, `TextDaemon.close()` calls `workers.shutdownNow()`. This will eventually terminate the threads. Once the threads are terminated, the `ThreadLocal` references should be eligible for GC, and eventually the `WorkerHandle` objects will be GCed. But `WorkerHandle` has a `close()` method that unpins the frame. If the thread just dies, `close()` isn't called unless there's a cleaner or something, which there isn't. \n\nActually, the problem I fixed was the leak *during* the run, when generations are swapped but the threads keep running. The fixed `ThreadCache` now closes the old `WorkerHandle` when it moves to a new generation. This allows the old generation's pin count to drop and eventually reach zero, allowing it to be closed and its class loader closed.\n\nIs there any other place where `WorkerHandle` is not closed? \n`ThreadBridge.clear()` calls `routeState.close()`, which closes the cursor. But who calls `ThreadBridge.clear()`? \n\nLet's check `TextDaemon.java` again.",
+  "plan": "I will check `TextDaemon.java` to see if it clears the `ThreadBridge` or if it's even necessary if we are just worried about the long run with swaps.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.5
+    }
+  ]
+}

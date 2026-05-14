@@ -1,0 +1,18 @@
+{
+  "analysis": "In `TimelineLedger`, `install` adds the previous `TimelineFrame` to a `shadow` queue and calls `previous.cool()`. `pruneShadow` removes frames from the queue if they are 'drained'. `ThreadBridge` uses a `ThreadLocal<ThreadCache>`. `ThreadCache.cursorFor(ledger)` likely holds a reference to a `TimelineFrame`.",
+  "plan": "I need to examine `TimelineFrame.java`, `ThreadCache.java`, and `WorkerHandle.java` to see how `isDrained` is determined and if frames are properly closed when they become drained.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    }
+  ]
+}

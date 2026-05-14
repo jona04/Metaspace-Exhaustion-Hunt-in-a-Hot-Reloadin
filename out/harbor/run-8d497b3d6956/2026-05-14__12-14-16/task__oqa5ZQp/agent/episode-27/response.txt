@@ -1,0 +1,10 @@
+{
+  "analysis": "I've updated `WorkerHandle.java`. Now let's refine `ThreadBridge.java` to be more careful about how it handles the caches.",
+  "plan": "I will update `ThreadBridge.java` to make sure `ALL_CACHES` is handled correctly. I'll also add a `clearAll` that doesn't remove from the queue but just closes them, or better, I'll keep it as is but make sure it's called correctly.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadBridge.java\npackage io.harbor.textd.core;\n\nimport java.util.Queue;\nimport java.util.concurrent.ConcurrentLinkedQueue;\n\nfinal class ThreadBridge {\n    private static final Queue<ThreadCache> ALL_CACHES = new ConcurrentLinkedQueue<>();\n    private static final ThreadLocal<ThreadCache> ROUTES = ThreadLocal.withInitial(() -> {\n        ThreadCache cache = new ThreadCache();\n        ALL_CACHES.add(cache);\n        return cache;\n    });\n\n    private ThreadBridge() {\n    }\n\n    static WorkerHandle current(TimelineLedger ledger) {\n        return ROUTES.get().cursorFor(ledger);\n    }\n\n    static void clear() {\n        ThreadCache routeState = ROUTES.get();\n        routeState.close();\n        ROUTES.remove();\n        ALL_CACHES.remove(routeState);\n    }\n\n    static void clearAll() {\n        // We don't use poll() because we want to keep them in ALL_CACHES \n        // if the threads are still alive and might be reused.\n        // But wait, if they are reused, they will just have a null cursor.\n        // Actually, for TextDaemon, we want to clear everything.\n        for (ThreadCache cache : ALL_CACHES) {\n            cache.close();\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    }
+  ]
+}

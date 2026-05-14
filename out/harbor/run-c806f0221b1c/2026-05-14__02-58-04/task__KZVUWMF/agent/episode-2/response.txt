@@ -1,0 +1,18 @@
+{
+  "analysis": "I've reviewed `TextDaemon.java`, `LoadedGeneration.java`, and `HotReloadStressRunner.java`. \n- `TextDaemon` manages a pool of worker threads and uses a `TimelineLedger` to handle revisions (plugin generations).\n- `LoadedGeneration` uses a `URLClassLoader` to load the plugin and has a `close()` method that closes the module and the class loader.\n- `HotReloadStressRunner` performs many cycles of reloading and processing.\n\nThe task mentions that old plugin generations must be fully reclaimed once sessions close. The issue likely lies in how `TimelineLedger`, `ThreadBridge`, and `ThreadCache` manage these generations, potentially holding onto references that prevent garbage collection of the `URLClassLoader` and its classes.",
+  "plan": "I need to examine `TimelineLedger.java`, `ThreadBridge.java`, and `ThreadCache.java` to see how generations are cached and released.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    }
+  ]
+}

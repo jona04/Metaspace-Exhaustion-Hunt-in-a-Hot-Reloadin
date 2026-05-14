@@ -1,0 +1,5792 @@
+[?2004hroot@138f0c73e14a:/workspace/textd# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@138f0c73e14a:/workspace/textd# clear
+[?2004l[H[J[3J[?2004hroot@138f0c73e14a:/workspace/textd# ls -R
+[?2004l.:
+[0m[01;34mbin[0m  [01;34mbuild[0m  [01;34mplugin-src[0m  [01;34msrc[0m
+
+./bin:
+[01;32mbuild[0m  [01;32mintegration[0m  [01;32mreplay-check[0m  [01;32mrun-suite[0m  [01;32mstress[0m
+
+./build:
+[01;34mmain-classes[0m  [01;34mplugin-classes[0m  [01;34mplugins[0m
+
+./build/main-classes:
+
+./build/plugin-classes:
+
+./build/plugins:
+
+./plugin-src:
+[01;34mio[0m
+
+./plugin-src/io:
+[01;34mharbor[0m
+
+./plugin-src/io/harbor:
+[01;34mtextd[0m
+
+./plugin-src/io/harbor/textd:
+[01;34mcustomer[0m
+
+./plugin-src/io/harbor/textd/customer:
+CustomerPluginFactory.java  CustomerPluginModule.java  PipelineProcessor.java  PipelineStages.java
+
+./src:
+[01;34mmain[0m
+
+./src/main:
+[01;34mjava[0m
+
+./src/main/java:
+[01;34mio[0m
+
+./src/main/java/io:
+[01;34mharbor[0m
+
+./src/main/java/io/harbor:
+[01;34mtextd[0m
+
+./src/main/java/io/harbor/textd:
+[01;34mapi[0m  [01;34mcli[0m  [01;34mcore[0m
+
+./src/main/java/io/harbor/textd/api:
+PluginModule.java  PluginModuleFactory.java  TextProcessor.java
+
+./src/main/java/io/harbor/textd/cli:
+HotReloadIntegrationRunner.java  HotReloadStressRunner.java  RuntimeDigestRunner.java  SessionReplayRunner.java
+
+./src/main/java/io/harbor/textd/core:
+LoadedGeneration.java  ProcessingResult.java  ThreadBridge.java  TimelineFrame.java   WorkerHandle.java
+OutputFormat.java      TextDaemon.java        ThreadCache.java   TimelineLedger.java
+[?2004hroot@138f0c73e14a:/workspace/textd# cat bin/stress
+[?2004l#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+if [[ "${TEXTD_SKIP_BUILD:-0}" != "1" ]]; then
+  "$ROOT_DIR/bin/build"
+fi
+
+java -XX:MaxMetaspaceSize=64m -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.HotReloadStressRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" \
+  "${1:-50}"
+[?2004hroot@138f0c73e14a:/workspace/textd# cat bin/build
+[?2004l#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+BUILD_DIR="$ROOT_DIR/build"
+MAIN_CLASSES="$BUILD_DIR/main-classes"
+PLUGIN_CLASSES="$BUILD_DIR/plugin-classes"
+PLUGIN_DIR="$BUILD_DIR/plugins"
+
+rm -rf "$MAIN_CLASSES" "$PLUGIN_CLASSES"
+mkdir -p "$MAIN_CLASSES" "$PLUGIN_CLASSES" "$PLUGIN_DIR"
+
+find "$ROOT_DIR/src/main/java" -name '*.java' | sort > "$BUILD_DIR/main-sources.txt"
+javac --release 17 -d "$MAIN_CLASSES" @"$BUILD_DIR/main-sources.txt"
+
+find "$ROOT_DIR/plugin-src" -name '*.java' | sort > "$BUILD_DIR/plugin-sources.txt"
+javac --release 17 -cp "$MAIN_CLASSES" -d "$PLUGIN_CLASSES" @"$BUILD_DIR/plugin-sources.txt"
+
+jar --create --file "$PLUGIN_DIR/customer-default.jar" -C "$PLUGIN_CLASSES" .
+[?2004hroot@138f0c73e14a:/workspace/textd# ./bin/stress 20
+[?2004lstress-ok cycles=20
+[?2004hroot@138f0c73e14a:/workspace/textd# cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java
+[?2004lpackage io.harbor.textd.cli;
+
+import io.harbor.textd.core.OutputFormat;
+import io.harbor.textd.core.ProcessingResult;
+import io.harbor.textd.core.TextDaemon;
+
+import java.nio.file.Path;
+import java.util.List;
+
+public final class HotReloadStressRunner {
+    private static final String SAMPLE = "alpha beta gamma";
+
+    private HotReloadStressRunner() {
+    }
+
+    public static void main(String[] args) throws Exception {
+        Path pluginJar = Path.of(args[0]);
+        int cycles = args.length > 1 ? Integer.parseInt(args[1]) : 500;
+
+        try (TextDaemon daemon = new TextDaemon(pluginJar, 4)) {
+            for (int generation = 1; generation <= cycles; generation++) {
+                daemon.reload(generation);
+                assertOutputs(generation, daemon.processBatch(List.of(SAMPLE, SAMPLE, SAMPLE, SAMPLE)));
+                assertOutput(generation, daemon.process(SAMPLE));
+                if (generation % 3 == 0) {
+                    assertOutputs(generation, daemon.processBatch(List.of(SAMPLE, SAMPLE, SAMPLE, SAMPLE)));
+                }
+            }
+        }
+
+        System.out.println("stress-ok cycles=" + cycles);
+    }
+
+    private static void assertOutputs(long generation, List<ProcessingResult> results) {
+        for (ProcessingResult result : results) {
+            assertOutput(generation, result);
+        }
+    }
+
+    private static void assertOutput(long generation, ProcessingResult result) {
+        String expected = OutputFormat.expectedFor(generation, SAMPLE);
+        if (!expected.equals(result.output())) {
+            throw new IllegalStateException("Unexpected output at generation " + generation + ": " + result.output());
+        }
+    }
+}
+[?2004hroot@138f0c73e14a:/workspace/textd# cat src/main/java/io/harbor/textd/core/TextDaemon.java
+[?2004lpackage io.harbor.textd.core;
+
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+public final class TextDaemon implements AutoCloseable {
+    private final ExecutorService workers;
+    private final TimelineLedger revisions;
+    private final int workerCount;
+
+    public TextDaemon(Path pluginJar, int workerCount) {
+        this.revisions = new TimelineLedger(pluginJar);
+        this.workers = Executors.newFixedThreadPool(workerCount, new WorkerThreadFactory());
+        this.workerCount = workerCount;
+    }
+
+    public void reload(long generation) throws Exception {
+        revisions.install(generation);
+    }
+
+    public ProcessingResult process(String record) throws Exception {
+        return processBatch(List.of(record)).get(0);
+    }
+
+    public boolean isBalanced() {
+        return revisions.isBalanced();
+    }
+
+    public List<ProcessingResult> processBatch(List<String> records) throws Exception {
+        CountDownLatch ready = new CountDownLatch(records.size());
+        CountDownLatch release = new CountDownLatch(1);
+        List<Future<ProcessingResult>> futures = new ArrayList<>();
+        for (String record : records) {
+            futures.add(workers.submit(() -> processRecord(record, ready, release)));
+        }
+
+        if (!ready.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Workers did not become ready");
+        }
+        release.countDown();
+
+        List<ProcessingResult> results = new ArrayList<>(records.size());
+        for (Future<ProcessingResult> future : futures) {
+            try {
+                results.add(future.get());
+            } catch (ExecutionException exception) {
+                Throwable cause = exception.getCause();
+                if (cause instanceof Exception checked) {
+                    throw checked;
+                }
+                if (cause instanceof Error error) {
+                    throw error;
+                }
+                throw new RuntimeException(cause);
+            }
+        }
+        return results;
+    }
+
+    private ProcessingResult processRecord(
+        String record,
+        CountDownLatch ready,
+        CountDownLatch release
+    ) throws Exception {
+        ready.countDown();
+        if (!release.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Request release timed out");
+        }
+
+        WorkerHandle binding = ThreadBridge.current(revisions);
+        return binding.process(record);
+    }
+
+    @Override
+    public void close() throws Exception {
+        revisions.close();
+        workers.shutdownNow();
+        workers.awaitTermination(5, TimeUnit.SECONDS);
+    }
+
+    private static final class WorkerThreadFactory implements ThreadFactory {
+        private final AtomicInteger sequence = new AtomicInteger(1);
+
+        @Override
+        public Thread newThread(Runnable runnable) {
+            Thread thread = new Thread(runnable);
+            thread.setName("textd-worker-" + sequence.getAndIncrement());
+            thread.setDaemon(true);
+            return thread;
+        }
+    }
+}
+[?2004hroot@138f0c73e14a:/workspace/textd# ./bin/stress 500
+[?2004lException in thread "main" java.lang.NoClassDefFoundError: Could not initialize class io.harbor.textd.customer.PipelineStages
+	at io.harbor.textd.customer.PipelineProcessor.process(PipelineProcessor.java:22)
+	at io.harbor.textd.core.WorkerHandle.process(WorkerHandle.java:21)
+	at io.harbor.textd.core.TextDaemon.processRecord(TextDaemon.java:80)
+	at io.harbor.textd.core.TextDaemon.lambda$processBatch$0(TextDaemon.java:43)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+	at java.base/java.lang.Thread.run(Thread.java:840)
+Caused by: java.lang.ExceptionInInitializerError: Exception java.lang.OutOfMemoryError: Metaspace [in thread "textd-worker-2"]
+	at java.base/java.lang.ClassLoader.defineClass1(Native Method)
+	at java.base/java.lang.ClassLoader.defineClass(ClassLoader.java:1017)
+	at java.base/java.security.SecureClassLoader.defineClass(SecureClassLoader.java:150)
+	at java.base/java.net.URLClassLoader.defineClass(URLClassLoader.java:524)
+	at java.base/java.net.URLClassLoader$1.run(URLClassLoader.java:427)
+	at java.base/java.net.URLClassLoader$1.run(URLClassLoader.java:421)
+	at java.base/java.security.AccessController.executePrivileged(AccessController.java:807)
+	at java.base/java.security.AccessController.doPrivileged(AccessController.java:712)
+	at java.base/java.net.URLClassLoader.findClass(URLClassLoader.java:420)
+	at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:592)
+	at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:525)
+	at io.harbor.textd.customer.PipelineStages.<clinit>(PipelineStages.java:10)
+	at io.harbor.textd.customer.PipelineProcessor.process(PipelineProcessor.java:22)
+	at io.harbor.textd.core.WorkerHandle.process(WorkerHandle.java:21)
+	at io.harbor.textd.core.TextDaemon.processRecord(TextDaemon.java:80)
+	at io.harbor.textd.core.TextDaemon.lambda$processBatch$0(TextDaemon.java:43)
+	at io.harbor.textd.core.TextDaemon$$Lambda$1/0x00007c4bf1001c58.call(Unknown Source)
+	... 4 more
+[?2004hroot@138f0c73e14a:/workspace/textd# cat src/main/java/io/harbor/textd/core/TimelineLedger.java
+[?2004lpackage io.harbor.textd.core;
+
+import java.nio.file.Path;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicReference;
+
+final class TimelineLedger {
+    private final Path pluginJar;
+    private final AtomicReference<TimelineFrame> current = new AtomicReference<>();
+    private final Queue<TimelineFrame> shadow = new ConcurrentLinkedQueue<>();
+
+    TimelineLedger(Path pluginJar) {
+        this.pluginJar = pluginJar;
+    }
+
+    void install(long revision) throws Exception {
+        TimelineFrame next = new TimelineFrame(LoadedGeneration.load(pluginJar, revision));
+        TimelineFrame previous = current.getAndSet(next);
+        if (previous != null) {
+            shadow.add(previous);
+            previous.cool();
+            pruneShadow();
+        }
+    }
+
+    TimelineFrame current() {
+        TimelineFrame frame = current.get();
+        if (frame == null) {
+            throw new IllegalStateException("No plugin generation is loaded");
+        }
+        return frame;
+    }
+
+    boolean isBalanced() {
+        pruneShadow();
+        return shadow.isEmpty();
+    }
+
+    void close() {
+        TimelineFrame frame = current.getAndSet(null);
+        if (frame != null) {
+            shadow.add(frame);
+            frame.cool();
+        }
+        pruneShadow();
+    }
+
+    private void pruneShadow() {
+        shadow.removeIf(TimelineFrame::isDrained);
+    }
+}
+[?2004hroot@138f0c73e14a:/workspace/textd# cat src/main/java/io/harbor/textd/core/ThreadBridge.java
+[?2004lpackage io.harbor.textd.core;
+
+final class ThreadBridge {
+    private static final ThreadLocal<ThreadCache> ROUTES = ThreadLocal.withInitial(ThreadCache::new);
+
+    private ThreadBridge() {
+    }
+
+    static WorkerHandle current(TimelineLedger ledger) {
+        return ROUTES.get().cursorFor(ledger);
+    }
+
+    static void clear() {
+        ThreadCache routeState = ROUTES.get();
+        routeState.close();
+        ROUTES.remove();
+    }
+}
+[?2004hroot@138f0c73e14a:/workspace/textd# cat src/main/java/io/harbor/textd/core/LoadedGeneration.java
+[?2004lpackage io.harbor.textd.core;
+
+import io.harbor.textd.api.PluginModule;
+import io.harbor.textd.api.PluginModuleFactory;
+
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Path;
+
+final class LoadedGeneration implements AutoCloseable {
+    private static final String FACTORY_CLASS = "io.harbor.textd.customer.CustomerPluginFactory";
+
+    private final long generation;
+    private final URLClassLoader classLoader;
+    private final PluginModule module;
+
+    private LoadedGeneration(long generation, URLClassLoader classLoader, PluginModule module) {
+        this.generation = generation;
+        this.classLoader = classLoader;
+        this.module = module;
+    }
+
+    static LoadedGeneration load(Path pluginJar, long generation) throws Exception {
+        URLClassLoader classLoader = new URLClassLoader(new URL[] {pluginJar.toUri().toURL()}, PluginModuleFactory.class.getClassLoader());
+        Class<?> factoryType = classLoader.loadClass(FACTORY_CLASS);
+        PluginModuleFactory factory = (PluginModuleFactory) factoryType.getDeclaredConstructor().newInstance();
+        return new LoadedGeneration(generation, classLoader, factory.open());
+    }
+
+    long generation() {
+        return generation;
+    }
+
+    PluginModule module() {
+        return module;
+    }
+
+    @Override
+    public void close() throws Exception {
+        module.close();
+        classLoader.close();
+    }
+}
+[?2004hroot@138f0c73e14a:/workspace/textd# cat src/main/java/io/harbor/textd/core/TimelineFrame.java
+[?2004lpackage io.harbor.textd.core;
+
+import io.harbor.textd.api.PluginModule;
+
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+
+final class TimelineFrame {
+    private final LoadedGeneration loadedGeneration;
+    private final AtomicInteger pins = new AtomicInteger(1);
+    private final AtomicBoolean cooled = new AtomicBoolean(false);
+    private final AtomicBoolean closed = new AtomicBoolean(false);
+
+    TimelineFrame(LoadedGeneration loadedGeneration) {
+        this.loadedGeneration = loadedGeneration;
+    }
+
+    TimelineFrame pin() {
+        while (true) {
+            int current = pins.get();
+            if (current == 0) {
+                throw new IllegalStateException("Revision " + revision() + " is already closed");
+            }
+            if (pins.compareAndSet(current, current + 1)) {
+                return this;
+            }
+        }
+    }
+
+    long revision() {
+        return loadedGeneration.generation();
+    }
+
+    PluginModule module() {
+        return loadedGeneration.module();
+    }
+
+    void cool() {
+        if (cooled.compareAndSet(false, true)) {
+            unpin();
+        }
+    }
+
+    void unpin() {
+        int remaining = pins.decrementAndGet();
+        if (remaining < 0) {
+            throw new IllegalStateException("Pin count underflow for revision " + revision());
+        }
+        if (remaining == 0 && cooled.get()) {
+            closeLoadedGeneration();
+        }
+    }
+
+    boolean isDrained() {
+        return closed.get();
+    }
+
+    private void closeLoadedGeneration() {
+        if (closed.compareAndSet(false, true)) {
+            try {
+                loadedGeneration.close();
+            } catch (Exception exception) {
+                throw new IllegalStateException("Unable to close revision " + revision(), exception);
+            }
+        }
+    }
+}
+[?2004hroot@138f0c73e14a:/workspace/textd# cat src/main/java/io/harbor/textd/core/ThreadCache.java
+[?2004lpackage io.harbor.textd.core;
+
+final class ThreadCache implements AutoCloseable {
+    private WorkerHandle cursor;
+
+    WorkerHandle cursorFor(TimelineLedger ledger) {
+        TimelineFrame frame = ledger.current();
+        if (cursor == null) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        if (!cursor.matches(frame)) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        return cursor;
+    }
+
+    @Override
+    public void close() {
+        if (cursor != null) {
+            cursor.close();
+            cursor = null;
+        }
+    }
+}
+[?2004hroot@138f0c73e14a:/workspace/textd# cat src/main/java/io/harbor/textd/core/WorkerHandle.java
+[?2004lpackage io.harbor.textd.core;
+
+import io.harbor.textd.api.TextProcessor;
+
+final class WorkerHandle implements AutoCloseable {
+    private final TimelineFrame frame;
+    private final long revision;
+    private final TextProcessor processor;
+
+    WorkerHandle(TimelineFrame frame) {
+        this.frame = frame.pin();
+        this.revision = frame.revision();
+        this.processor = frame.module().processorFor(revision);
+    }
+
+    boolean matches(TimelineFrame frame) {
+        return revision == frame.revision();
+    }
+
+    ProcessingResult process(String record) {
+        String output = processor.process(record);
+        return new ProcessingResult(revision, output, Thread.currentThread().getName());
+    }
+
+    @Override
+    public void close() {
+        frame.unpin();
+    }
+}
+[?2004hroot@138f0c73e14a:/workspace/textd# cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java
+[?2004l[?2004h> package io.harbor.textd.core;
+[?2004l[?2004h> 
+[?2004l[?2004h> final class ThreadCache implements AutoCloseable {
+[?2004l[?2004h>     private WorkerHandle cursor;
+[?2004l[?2004h> 
+[?2004l[?2004h>     WorkerHandle cursorFor(TimelineLedger ledger) {
+[?2004l[?2004h>         TimelineFrame frame = ledger.current();
+[?2004l[?2004h>         if (cursor == null) {
+[?2004l[?2004h>             cursor = new WorkerHandle(frame);
+[?2004l[?2004h>             return cursor;
+[?2004l[?2004h>         }
+[?2004l[?2004h> 
+[?2004l[?2004h>         if (!cursor.matches(frame)) {
+[?2004l[?2004h>             cursor.close();
+[?2004l[?2004h>             cursor = new WorkerHandle(frame);
+[?2004l[?2004h>             return cursor;
+[?2004l[?2004h>         }
+[?2004l[?2004h> 
+[?2004l[?2004h>         return cursor;
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     @Override
+[?2004l[?2004h>     public void close() {
+[?2004l[?2004h>         if (cursor != null) {
+[?2004l[?2004h>             cursor.close();
+[?2004l[?2004h>             cursor = null;
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h> }
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@138f0c73e14a:/workspace/textd# ./bin/stress 500
+[?2004lstress-ok cycles=500
+[?2004hroot@138f0c73e14a:/workspace/textd# ./bin/integration
+[?2004l./bin/replay-check
+{
+  "input": "alpha beta gamma",
+  "baseline": "GEN-001|ALPHA>BETA>GAMMA|PIPE-18528",
+  "revision": 12,
+  "current": "GEN-012|ALPHA>BETA>GAMMA|PIPE-18528"
+}
+[?2004hroot@138f0c73e14a:/workspace/textd# ./bin/replay-check
+[?2004l./bin/run-suite
+replay-fail unloaded-first=0 unloaded-second=0
+[?2004hroot@138f0c73e14a:/workspace/textd# ./bin/run-suite
+[?2004lcat bin/integration
+cat bin/replay-check
+cat bin/run-suite
+cat bin/integration
+cat bin/replay-check
+cat bin/run-suite
+cat bin/integration
+cat bin/replay-check
+cat bin/run-suite
+ls -l bin
+^C[?2004hroot@138f0c73e14a:/workspace/textd# ls -l bin
+[?2004ltotal 20
+-rwxr-xr-x 1 root root 742 May  8 22:17 [0m[01;32mbuild[0m
+-rwxr-xr-x 1 root root 322 May  8 22:17 [01;32mintegration[0m
+-rwxr-xr-x 1 root root 867 May 14 02:53 [01;32mreplay-check[0m
+-rwxr-xr-x 1 root root 610 May 12 15:44 [01;32mrun-suite[0m
+-rwxr-xr-x 1 root root 342 May 13 18:11 [01;32mstress[0m
+[?2004hroot@138f0c73e14a:/workspace/textd# cat bin/integration
+[?2004l#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+if [[ "${TEXTD_SKIP_BUILD:-0}" != "1" ]]; then
+  "$ROOT_DIR/bin/build"
+fi
+
+java -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.HotReloadIntegrationRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" \
+  "${1:-12}"
+[?2004hroot@138f0c73e14a:/workspace/textd# cat bin/replay-check
+[?2004l#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+if [[ "${TEXTD_SKIP_BUILD:-0}" != "1" ]]; then
+  "$ROOT_DIR/bin/build"
+fi
+
+REPLAY_TMP=$(mktemp)
+trap 'rm -f "$REPLAY_TMP"' EXIT
+
+java -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.SessionReplayRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" 24 > "$REPLAY_TMP"
+
+python3 - "$REPLAY_TMP" <<'PYEOF'
+import json, sys
+
+with open(sys.argv[1]) as f:
+    data = json.load(f)
+
+first  = data['first']
+second = data['second']
+
+d1 = first['unloaded_after_close']  - first['unloaded_before_close']
+d2 = second['unloaded_after_close'] - second['unloaded_before_close']
+
+if d1 > 0 and d2 > 0:
+    print(f"replay-ok unloaded-first={d1} unloaded-second={d2}")
+else:
+    print(f"replay-fail unloaded-first={d1} unloaded-second={d2}", file=sys.stderr)
+    sys.exit(1)
+PYEOF
+[?2004hroot@138f0c73e14a:/workspace/textd# cat bin/run-suite
+[?2004l#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+"$ROOT_DIR/bin/build"
+TEXTD_SKIP_BUILD=1 "$ROOT_DIR/bin/integration" 24 >/tmp/textd-integration.json
+java -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.RuntimeDigestRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" \
+  24 >/tmp/textd-session.json
+java -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.SessionReplayRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" \
+  24 >/tmp/textd-replay.json
+TEXTD_SKIP_BUILD=1 "$ROOT_DIR/bin/stress" 500 >/tmp/textd-stress.log
+
+echo "suite-ok"
+[?2004hroot@138f0c73e14a:/workspace/textd# cat src/main/java/io/harbor/textd/cli/SessionReplayRunner.java
+[?2004lpackage io.harbor.textd.cli;
+
+import io.harbor.textd.core.OutputFormat;
+import io.harbor.textd.core.ProcessingResult;
+import io.harbor.textd.core.TextDaemon;
+
+import java.lang.management.ClassLoadingMXBean;
+import java.lang.management.ManagementFactory;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.stream.Collectors;
+
+public final class SessionReplayRunner {
+    private static final String SAMPLE = "alpha beta gamma";
+    private static final ClassLoadingMXBean CLASS_LOADING = ManagementFactory.getClassLoadingMXBean();
+
+    private SessionReplayRunner() {
+    }
+
+    public static void main(String[] args) throws Exception {
+        Path pluginJar = Path.of(args[0]);
+        int revision = args.length > 1 ? Integer.parseInt(args[1]) : 24;
+
+        Session first = runSession(pluginJar, revision);
+        Session second = runSession(pluginJar, revision);
+
+        System.out.println("{");
+        System.out.println("  \"first\": " + first.toJson() + ",");
+        System.out.println("  \"second\": " + second.toJson());
+        System.out.println("}");
+    }
+
+    private static Session runSession(Path pluginJar, int revision) throws Exception {
+        long loadedBefore = CLASS_LOADING.getLoadedClassCount();
+        long unloadedBefore = CLASS_LOADING.getUnloadedClassCount();
+
+        TextDaemon daemon = new TextDaemon(pluginJar, 4);
+        try {
+            daemon.reload(1);
+            List<ProcessingResult> firstResults = daemon.processBatch(List.of(SAMPLE, SAMPLE, SAMPLE, SAMPLE));
+            assertOutputs(1, firstResults);
+
+            List<String> workersStart = workerThreads(firstResults);
+            List<ProcessingResult> finalResults = firstResults;
+            for (int current = 2; current <= revision; current++) {
+                daemon.reload(current);
+                finalResults = daemon.processBatch(List.of(SAMPLE, SAMPLE, SAMPLE, SAMPLE));
+                assertOutputs(current, finalResults);
+            }
+
+            List<String> workersEnd = workerThreads(finalResults);
+            boolean sameWorkers = workersStart.equals(workersEnd);
+            boolean beforeClose = daemon.isBalanced();
+            String first = firstResults.get(0).output();
+            String last = finalResults.get(0).output();
+
+            daemon.close();
+            drainGc();
+
+            return new Session(
+                first,
+                last,
+                workersStart,
+                workersEnd,
+                sameWorkers,
+                beforeClose,
+                daemon.isBalanced(),
+                loadedBefore,
+                CLASS_LOADING.getLoadedClassCount(),
+                unloadedBefore,
+                CLASS_LOADING.getUnloadedClassCount()
+            );
+        } catch (Exception exception) {
+            try {
+                daemon.close();
+            } catch (Exception closeException) {
+                exception.addSuppressed(closeException);
+            }
+            throw exception;
+        }
+    }
+
+    private static List<String> workerThreads(List<ProcessingResult> results) {
+        return results.stream()
+            .map(ProcessingResult::workerThread)
+            .sorted()
+            .collect(Collectors.toList());
+    }
+
+    private static void drainGc() throws InterruptedException {
+        for (int i = 0; i < 3; i++) {
+            System.gc();
+            Thread.sleep(50);
+        }
+    }
+
+    private static void assertOutputs(long revision, List<ProcessingResult> results) {
+        String expected = OutputFormat.expectedFor(revision, SAMPLE);
+        for (ProcessingResult result : results) {
+            if (!expected.equals(result.output())) {
+                throw new IllegalStateException("Unexpected output at revision " + revision + ": " + result.output());
+            }
+        }
+    }
+
+    private static String toJsonArray(List<String> values) {
+        return values.stream()
+            .map(value -> "\"" + value + "\"")
+            .collect(Collectors.joining(", ", "[", "]"));
+    }
+
+    private static final class Session {
+        private final String first;
+        private final String last;
+        private final List<String> start;
+        private final List<String> end;
+        private final boolean sameWorkers;
+        private final boolean beforeClose;
+        private final boolean afterClose;
+        private final long loadedBeforeClose;
+        private final long loadedAfterClose;
+        private final long unloadedBeforeClose;
+        private final long unloadedAfterClose;
+
+        private Session(
+            String first,
+            String last,
+            List<String> start,
+            List<String> end,
+            boolean sameWorkers,
+            boolean beforeClose,
+            boolean afterClose,
+            long loadedBeforeClose,
+            long loadedAfterClose,
+            long unloadedBeforeClose,
+            long unloadedAfterClose
+        ) {
+            this.first = first;
+            this.last = last;
+            this.start = start;
+            this.end = end;
+            this.sameWorkers = sameWorkers;
+            this.beforeClose = beforeClose;
+            this.afterClose = afterClose;
+            this.loadedBeforeClose = loadedBeforeClose;
+            this.loadedAfterClose = loadedAfterClose;
+            this.unloadedBeforeClose = unloadedBeforeClose;
+            this.unloadedAfterClose = unloadedAfterClose;
+        }
+
+        private String toJson() {
+            return "{"
+                + "\"first\":\"" + first + "\","
+                + "\"last\":\"" + last + "\","
+                + "\"start\":" + toJsonArray(start) + ","
+                + "\"end\":" + toJsonArray(end) + ","
+                + "\"same_workers\":" + sameWorkers + ","
+                + "\"before_close\":" + beforeClose + ","
+                + "\"after_close\":" + afterClose + ","
+                + "\"loaded_before_close\":" + loadedBeforeClose + ","
+                + "\"loaded_after_close\":" + loadedAfterClose + ","
+                + "\"unloaded_before_close\":" + unloadedBeforeClose + ","
+                + "\"unloaded_after_close\":" + unloadedAfterClose
+                + "}";
+        }
+    }
+}
+[?2004hroot@138f0c73e14a:/workspace/textd# cat <<EOF > src/main/java/io/harbor/textd/core/TextDaemon.java
+[?2004l[?2004h> package io.harbor.textd.core;
+[?2004l[?2004h> 
+[?2004l[?2004h> import java.nio.file.Path;
+[?2004l[?2004h> import java.util.ArrayList;
+[?2004l[?2004h> import java.util.List;
+[?2004l[?2004h> import java.util.concurrent.CountDownLatch;
+[?2004l[?2004h> import java.util.concurrent.ExecutionException;
+[?2004l[?2004h> import java.util.concurrent.ExecutorService;
+[?2004l[?2004h> import java.util.concurrent.Executors;
+[?2004l[?2004h> import java.util.concurrent.Future;
+[?2004l[?2004h> import java.util.concurrent.ThreadFactory;
+[?2004l[?2004h> import java.util.concurrent.TimeUnit;
+[?2004l[?2004h> import java.util.concurrent.atomic.AtomicInteger;
+[?2004l[?2004h> 
+[?2004l[?2004h> public final class TextDaemon implements AutoCloseable {
+[?2004l[?2004h>     private final ExecutorService workers;
+[?2004l[?2004h>     private final TimelineLedger revisions;
+[?2004l[?2004h>     private final int workerCount;
+[?2004l[?2004h> 
+[?2004l[?2004h>     public TextDaemon(Path pluginJar, int workerCount) {
+[?2004l[?2004h>         this.revisions = new TimelineLedger(pluginJar);
+[?2004l[?2004h>         this.workers = Executors.newFixedThreadPool(workerCount, new WorkerThreadFactory());
+[?2004l[?2004h>         this.workerCount = workerCount;
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     public void reload(long generation) throws Exception {
+[?2004l[?2004h>         revisions.install(generation);
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     public ProcessingResult process(String record) throws Exception {
+[?2004l[?2004h>         return processBatch(List.of(record)).get(0);
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     public boolean isBalanced() {
+[?2004l[?2004h>         return revisions.isBalanced();
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     public List<ProcessingResult> processBatch(List<String> records) throws Exception {
+[?2004l[?2004h>         CountDownLatch ready = new CountDownLatch(records.size());
+[?2004l[?2004h>         CountDownLatch release = new CountDownLatch(1);
+[?2004l[?2004h>         List<Future<ProcessingResult>> futures = new ArrayList<>();
+[?2004l[?2004h>         for (String record : records) {
+[?2004l[?2004h>             futures.add(workers.submit(() -> processRecord(record, ready, release)));
+[?2004l[?2004h>         }
+[?2004l[?2004h> 
+[?2004l[?2004h>         if (!ready.await(5, TimeUnit.SECONDS)) {
+[?2004l[?2004h>             throw new IllegalStateException("Workers did not become ready");
+[?2004l[?2004h>         }
+[?2004l[?2004h>         release.countDown();
+[?2004l[?2004h> 
+[?2004l[?2004h>         List<ProcessingResult> results = new ArrayList<>(records.size());
+[?2004l[?2004h>         for (Future<ProcessingResult> future : futures) {
+[?2004l[?2004h>             try {
+[?2004l[?2004h>                 results.add(future.get());
+[?2004l[?2004h>             } catch (ExecutionException exception) {
+[?2004l[?2004h>                 Throwable cause = exception.getCause();
+[?2004l[?2004h>                 if (cause instanceof Exception checked) {
+[?2004l[?2004h>                     throw checked;
+[?2004l[?2004h>                 }
+[?2004l[?2004h>                 if (cause instanceof Error error) {
+[?2004l[?2004h>                     throw error;
+[?2004l[?2004h>                 }
+[?2004l[?2004h>                 throw new RuntimeException(cause);
+[?2004l[?2004h>             }
+[?2004l[?2004h>         }
+[?2004l[?2004h>         return results;
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     private ProcessingResult processRecord(
+[?2004l[?2004h>         String record,
+[?2004l[?2004h>         CountDownLatch ready,
+[?2004l[?2004h>         CountDownLatch release
+[?2004l[?2004h>     ) throws Exception {
+[?2004l[?2004h>         ready.countDown();
+[?2004l[?2004h>         if (!release.await(5, TimeUnit.SECONDS)) {
+[?2004l[?2004h>             throw new IllegalStateException("Request release timed out");
+[?2004l[?2004h>         }
+[?2004l[?2004h> 
+[?2004l[?2004h>         WorkerHandle binding = ThreadBridge.current(revisions);
+[?2004l[?2004h>         return binding.process(record);
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     @Override
+[?2004l[?2004h>     public void close() throws Exception {
+[?2004l[?2004h>         revisions.close();
+[?2004l[?2004h>         workers.shutdownNow();
+[?2004l[?2004h>         workers.awaitTermination(5, TimeUnit.SECONDS);
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     private static final class WorkerThreadFactory implements ThreadFactory {
+[?2004l[?2004h>         private final AtomicInteger sequence = new AtomicInteger(1);
+[?2004l[?2004h> 
+[?2004l[?2004h>         @Override
+[?2004l[?2004h>         public Thread newThread(Runnable runnable) {
+[?2004l[?2004h>             Thread thread = new Thread(() -> {
+[?2004l[?2004h>                 try {
+[?2004l[?2004h>                     runnable.run();
+[?2004l[?2004h>                 } finally {
+[?2004l[?2004h>                     ThreadBridge.clear();
+[?2004l[?2004h>                 }
+[?2004l[?2004h>             });
+[?2004l[?2004h>             thread.setName("textd-worker-" + sequence.getAndIncrement());
+[?2004l[?2004h>             thread.setDaemon(true);
+[?2004l[?2004h>             return thread;
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h> }
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@138f0c73e14a:/workspace/textd# ./bin/replay-check
+[?2004lreplay-fail unloaded-first=0 unloaded-second=0
+[?2004hroot@138f0c73e14a:/workspace/textd# cat plugin-src/io/harbor/textd/customer/PipelineStages.java
+[?2004lpackage io.harbor.textd.customer;
+
+import java.util.List;
+
+final class PipelineStages {
+    private interface Stage {
+        int weight();
+    }
+
+    private static final List<Stage> STAGES = List.of(
+        new Stage001(),
+        new Stage002(),
+        new Stage003(),
+        new Stage004(),
+        new Stage005(),
+        new Stage006(),
+        new Stage007(),
+        new Stage008(),
+        new Stage009(),
+        new Stage010(),
+        new Stage011(),
+        new Stage012(),
+        new Stage013(),
+        new Stage014(),
+        new Stage015(),
+        new Stage016(),
+        new Stage017(),
+        new Stage018(),
+        new Stage019(),
+        new Stage020(),
+        new Stage021(),
+        new Stage022(),
+        new Stage023(),
+        new Stage024(),
+        new Stage025(),
+        new Stage026(),
+        new Stage027(),
+        new Stage028(),
+        new Stage029(),
+        new Stage030(),
+        new Stage031(),
+        new Stage032(),
+        new Stage033(),
+        new Stage034(),
+        new Stage035(),
+        new Stage036(),
+        new Stage037(),
+        new Stage038(),
+        new Stage039(),
+        new Stage040(),
+        new Stage041(),
+        new Stage042(),
+        new Stage043(),
+        new Stage044(),
+        new Stage045(),
+        new Stage046(),
+        new Stage047(),
+        new Stage048(),
+        new Stage049(),
+        new Stage050(),
+        new Stage051(),
+        new Stage052(),
+        new Stage053(),
+        new Stage054(),
+        new Stage055(),
+        new Stage056(),
+        new Stage057(),
+        new Stage058(),
+        new Stage059(),
+        new Stage060(),
+        new Stage061(),
+        new Stage062(),
+        new Stage063(),
+        new Stage064(),
+        new Stage065(),
+        new Stage066(),
+        new Stage067(),
+        new Stage068(),
+        new Stage069(),
+        new Stage070(),
+        new Stage071(),
+        new Stage072(),
+        new Stage073(),
+        new Stage074(),
+        new Stage075(),
+        new Stage076(),
+        new Stage077(),
+        new Stage078(),
+        new Stage079(),
+        new Stage080(),
+        new Stage081(),
+        new Stage082(),
+        new Stage083(),
+        new Stage084(),
+        new Stage085(),
+        new Stage086(),
+        new Stage087(),
+        new Stage088(),
+        new Stage089(),
+        new Stage090(),
+        new Stage091(),
+        new Stage092(),
+        new Stage093(),
+        new Stage094(),
+        new Stage095(),
+        new Stage096(),
+        new Stage097(),
+        new Stage098(),
+        new Stage099(),
+        new Stage100(),
+        new Stage101(),
+        new Stage102(),
+        new Stage103(),
+        new Stage104(),
+        new Stage105(),
+        new Stage106(),
+        new Stage107(),
+        new Stage108(),
+        new Stage109(),
+        new Stage110(),
+        new Stage111(),
+        new Stage112(),
+        new Stage113(),
+        new Stage114(),
+        new Stage115(),
+        new Stage116(),
+        new Stage117(),
+        new Stage118(),
+        new Stage119(),
+        new Stage120(),
+        new Stage121(),
+        new Stage122(),
+        new Stage123(),
+        new Stage124(),
+        new Stage125(),
+        new Stage126(),
+        new Stage127(),
+        new Stage128(),
+        new Stage129(),
+        new Stage130(),
+        new Stage131(),
+        new Stage132(),
+        new Stage133(),
+        new Stage134(),
+        new Stage135(),
+        new Stage136(),
+        new Stage137(),
+        new Stage138(),
+        new Stage139(),
+        new Stage140(),
+        new Stage141(),
+        new Stage142(),
+        new Stage143(),
+        new Stage144(),
+        new Stage145(),
+        new Stage146(),
+        new Stage147(),
+        new Stage148(),
+        new Stage149(),
+        new Stage150(),
+        new Stage151(),
+        new Stage152(),
+        new Stage153(),
+        new Stage154(),
+        new Stage155(),
+        new Stage156(),
+        new Stage157(),
+        new Stage158(),
+        new Stage159(),
+        new Stage160(),
+        new Stage161(),
+        new Stage162(),
+        new Stage163(),
+        new Stage164(),
+        new Stage165(),
+        new Stage166(),
+        new Stage167(),
+        new Stage168(),
+        new Stage169(),
+        new Stage170(),
+        new Stage171(),
+        new Stage172(),
+        new Stage173(),
+        new Stage174(),
+        new Stage175(),
+        new Stage176(),
+        new Stage177(),
+        new Stage178(),
+        new Stage179(),
+        new Stage180(),
+        new Stage181(),
+        new Stage182(),
+        new Stage183(),
+        new Stage184(),
+        new Stage185(),
+        new Stage186(),
+        new Stage187(),
+        new Stage188(),
+        new Stage189(),
+        new Stage190(),
+        new Stage191(),
+        new Stage192()
+    );
+
+    private PipelineStages() {
+    }
+
+    static int pipelineWeight() {
+        int total = 0;
+        for (Stage stage : STAGES) {
+            total += stage.weight();
+        }
+        return total;
+    }
+
+    private static final class Stage001 implements Stage {
+        @Override
+        public int weight() {
+            return 1;
+        }
+    }
+
+    private static final class Stage002 implements Stage {
+        @Override
+        public int weight() {
+            return 2;
+        }
+    }
+
+    private static final class Stage003 implements Stage {
+        @Override
+        public int weight() {
+            return 3;
+        }
+    }
+
+    private static final class Stage004 implements Stage {
+        @Override
+        public int weight() {
+            return 4;
+        }
+    }
+
+    private static final class Stage005 implements Stage {
+        @Override
+        public int weight() {
+            return 5;
+        }
+    }
+
+    private static final class Stage006 implements Stage {
+        @Override
+        public int weight() {
+            return 6;
+        }
+    }
+
+    private static final class Stage007 implements Stage {
+        @Override
+        public int weight() {
+            return 7;
+        }
+    }
+
+    private static final class Stage008 implements Stage {
+        @Override
+        public int weight() {
+            return 8;
+        }
+    }
+
+    private static final class Stage009 implements Stage {
+        @Override
+        public int weight() {
+            return 9;
+        }
+    }
+
+    private static final class Stage010 implements Stage {
+        @Override
+        public int weight() {
+            return 10;
+        }
+    }
+
+    private static final class Stage011 implements Stage {
+        @Override
+        public int weight() {
+            return 11;
+        }
+    }
+
+    private static final class Stage012 implements Stage {
+        @Override
+        public int weight() {
+            return 12;
+        }
+    }
+
+    private static final class Stage013 implements Stage {
+        @Override
+        public int weight() {
+            return 13;
+        }
+    }
+
+    private static final class Stage014 implements Stage {
+        @Override
+        public int weight() {
+            return 14;
+        }
+    }
+
+    private static final class Stage015 implements Stage {
+        @Override
+        public int weight() {
+            return 15;
+        }
+    }
+
+    private static final class Stage016 implements Stage {
+        @Override
+        public int weight() {
+            return 16;
+        }
+    }
+
+    private static final class Stage017 implements Stage {
+        @Override
+        public int weight() {
+            return 17;
+        }
+    }
+
+    private static final class Stage018 implements Stage {
+        @Override
+        public int weight() {
+            return 18;
+        }
+    }
+
+    private static final class Stage019 implements Stage {
+        @Override
+        public int weight() {
+            return 19;
+        }
+    }
+
+    private static final class Stage020 implements Stage {
+        @Override
+        public int weight() {
+            return 20;
+        }
+    }
+
+    private static final class Stage021 implements Stage {
+        @Override
+        public int weight() {
+            return 21;
+        }
+    }
+
+    private static final class Stage022 implements Stage {
+        @Override
+        public int weight() {
+            return 22;
+        }
+    }
+
+    private static final class Stage023 implements Stage {
+        @Override
+        public int weight() {
+            return 23;
+        }
+    }
+
+    private static final class Stage024 implements Stage {
+        @Override
+        public int weight() {
+            return 24;
+        }
+    }
+
+    private static final class Stage025 implements Stage {
+        @Override
+        public int weight() {
+            return 25;
+        }
+    }
+
+    private static final class Stage026 implements Stage {
+        @Override
+        public int weight() {
+            return 26;
+        }
+    }
+
+    private static final class Stage027 implements Stage {
+        @Override
+        public int weight() {
+            return 27;
+        }
+    }
+
+    private static final class Stage028 implements Stage {
+        @Override
+        public int weight() {
+            return 28;
+        }
+    }
+
+    private static final class Stage029 implements Stage {
+        @Override
+        public int weight() {
+            return 29;
+        }
+    }
+
+    private static final class Stage030 implements Stage {
+        @Override
+        public int weight() {
+            return 30;
+        }
+    }
+
+    private static final class Stage031 implements Stage {
+        @Override
+        public int weight() {
+            return 31;
+        }
+    }
+
+    private static final class Stage032 implements Stage {
+        @Override
+        public int weight() {
+            return 32;
+        }
+    }
+
+    private static final class Stage033 implements Stage {
+        @Override
+        public int weight() {
+            return 33;
+        }
+    }
+
+    private static final class Stage034 implements Stage {
+        @Override
+        public int weight() {
+            return 34;
+        }
+    }
+
+    private static final class Stage035 implements Stage {
+        @Override
+        public int weight() {
+            return 35;
+        }
+    }
+
+    private static final class Stage036 implements Stage {
+        @Override
+        public int weight() {
+            return 36;
+        }
+    }
+
+    private static final class Stage037 implements Stage {
+        @Override
+        public int weight() {
+            return 37;
+        }
+    }
+
+    private static final class Stage038 implements Stage {
+        @Override
+        public int weight() {
+            return 38;
+        }
+    }
+
+    private static final class Stage039 implements Stage {
+        @Override
+        public int weight() {
+            return 39;
+        }
+    }
+
+    private static final class Stage040 implements Stage {
+        @Override
+        public int weight() {
+            return 40;
+        }
+    }
+
+    private static final class Stage041 implements Stage {
+        @Override
+        public int weight() {
+            return 41;
+        }
+    }
+
+    private static final class Stage042 implements Stage {
+        @Override
+        public int weight() {
+            return 42;
+        }
+    }
+
+    private static final class Stage043 implements Stage {
+        @Override
+        public int weight() {
+            return 43;
+        }
+    }
+
+    private static final class Stage044 implements Stage {
+        @Override
+        public int weight() {
+            return 44;
+        }
+    }
+
+    private static final class Stage045 implements Stage {
+        @Override
+        public int weight() {
+            return 45;
+        }
+    }
+
+    private static final class Stage046 implements Stage {
+        @Override
+        public int weight() {
+            return 46;
+        }
+    }
+
+    private static final class Stage047 implements Stage {
+        @Override
+        public int weight() {
+            return 47;
+        }
+    }
+
+    private static final class Stage048 implements Stage {
+        @Override
+        public int weight() {
+            return 48;
+        }
+    }
+
+    private static final class Stage049 implements Stage {
+        @Override
+        public int weight() {
+            return 49;
+        }
+    }
+
+    private static final class Stage050 implements Stage {
+        @Override
+        public int weight() {
+            return 50;
+        }
+    }
+
+    private static final class Stage051 implements Stage {
+        @Override
+        public int weight() {
+            return 51;
+        }
+    }
+
+    private static final class Stage052 implements Stage {
+        @Override
+        public int weight() {
+            return 52;
+        }
+    }
+
+    private static final class Stage053 implements Stage {
+        @Override
+        public int weight() {
+            return 53;
+        }
+    }
+
+    private static final class Stage054 implements Stage {
+        @Override
+        public int weight() {
+            return 54;
+        }
+    }
+
+    private static final class Stage055 implements Stage {
+        @Override
+        public int weight() {
+            return 55;
+        }
+    }
+
+    private static final class Stage056 implements Stage {
+        @Override
+        public int weight() {
+            return 56;
+        }
+    }
+
+    private static final class Stage057 implements Stage {
+        @Override
+        public int weight() {
+            return 57;
+        }
+    }
+
+    private static final class Stage058 implements Stage {
+        @Override
+        public int weight() {
+            return 58;
+        }
+    }
+
+    private static final class Stage059 implements Stage {
+        @Override
+        public int weight() {
+            return 59;
+        }
+    }
+
+    private static final class Stage060 implements Stage {
+        @Override
+        public int weight() {
+            return 60;
+        }
+    }
+
+    private static final class Stage061 implements Stage {
+        @Override
+        public int weight() {
+            return 61;
+        }
+    }
+
+    private static final class Stage062 implements Stage {
+        @Override
+        public int weight() {
+            return 62;
+        }
+    }
+
+    private static final class Stage063 implements Stage {
+        @Override
+        public int weight() {
+            return 63;
+        }
+    }
+
+    private static final class Stage064 implements Stage {
+        @Override
+        public int weight() {
+            return 64;
+        }
+    }
+
+    private static final class Stage065 implements Stage {
+        @Override
+        public int weight() {
+            return 65;
+        }
+    }
+
+    private static final class Stage066 implements Stage {
+        @Override
+        public int weight() {
+            return 66;
+        }
+    }
+
+    private static final class Stage067 implements Stage {
+        @Override
+        public int weight() {
+            return 67;
+        }
+    }
+
+    private static final class Stage068 implements Stage {
+        @Override
+        public int weight() {
+            return 68;
+        }
+    }
+
+    private static final class Stage069 implements Stage {
+        @Override
+        public int weight() {
+            return 69;
+        }
+    }
+
+    private static final class Stage070 implements Stage {
+        @Override
+        public int weight() {
+            return 70;
+        }
+    }
+
+    private static final class Stage071 implements Stage {
+        @Override
+        public int weight() {
+            return 71;
+        }
+    }
+
+    private static final class Stage072 implements Stage {
+        @Override
+        public int weight() {
+            return 72;
+        }
+    }
+
+    private static final class Stage073 implements Stage {
+        @Override
+        public int weight() {
+            return 73;
+        }
+    }
+
+    private static final class Stage074 implements Stage {
+        @Override
+        public int weight() {
+            return 74;
+        }
+    }
+
+    private static final class Stage075 implements Stage {
+        @Override
+        public int weight() {
+            return 75;
+        }
+    }
+
+    private static final class Stage076 implements Stage {
+        @Override
+        public int weight() {
+            return 76;
+        }
+    }
+
+    private static final class Stage077 implements Stage {
+        @Override
+        public int weight() {
+            return 77;
+        }
+    }
+
+    private static final class Stage078 implements Stage {
+        @Override
+        public int weight() {
+            return 78;
+        }
+    }
+
+    private static final class Stage079 implements Stage {
+        @Override
+        public int weight() {
+            return 79;
+        }
+    }
+
+    private static final class Stage080 implements Stage {
+        @Override
+        public int weight() {
+            return 80;
+        }
+    }
+
+    private static final class Stage081 implements Stage {
+        @Override
+        public int weight() {
+            return 81;
+        }
+    }
+
+    private static final class Stage082 implements Stage {
+        @Override
+        public int weight() {
+            return 82;
+        }
+    }
+
+    private static final class Stage083 implements Stage {
+        @Override
+        public int weight() {
+            return 83;
+        }
+    }
+
+    private static final class Stage084 implements Stage {
+        @Override
+        public int weight() {
+            return 84;
+        }
+    }
+
+    private static final class Stage085 implements Stage {
+        @Override
+        public int weight() {
+            return 85;
+        }
+    }
+
+    private static final class Stage086 implements Stage {
+        @Override
+        public int weight() {
+            return 86;
+        }
+    }
+
+    private static final class Stage087 implements Stage {
+        @Override
+        public int weight() {
+            return 87;
+        }
+    }
+
+    private static final class Stage088 implements Stage {
+        @Override
+        public int weight() {
+            return 88;
+        }
+    }
+
+    private static final class Stage089 implements Stage {
+        @Override
+        public int weight() {
+            return 89;
+        }
+    }
+
+    private static final class Stage090 implements Stage {
+        @Override
+        public int weight() {
+            return 90;
+        }
+    }
+
+    private static final class Stage091 implements Stage {
+        @Override
+        public int weight() {
+            return 91;
+        }
+    }
+
+    private static final class Stage092 implements Stage {
+        @Override
+        public int weight() {
+            return 92;
+        }
+    }
+
+    private static final class Stage093 implements Stage {
+        @Override
+        public int weight() {
+            return 93;
+        }
+    }
+
+    private static final class Stage094 implements Stage {
+        @Override
+        public int weight() {
+            return 94;
+        }
+    }
+
+    private static final class Stage095 implements Stage {
+        @Override
+        public int weight() {
+            return 95;
+        }
+    }
+
+    private static final class Stage096 implements Stage {
+        @Override
+        public int weight() {
+            return 96;
+        }
+    }
+
+    private static final class Stage097 implements Stage {
+        @Override
+        public int weight() {
+            return 97;
+        }
+    }
+
+    private static final class Stage098 implements Stage {
+        @Override
+        public int weight() {
+            return 98;
+        }
+    }
+
+    private static final class Stage099 implements Stage {
+        @Override
+        public int weight() {
+            return 99;
+        }
+    }
+
+    private static final class Stage100 implements Stage {
+        @Override
+        public int weight() {
+            return 100;
+        }
+    }
+
+    private static final class Stage101 implements Stage {
+        @Override
+        public int weight() {
+            return 101;
+        }
+    }
+
+    private static final class Stage102 implements Stage {
+        @Override
+        public int weight() {
+            return 102;
+        }
+    }
+
+    private static final class Stage103 implements Stage {
+        @Override
+        public int weight() {
+            return 103;
+        }
+    }
+
+    private static final class Stage104 implements Stage {
+        @Override
+        public int weight() {
+            return 104;
+        }
+    }
+
+    private static final class Stage105 implements Stage {
+        @Override
+        public int weight() {
+            return 105;
+        }
+    }
+
+    private static final class Stage106 implements Stage {
+        @Override
+        public int weight() {
+            return 106;
+        }
+    }
+
+    private static final class Stage107 implements Stage {
+        @Override
+        public int weight() {
+            return 107;
+        }
+    }
+
+    private static final class Stage108 implements Stage {
+        @Override
+        public int weight() {
+            return 108;
+        }
+    }
+
+    private static final class Stage109 implements Stage {
+        @Override
+        public int weight() {
+            return 109;
+        }
+    }
+
+    private static final class Stage110 implements Stage {
+        @Override
+        public int weight() {
+            return 110;
+        }
+    }
+
+    private static final class Stage111 implements Stage {
+        @Override
+        public int weight() {
+            return 111;
+        }
+    }
+
+    private static final class Stage112 implements Stage {
+        @Override
+        public int weight() {
+            return 112;
+        }
+    }
+
+    private static final class Stage113 implements Stage {
+        @Override
+        public int weight() {
+            return 113;
+        }
+    }
+
+    private static final class Stage114 implements Stage {
+        @Override
+        public int weight() {
+            return 114;
+        }
+    }
+
+    private static final class Stage115 implements Stage {
+        @Override
+        public int weight() {
+            return 115;
+        }
+    }
+
+    private static final class Stage116 implements Stage {
+        @Override
+        public int weight() {
+            return 116;
+        }
+    }
+
+    private static final class Stage117 implements Stage {
+        @Override
+        public int weight() {
+            return 117;
+        }
+    }
+
+    private static final class Stage118 implements Stage {
+        @Override
+        public int weight() {
+            return 118;
+        }
+    }
+
+    private static final class Stage119 implements Stage {
+        @Override
+        public int weight() {
+            return 119;
+        }
+    }
+
+    private static final class Stage120 implements Stage {
+        @Override
+        public int weight() {
+            return 120;
+        }
+    }
+
+    private static final class Stage121 implements Stage {
+        @Override
+        public int weight() {
+            return 121;
+        }
+    }
+
+    private static final class Stage122 implements Stage {
+        @Override
+        public int weight() {
+            return 122;
+        }
+    }
+
+    private static final class Stage123 implements Stage {
+        @Override
+        public int weight() {
+            return 123;
+        }
+    }
+
+    private static final class Stage124 implements Stage {
+        @Override
+        public int weight() {
+            return 124;
+        }
+    }
+
+    private static final class Stage125 implements Stage {
+        @Override
+        public int weight() {
+            return 125;
+        }
+    }
+
+    private static final class Stage126 implements Stage {
+        @Override
+        public int weight() {
+            return 126;
+        }
+    }
+
+    private static final class Stage127 implements Stage {
+        @Override
+        public int weight() {
+            return 127;
+        }
+    }
+
+    private static final class Stage128 implements Stage {
+        @Override
+        public int weight() {
+            return 128;
+        }
+    }
+
+    private static final class Stage129 implements Stage {
+        @Override
+        public int weight() {
+            return 129;
+        }
+    }
+
+    private static final class Stage130 implements Stage {
+        @Override
+        public int weight() {
+            return 130;
+        }
+    }
+
+    private static final class Stage131 implements Stage {
+        @Override
+        public int weight() {
+            return 131;
+        }
+    }
+
+    private static final class Stage132 implements Stage {
+        @Override
+        public int weight() {
+            return 132;
+        }
+    }
+
+    private static final class Stage133 implements Stage {
+        @Override
+        public int weight() {
+            return 133;
+        }
+    }
+
+    private static final class Stage134 implements Stage {
+        @Override
+        public int weight() {
+            return 134;
+        }
+    }
+
+    private static final class Stage135 implements Stage {
+        @Override
+        public int weight() {
+            return 135;
+        }
+    }
+
+    private static final class Stage136 implements Stage {
+        @Override
+        public int weight() {
+            return 136;
+        }
+    }
+
+    private static final class Stage137 implements Stage {
+        @Override
+        public int weight() {
+            return 137;
+        }
+    }
+
+    private static final class Stage138 implements Stage {
+        @Override
+        public int weight() {
+            return 138;
+        }
+    }
+
+    private static final class Stage139 implements Stage {
+        @Override
+        public int weight() {
+            return 139;
+        }
+    }
+
+    private static final class Stage140 implements Stage {
+        @Override
+        public int weight() {
+            return 140;
+        }
+    }
+
+    private static final class Stage141 implements Stage {
+        @Override
+        public int weight() {
+            return 141;
+        }
+    }
+
+    private static final class Stage142 implements Stage {
+        @Override
+        public int weight() {
+            return 142;
+        }
+    }
+
+    private static final class Stage143 implements Stage {
+        @Override
+        public int weight() {
+            return 143;
+        }
+    }
+
+    private static final class Stage144 implements Stage {
+        @Override
+        public int weight() {
+            return 144;
+        }
+    }
+
+    private static final class Stage145 implements Stage {
+        @Override
+        public int weight() {
+            return 145;
+        }
+    }
+
+    private static final class Stage146 implements Stage {
+        @Override
+        public int weight() {
+            return 146;
+        }
+    }
+
+    private static final class Stage147 implements Stage {
+        @Override
+        public int weight() {
+            return 147;
+        }
+    }
+
+    private static final class Stage148 implements Stage {
+        @Override
+        public int weight() {
+            return 148;
+        }
+    }
+
+    private static final class Stage149 implements Stage {
+        @Override
+        public int weight() {
+            return 149;
+        }
+    }
+
+    private static final class Stage150 implements Stage {
+        @Override
+        public int weight() {
+            return 150;
+        }
+    }
+
+    private static final class Stage151 implements Stage {
+        @Override
+        public int weight() {
+            return 151;
+        }
+    }
+
+    private static final class Stage152 implements Stage {
+        @Override
+        public int weight() {
+            return 152;
+        }
+    }
+
+    private static final class Stage153 implements Stage {
+        @Override
+        public int weight() {
+            return 153;
+        }
+    }
+
+    private static final class Stage154 implements Stage {
+        @Override
+        public int weight() {
+            return 154;
+        }
+    }
+
+    private static final class Stage155 implements Stage {
+        @Override
+        public int weight() {
+            return 155;
+        }
+    }
+
+    private static final class Stage156 implements Stage {
+        @Override
+        public int weight() {
+            return 156;
+        }
+    }
+
+    private static final class Stage157 implements Stage {
+        @Override
+        public int weight() {
+            return 157;
+        }
+    }
+
+    private static final class Stage158 implements Stage {
+        @Override
+        public int weight() {
+            return 158;
+        }
+    }
+
+    private static final class Stage159 implements Stage {
+        @Override
+        public int weight() {
+            return 159;
+        }
+    }
+
+    private static final class Stage160 implements Stage {
+        @Override
+        public int weight() {
+            return 160;
+        }
+    }
+
+    private static final class Stage161 implements Stage {
+        @Override
+        public int weight() {
+            return 161;
+        }
+    }
+
+    private static final class Stage162 implements Stage {
+        @Override
+        public int weight() {
+            return 162;
+        }
+    }
+
+    private static final class Stage163 implements Stage {
+        @Override
+        public int weight() {
+            return 163;
+        }
+    }
+
+    private static final class Stage164 implements Stage {
+        @Override
+        public int weight() {
+            return 164;
+        }
+    }
+
+    private static final class Stage165 implements Stage {
+        @Override
+        public int weight() {
+            return 165;
+        }
+    }
+
+    private static final class Stage166 implements Stage {
+        @Override
+        public int weight() {
+            return 166;
+        }
+    }
+
+    private static final class Stage167 implements Stage {
+        @Override
+        public int weight() {
+            return 167;
+        }
+    }
+
+    private static final class Stage168 implements Stage {
+        @Override
+        public int weight() {
+            return 168;
+        }
+    }
+
+    private static final class Stage169 implements Stage {
+        @Override
+        public int weight() {
+            return 169;
+        }
+    }
+
+    private static final class Stage170 implements Stage {
+        @Override
+        public int weight() {
+            return 170;
+        }
+    }
+
+    private static final class Stage171 implements Stage {
+        @Override
+        public int weight() {
+            return 171;
+        }
+    }
+
+    private static final class Stage172 implements Stage {
+        @Override
+        public int weight() {
+            return 172;
+        }
+    }
+
+    private static final class Stage173 implements Stage {
+        @Override
+        public int weight() {
+            return 173;
+        }
+    }
+
+    private static final class Stage174 implements Stage {
+        @Override
+        public int weight() {
+            return 174;
+        }
+    }
+
+    private static final class Stage175 implements Stage {
+        @Override
+        public int weight() {
+            return 175;
+        }
+    }
+
+    private static final class Stage176 implements Stage {
+        @Override
+        public int weight() {
+            return 176;
+        }
+    }
+
+    private static final class Stage177 implements Stage {
+        @Override
+        public int weight() {
+            return 177;
+        }
+    }
+
+    private static final class Stage178 implements Stage {
+        @Override
+        public int weight() {
+            return 178;
+        }
+    }
+
+    private static final class Stage179 implements Stage {
+        @Override
+        public int weight() {
+            return 179;
+        }
+    }
+
+    private static final class Stage180 implements Stage {
+        @Override
+        public int weight() {
+            return 180;
+        }
+    }
+
+    private static final class Stage181 implements Stage {
+        @Override
+        public int weight() {
+            return 181;
+        }
+    }
+
+    private static final class Stage182 implements Stage {
+        @Override
+        public int weight() {
+            return 182;
+        }
+    }
+
+    private static final class Stage183 implements Stage {
+        @Override
+        public int weight() {
+            return 183;
+        }
+    }
+
+    private static final class Stage184 implements Stage {
+        @Override
+        public int weight() {
+            return 184;
+        }
+    }
+
+    private static final class Stage185 implements Stage {
+        @Override
+        public int weight() {
+            return 185;
+        }
+    }
+
+    private static final class Stage186 implements Stage {
+        @Override
+        public int weight() {
+            return 186;
+        }
+    }
+
+    private static final class Stage187 implements Stage {
+        @Override
+        public int weight() {
+            return 187;
+        }
+    }
+
+    private static final class Stage188 implements Stage {
+        @Override
+        public int weight() {
+            return 188;
+        }
+    }
+
+    private static final class Stage189 implements Stage {
+        @Override
+        public int weight() {
+            return 189;
+        }
+    }
+
+    private static final class Stage190 implements Stage {
+        @Override
+        public int weight() {
+            return 190;
+        }
+    }
+
+    private static final class Stage191 implements Stage {
+        @Override
+        public int weight() {
+            return 191;
+        }
+    }
+
+    private static final class Stage192 implements Stage {
+        @Override
+        public int weight() {
+            return 192;
+        }
+    }
+
+}
+[?2004hroot@138f0c73e14a:/workspace/textd# head -n 50 plugin-src/io/harbor/textd/customer/PipelineStages.java
+[?2004lpackage io.harbor.textd.customer;
+
+import java.util.List;
+
+final class PipelineStages {
+    private interface Stage {
+        int weight();
+    }
+
+    private static final List<Stage> STAGES = List.of(
+        new Stage001(),
+        new Stage002(),
+        new Stage003(),
+        new Stage004(),
+        new Stage005(),
+        new Stage006(),
+        new Stage007(),
+        new Stage008(),
+        new Stage009(),
+        new Stage010(),
+        new Stage011(),
+        new Stage012(),
+        new Stage013(),
+        new Stage014(),
+        new Stage015(),
+        new Stage016(),
+        new Stage017(),
+        new Stage018(),
+        new Stage019(),
+        new Stage020(),
+        new Stage021(),
+        new Stage022(),
+        new Stage023(),
+        new Stage024(),
+        new Stage025(),
+        new Stage026(),
+        new Stage027(),
+        new Stage028(),
+        new Stage029(),
+        new Stage030(),
+        new Stage031(),
+        new Stage032(),
+        new Stage033(),
+        new Stage034(),
+        new Stage035(),
+        new Stage036(),
+        new Stage037(),
+        new Stage038(),
+        new Stage039(),
+        new Stage040(),
+[?2004hroot@138f0c73e14a:/workspace/textd# java -cp build/main-classes io.harbor.textd.cli.SessionReplayRunner build/plugins/customer-default.jar 24
+[?2004l{
+  "first": {"first":"GEN-001|ALPHA>BETA>GAMMA|PIPE-18528","last":"GEN-024|ALPHA>BETA>GAMMA|PIPE-18528","start":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"end":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"same_workers":true,"before_close":true,"after_close":true,"loaded_before_close":694,"loaded_after_close":5989,"unloaded_before_close":0,"unloaded_after_close":0},
+  "second": {"first":"GEN-001|ALPHA>BETA>GAMMA|PIPE-18528","last":"GEN-024|ALPHA>BETA>GAMMA|PIPE-18528","start":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"end":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"same_workers":true,"before_close":true,"after_close":true,"loaded_before_close":5989,"loaded_after_close":10904,"unloaded_before_close":0,"unloaded_after_close":0}
+}
+[?2004hroot@138f0c73e14a:/workspace/textd# cat src/main/java/io/harbor/textd/cli/HotReloadIntegrationRunner.java
+[?2004lpackage io.harbor.textd.cli;
+
+import io.harbor.textd.core.OutputFormat;
+import io.harbor.textd.core.ProcessingResult;
+import io.harbor.textd.core.TextDaemon;
+
+import java.nio.file.Path;
+import java.util.List;
+public final class HotReloadIntegrationRunner {
+    private static final String SAMPLE = "alpha beta gamma";
+
+    private HotReloadIntegrationRunner() {
+    }
+
+    public static void main(String[] args) throws Exception {
+        Path pluginJar = Path.of(args[0]);
+        int revision = args.length > 1 ? Integer.parseInt(args[1]) : 24;
+
+        try (TextDaemon daemon = new TextDaemon(pluginJar, 4)) {
+            daemon.reload(1);
+            List<ProcessingResult> baselineResults = daemon.processBatch(List.of(SAMPLE, SAMPLE, SAMPLE, SAMPLE));
+            assertOutputs(1, baselineResults);
+
+            List<ProcessingResult> currentResults = baselineResults;
+            for (int current = 2; current <= revision; current++) {
+                daemon.reload(current);
+                currentResults = daemon.processBatch(List.of(SAMPLE, SAMPLE, SAMPLE, SAMPLE));
+                assertOutputs(current, currentResults);
+            }
+
+            String baseline = baselineResults.get(0).output();
+            String current = currentResults.get(0).output();
+
+            System.out.println("{");
+            System.out.println("  \"input\": \"" + SAMPLE + "\",");
+            System.out.println("  \"baseline\": \"" + baseline + "\",");
+            System.out.println("  \"revision\": " + revision + ",");
+            System.out.println("  \"current\": \"" + current + "\"");
+            System.out.println("}");
+        }
+    }
+
+    private static void assertOutputs(long revision, List<ProcessingResult> results) {
+        String expected = OutputFormat.expectedFor(revision, SAMPLE);
+        for (ProcessingResult result : results) {
+            if (!expected.equals(result.output())) {
+                throw new IllegalStateException("Unexpected output at revision " + revision + ": " + result.output());
+            }
+        }
+    }
+}
+[?2004hroot@138f0c73e14a:/workspace/textd# cat src/main/java/io/harbor/textd/cli/RuntimeDigestRunner.java
+[?2004lpackage io.harbor.textd.cli;
+
+import io.harbor.textd.core.OutputFormat;
+import io.harbor.textd.core.ProcessingResult;
+import io.harbor.textd.core.TextDaemon;
+
+import java.nio.file.Path;
+import java.util.List;
+import java.util.stream.Collectors;
+
+public final class RuntimeDigestRunner {
+    private static final String SAMPLE = "alpha beta gamma";
+
+    private RuntimeDigestRunner() {
+    }
+
+    public static void main(String[] args) throws Exception {
+        Path pluginJar = Path.of(args[0]);
+        int revision = args.length > 1 ? Integer.parseInt(args[1]) : 24;
+
+        TextDaemon daemon = new TextDaemon(pluginJar, 4);
+        try {
+            daemon.reload(1);
+            List<ProcessingResult> firstResults = daemon.processBatch(List.of(SAMPLE, SAMPLE, SAMPLE, SAMPLE));
+            assertOutputs(1, firstResults);
+
+            List<String> workersStart = firstResults.stream()
+                .map(ProcessingResult::workerThread)
+                .sorted()
+                .collect(Collectors.toList());
+
+            List<ProcessingResult> finalResults = firstResults;
+            for (int current = 2; current <= revision; current++) {
+                daemon.reload(current);
+                finalResults = daemon.processBatch(List.of(SAMPLE, SAMPLE, SAMPLE, SAMPLE));
+                assertOutputs(current, finalResults);
+            }
+
+            List<String> workersEnd = finalResults.stream()
+                .map(ProcessingResult::workerThread)
+                .sorted()
+                .collect(Collectors.toList());
+
+            boolean sameWorkers = workersStart.equals(workersEnd);
+            boolean beforeClose = daemon.isBalanced();
+            String first = firstResults.get(0).output();
+            String last = finalResults.get(0).output();
+
+            daemon.close();
+            boolean afterClose = daemon.isBalanced();
+
+            System.out.println("{");
+            System.out.println("  \"sample\": \"" + SAMPLE + "\",");
+            System.out.println("  \"first\": \"" + first + "\",");
+            System.out.println("  \"rev\": " + revision + ",");
+            System.out.println("  \"last\": \"" + last + "\",");
+            System.out.println("  \"start\": " + toJsonArray(workersStart) + ",");
+            System.out.println("  \"end\": " + toJsonArray(workersEnd) + ",");
+            System.out.println("  \"same_workers\": " + sameWorkers + ",");
+            System.out.println("  \"before_close\": " + beforeClose + ",");
+            System.out.println("  \"after_close\": " + afterClose);
+            System.out.println("}");
+        } catch (Exception exception) {
+            try {
+                daemon.close();
+            } catch (Exception closeException) {
+                exception.addSuppressed(closeException);
+            }
+            throw exception;
+        }
+    }
+
+    private static void assertOutputs(long revision, List<ProcessingResult> results) {
+        String expected = OutputFormat.expectedFor(revision, SAMPLE);
+        for (ProcessingResult result : results) {
+            if (!expected.equals(result.output())) {
+                throw new IllegalStateException("Unexpected output at revision " + revision + ": " + result.output());
+            }
+        }
+    }
+
+    private static String toJsonArray(List<String> values) {
+        return values.stream()
+            .map(value -> "\"" + value + "\"")
+            .collect(Collectors.joining(", ", "[", "]"));
+    }
+}
+[?2004hroot@138f0c73e14a:/workspace/textd# sed -i 's/loadedGeneration.close();/System.out.println("Closing generation " + revision()); loadedGeneration.close();/' src/main/java/io/harbor/textd/core/TimelineFrame.java
+[?2004l[?2004hroot@138f0c73e14a:/workspace/textd# sed -i 's/classLoader.close();/System.out.println("Closing classloader for " + generation); classLoader.close();/' src/main/java/io/harbor/textd/core/LoadedGeneration.java
+[?2004l[?2004hroot@138f0c73e14a:/workspace/textd# ./bin/replay-check
+[?2004lTraceback (most recent call last):
+  File "<stdin>", line 4, in <module>
+  File "/usr/lib/python3.12/json/__init__.py", line 293, in load
+    return loads(fp.read(),
+           ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/decoder.py", line 355, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+[?2004hroot@138f0c73e14a:/workspace/textd# java -cp build/main-classes io.harbor.textd.cli.SessionReplayRunner build/plugins/customer-default.jar 24 > output.txt 2>&1
+[?2004l[?2004hroot@138f0c73e14a:/workspace/textd# cat output.txt
+[?2004lClosing generation 1
+Closing classloader for 1
+Closing generation 2
+Closing classloader for 2
+Closing generation 3
+Closing classloader for 3
+Closing generation 4
+Closing classloader for 4
+Closing generation 5
+Closing classloader for 5
+Closing generation 6
+Closing classloader for 6
+Closing generation 7
+Closing classloader for 7
+Closing generation 8
+Closing classloader for 8
+Closing generation 9
+Closing classloader for 9
+Closing generation 10
+Closing classloader for 10
+Closing generation 11
+Closing classloader for 11
+Closing generation 12
+Closing classloader for 12
+Closing generation 13
+Closing classloader for 13
+Closing generation 14
+Closing classloader for 14
+Closing generation 15
+Closing classloader for 15
+Closing generation 16
+Closing classloader for 16
+Closing generation 17
+Closing classloader for 17
+Closing generation 18
+Closing classloader for 18
+Closing generation 19
+Closing classloader for 19
+Closing generation 20
+Closing classloader for 20
+Closing generation 21
+Closing classloader for 21
+Closing generation 22
+Closing classloader for 22
+Closing generation 23
+Closing classloader for 23
+Closing generation 24
+Closing classloader for 24
+Closing generation 1
+Closing classloader for 1
+Closing generation 2
+Closing classloader for 2
+Closing generation 3
+Closing classloader for 3
+Closing generation 4
+Closing classloader for 4
+Closing generation 5
+Closing classloader for 5
+Closing generation 6
+Closing classloader for 6
+Closing generation 7
+Closing classloader for 7
+Closing generation 8
+Closing classloader for 8
+Closing generation 9
+Closing classloader for 9
+Closing generation 10
+Closing classloader for 10
+Closing generation 11
+Closing classloader for 11
+Closing generation 12
+Closing classloader for 12
+Closing generation 13
+Closing classloader for 13
+Closing generation 14
+Closing classloader for 14
+Closing generation 15
+Closing classloader for 15
+Closing generation 16
+Closing classloader for 16
+Closing generation 17
+Closing classloader for 17
+Closing generation 18
+Closing classloader for 18
+Closing generation 19
+Closing classloader for 19
+Closing generation 20
+Closing classloader for 20
+Closing generation 21
+Closing classloader for 21
+Closing generation 22
+Closing classloader for 22
+Closing generation 23
+Closing classloader for 23
+Closing generation 24
+Closing classloader for 24
+{
+  "first": {"first":"GEN-001|ALPHA>BETA>GAMMA|PIPE-18528","last":"GEN-024|ALPHA>BETA>GAMMA|PIPE-18528","start":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"end":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"same_workers":true,"before_close":true,"after_close":true,"loaded_before_close":694,"loaded_after_close":5973,"unloaded_before_close":0,"unloaded_after_close":0},
+  "second": {"first":"GEN-001|ALPHA>BETA>GAMMA|PIPE-18528","last":"GEN-024|ALPHA>BETA>GAMMA|PIPE-18528","start":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"end":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"same_workers":true,"before_close":true,"after_close":true,"loaded_before_close":5973,"loaded_after_close":10873,"unloaded_before_close":0,"unloaded_after_close":0}
+}
+[?2004hroot@138f0c73e14a:/workspace/textd# git checkout src/main/java/io/harbor/textd/core/TimelineFrame.java src/main/java/io/harbor/textd/core/LoadedGeneration.java
+[?2004lfatal: not a git repository (or any of the parent directories): .git
+[?2004hroot@138f0c73e14a:/workspace/textd# ./bin/stress 1000
+[?2004lClosing generation 1
+Closing classloader for 1
+Closing generation 2
+Closing classloader for 2
+Closing generation 3
+Closing classloader for 3
+Closing generation 4
+Closing classloader for 4
+Closing generation 5
+Closing classloader for 5
+Closing generation 6
+Closing classloader for 6
+Closing generation 7
+Closing classloader for 7
+Closing generation 8
+Closing classloader for 8
+Closing generation 9
+Closing classloader for 9
+Closing generation 10
+Closing classloader for 10
+Closing generation 11
+Closing classloader for 11
+Closing generation 12
+Closing classloader for 12
+Closing generation 13
+Closing classloader for 13
+Closing generation 14
+Closing classloader for 14
+Closing generation 15
+Closing classloader for 15
+Closing generation 16
+Closing classloader for 16
+Closing generation 17
+Closing classloader for 17
+Closing generation 18
+Closing classloader for 18
+Closing generation 19
+Closing classloader for 19
+Closing generation 20
+Closing classloader for 20
+Closing generation 21
+Closing classloader for 21
+Closing generation 22
+Closing classloader for 22
+Closing generation 23
+Closing classloader for 23
+Closing generation 24
+Closing classloader for 24
+Closing generation 25
+Closing classloader for 25
+Closing generation 26
+Closing classloader for 26
+Closing generation 27
+Closing classloader for 27
+Closing generation 28
+Closing classloader for 28
+Closing generation 29
+Closing classloader for 29
+Closing generation 30
+Closing classloader for 30
+Closing generation 31
+Closing classloader for 31
+Closing generation 32
+Closing classloader for 32
+Closing generation 33
+Closing classloader for 33
+Closing generation 34
+Closing classloader for 34
+Closing generation 35
+Closing classloader for 35
+Closing generation 36
+Closing classloader for 36
+Closing generation 37
+Closing classloader for 37
+Closing generation 38
+Closing classloader for 38
+Closing generation 39
+Closing classloader for 39
+Closing generation 40
+Closing classloader for 40
+Closing generation 41
+Closing classloader for 41
+Closing generation 42
+Closing classloader for 42
+Closing generation 43
+Closing classloader for 43
+Closing generation 44
+Closing classloader for 44
+Closing generation 45
+Closing classloader for 45
+Closing generation 46
+Closing classloader for 46
+Closing generation 47
+Closing classloader for 47
+Closing generation 48
+Closing classloader for 48
+Closing generation 49
+Closing classloader for 49
+Closing generation 50
+Closing classloader for 50
+Closing generation 51
+Closing classloader for 51
+Closing generation 52
+Closing classloader for 52
+Closing generation 53
+Closing classloader for 53
+Closing generation 54
+Closing classloader for 54
+Closing generation 55
+Closing classloader for 55
+Closing generation 56
+Closing classloader for 56
+Closing generation 57
+Closing classloader for 57
+Closing generation 58
+Closing classloader for 58
+Closing generation 59
+Closing classloader for 59
+Closing generation 60
+Closing classloader for 60
+Closing generation 61
+Closing classloader for 61
+Closing generation 62
+Closing classloader for 62
+Closing generation 63
+Closing classloader for 63
+Closing generation 64
+Closing classloader for 64
+Closing generation 65
+Closing classloader for 65
+Closing generation 66
+Closing classloader for 66
+Closing generation 67
+Closing classloader for 67
+Closing generation 68
+Closing classloader for 68
+Closing generation 69
+Closing classloader for 69
+Closing generation 70
+Closing classloader for 70
+Closing generation 71
+Closing classloader for 71
+Closing generation 72
+Closing classloader for 72
+Closing generation 73
+Closing classloader for 73
+Closing generation 74
+Closing classloader for 74
+Closing generation 75
+Closing classloader for 75
+Closing generation 76
+Closing classloader for 76
+Closing generation 77
+Closing classloader for 77
+Closing generation 78
+Closing classloader for 78
+Closing generation 79
+Closing classloader for 79
+Closing generation 80
+Closing classloader for 80
+Closing generation 81
+Closing classloader for 81
+Closing generation 82
+Closing classloader for 82
+Closing generation 83
+Closing classloader for 83
+Closing generation 84
+Closing classloader for 84
+Closing generation 85
+Closing classloader for 85
+Closing generation 86
+Closing classloader for 86
+Closing generation 87
+Closing classloader for 87
+Closing generation 88
+Closing classloader for 88
+Closing generation 89
+Closing classloader for 89
+Closing generation 90
+Closing classloader for 90
+Closing generation 91
+Closing classloader for 91
+Closing generation 92
+Closing classloader for 92
+Closing generation 93
+Closing classloader for 93
+Closing generation 94
+Closing classloader for 94
+Closing generation 95
+Closing classloader for 95
+Closing generation 96
+Closing classloader for 96
+Closing generation 97
+Closing classloader for 97
+Closing generation 98
+Closing classloader for 98
+Closing generation 99
+Closing classloader for 99
+Closing generation 100
+Closing classloader for 100
+Closing generation 101
+Closing classloader for 101
+Closing generation 102
+Closing classloader for 102
+Closing generation 103
+Closing classloader for 103
+Closing generation 104
+Closing classloader for 104
+Closing generation 105
+Closing classloader for 105
+Closing generation 106
+Closing classloader for 106
+Closing generation 107
+Closing classloader for 107
+Closing generation 108
+Closing classloader for 108
+Closing generation 109
+Closing classloader for 109
+Closing generation 110
+Closing classloader for 110
+Closing generation 111
+Closing classloader for 111
+Closing generation 112
+Closing classloader for 112
+Closing generation 113
+Closing classloader for 113
+Closing generation 114
+Closing classloader for 114
+Closing generation 115
+Closing classloader for 115
+Closing generation 116
+Closing classloader for 116
+Closing generation 117
+Closing classloader for 117
+Closing generation 118
+Closing classloader for 118
+Closing generation 119
+Closing classloader for 119
+Closing generation 120
+Closing classloader for 120
+Closing generation 121
+Closing classloader for 121
+Closing generation 122
+Closing classloader for 122
+Closing generation 123
+Closing classloader for 123
+Closing generation 124
+Closing classloader for 124
+Closing generation 125
+Closing classloader for 125
+Closing generation 126
+Closing classloader for 126
+Closing generation 127
+Closing classloader for 127
+Closing generation 128
+Closing classloader for 128
+Closing generation 129
+Closing classloader for 129
+Closing generation 130
+Closing classloader for 130
+Closing generation 131
+Closing classloader for 131
+Closing generation 132
+Closing classloader for 132
+Closing generation 133
+Closing classloader for 133
+Closing generation 134
+Closing classloader for 134
+Closing generation 135
+Closing classloader for 135
+Closing generation 136
+Closing classloader for 136
+Closing generation 137
+Closing classloader for 137
+Closing generation 138
+Closing classloader for 138
+Closing generation 139
+Closing classloader for 139
+Closing generation 140
+Closing classloader for 140
+Closing generation 141
+Closing classloader for 141
+Closing generation 142
+Closing classloader for 142
+Closing generation 143
+Closing classloader for 143
+Closing generation 144
+Closing classloader for 144
+Closing generation 145
+Closing classloader for 145
+Closing generation 146
+Closing classloader for 146
+Closing generation 147
+Closing classloader for 147
+Closing generation 148
+Closing classloader for 148
+Closing generation 149
+Closing classloader for 149
+Closing generation 150
+Closing classloader for 150
+Closing generation 151
+Closing classloader for 151
+Closing generation 152
+Closing classloader for 152
+Closing generation 153
+Closing classloader for 153
+Closing generation 154
+Closing classloader for 154
+Closing generation 155
+Closing classloader for 155
+Closing generation 156
+Closing classloader for 156
+Closing generation 157
+Closing classloader for 157
+Closing generation 158
+Closing classloader for 158
+Closing generation 159
+Closing classloader for 159
+Closing generation 160
+Closing classloader for 160
+Closing generation 161
+Closing classloader for 161
+Closing generation 162
+Closing classloader for 162
+Closing generation 163
+Closing classloader for 163
+Closing generation 164
+Closing classloader for 164
+Closing generation 165
+Closing classloader for 165
+Closing generation 166
+Closing classloader for 166
+Closing generation 167
+Closing classloader for 167
+Closing generation 168
+Closing classloader for 168
+Closing generation 169
+Closing classloader for 169
+Closing generation 170
+Closing classloader for 170
+Closing generation 171
+Closing classloader for 171
+Closing generation 172
+Closing classloader for 172
+Closing generation 173
+Closing classloader for 173
+Closing generation 174
+Closing classloader for 174
+Closing generation 175
+Closing classloader for 175
+Closing generation 176
+Closing classloader for 176
+Closing generation 177
+Closing classloader for 177
+Closing generation 178
+Closing classloader for 178
+Closing generation 179
+Closing classloader for 179
+Closing generation 180
+Closing classloader for 180
+Closing generation 181
+Closing classloader for 181
+Closing generation 182
+Closing classloader for 182
+Closing generation 183
+Closing classloader for 183
+Closing generation 184
+Closing classloader for 184
+Closing generation 185
+Closing classloader for 185
+Closing generation 186
+Closing classloader for 186
+Closing generation 187
+Closing classloader for 187
+Closing generation 188
+Closing classloader for 188
+Closing generation 189
+Closing classloader for 189
+Closing generation 190
+Closing classloader for 190
+Closing generation 191
+Closing classloader for 191
+Closing generation 192
+Closing classloader for 192
+Closing generation 193
+Closing classloader for 193
+Closing generation 194
+Closing classloader for 194
+Closing generation 195
+Closing classloader for 195
+Closing generation 196
+Closing classloader for 196
+Closing generation 197
+Closing classloader for 197
+Closing generation 198
+Closing classloader for 198
+Closing generation 199
+Closing classloader for 199
+Closing generation 200
+Closing classloader for 200
+Closing generation 201
+Closing classloader for 201
+Closing generation 202
+Closing classloader for 202
+Closing generation 203
+Closing classloader for 203
+Closing generation 204
+Closing classloader for 204
+Closing generation 205
+Closing classloader for 205
+Closing generation 206
+Closing classloader for 206
+Closing generation 207
+Closing classloader for 207
+Closing generation 208
+Closing classloader for 208
+Closing generation 209
+Closing classloader for 209
+Closing generation 210
+Closing classloader for 210
+Closing generation 211
+Closing classloader for 211
+Closing generation 212
+Closing classloader for 212
+Closing generation 213
+Closing classloader for 213
+Closing generation 214
+Closing classloader for 214
+Closing generation 215
+Closing classloader for 215
+Closing generation 216
+Closing classloader for 216
+Closing generation 217
+Closing classloader for 217
+Closing generation 218
+Closing classloader for 218
+Closing generation 219
+Closing classloader for 219
+Closing generation 220
+Closing classloader for 220
+Closing generation 221
+Closing classloader for 221
+Closing generation 222
+Closing classloader for 222
+Closing generation 223
+Closing classloader for 223
+Closing generation 224
+Closing classloader for 224
+Closing generation 225
+Closing classloader for 225
+Closing generation 226
+Closing classloader for 226
+Closing generation 227
+Closing classloader for 227
+Closing generation 228
+Closing classloader for 228
+Closing generation 229
+Closing classloader for 229
+Closing generation 230
+Closing classloader for 230
+Closing generation 231
+Closing classloader for 231
+Closing generation 232
+Closing classloader for 232
+Closing generation 233
+Closing classloader for 233
+Closing generation 234
+Closing classloader for 234
+Closing generation 235
+Closing classloader for 235
+Closing generation 236
+Closing classloader for 236
+Closing generation 237
+Closing classloader for 237
+Closing generation 238
+Closing classloader for 238
+Closing generation 239
+Closing classloader for 239
+Closing generation 240
+Closing classloader for 240
+Closing generation 241
+Closing classloader for 241
+Closing generation 242
+Closing classloader for 242
+Closing generation 243
+Closing classloader for 243
+Closing generation 244
+Closing classloader for 244
+Closing generation 245
+Closing classloader for 245
+Closing generation 246
+Closing classloader for 246
+Closing generation 247
+Closing classloader for 247
+Closing generation 248
+Closing classloader for 248
+Closing generation 249
+Closing classloader for 249
+Closing generation 250
+Closing classloader for 250
+Closing generation 251
+Closing classloader for 251
+Closing generation 252
+Closing classloader for 252
+Closing generation 253
+Closing classloader for 253
+Closing generation 254
+Closing classloader for 254
+Closing generation 255
+Closing classloader for 255
+Closing generation 256
+Closing classloader for 256
+Closing generation 257
+Closing classloader for 257
+Closing generation 258
+Closing classloader for 258
+Closing generation 259
+Closing classloader for 259
+Closing generation 260
+Closing classloader for 260
+Closing generation 261
+Closing classloader for 261
+Closing generation 262
+Closing classloader for 262
+Closing generation 263
+Closing classloader for 263
+Closing generation 264
+Closing classloader for 264
+Closing generation 265
+Closing classloader for 265
+Closing generation 266
+Closing classloader for 266
+Closing generation 267
+Closing classloader for 267
+Closing generation 268
+Closing classloader for 268
+Closing generation 269
+Closing classloader for 269
+Closing generation 270
+Closing classloader for 270
+Closing generation 271
+Closing classloader for 271
+Closing generation 272
+Closing classloader for 272
+Closing generation 273
+Closing classloader for 273
+Closing generation 274
+Closing classloader for 274
+Closing generation 275
+Closing classloader for 275
+Closing generation 276
+Closing classloader for 276
+Closing generation 277
+Closing classloader for 277
+Closing generation 278
+Closing classloader for 278
+Closing generation 279
+Closing classloader for 279
+Closing generation 280
+Closing classloader for 280
+Closing generation 281
+Closing classloader for 281
+Closing generation 282
+Closing classloader for 282
+Closing generation 283
+Closing classloader for 283
+Closing generation 284
+Closing classloader for 284
+Closing generation 285
+Closing classloader for 285
+Closing generation 286
+Closing classloader for 286
+Closing generation 287
+Closing classloader for 287
+Closing generation 288
+Closing classloader for 288
+Closing generation 289
+Closing classloader for 289
+Closing generation 290
+Closing classloader for 290
+Closing generation 291
+Closing classloader for 291
+Closing generation 292
+Closing classloader for 292
+Closing generation 293
+Closing classloader for 293
+Closing generation 294
+Closing classloader for 294
+Closing generation 295
+Closing classloader for 295
+Closing generation 296
+Closing classloader for 296
+Closing generation 297
+Closing classloader for 297
+Closing generation 298
+Closing classloader for 298
+Closing generation 299
+Closing classloader for 299
+Closing generation 300
+Closing classloader for 300
+Closing generation 301
+Closing classloader for 301
+Closing generation 302
+Closing classloader for 302
+Closing generation 303
+Closing classloader for 303
+Closing generation 304
+Closing classloader for 304
+Closing generation 305
+Closing classloader for 305
+Closing generation 306
+Closing classloader for 306
+Closing generation 307
+Closing classloader for 307
+Closing generation 308
+Closing classloader for 308
+Closing generation 309
+Closing classloader for 309
+Closing generation 310
+Closing classloader for 310
+Closing generation 311
+Closing classloader for 311
+Closing generation 312
+Closing classloader for 312
+Closing generation 313
+Closing classloader for 313
+Closing generation 314
+Closing classloader for 314
+Closing generation 315
+Closing classloader for 315
+Closing generation 316
+Closing classloader for 316
+Closing generation 317
+Closing classloader for 317
+Closing generation 318
+Closing classloader for 318
+Closing generation 319
+Closing classloader for 319
+Closing generation 320
+Closing classloader for 320
+Closing generation 321
+Closing classloader for 321
+Closing generation 322
+Closing classloader for 322
+Closing generation 323
+Closing classloader for 323
+Closing generation 324
+Closing classloader for 324
+Closing generation 325
+Closing classloader for 325
+Closing generation 326
+Closing classloader for 326
+Closing generation 327
+Closing classloader for 327
+Closing generation 328
+Closing classloader for 328
+Closing generation 329
+Closing classloader for 329
+Closing generation 330
+Closing classloader for 330
+Closing generation 331
+Closing classloader for 331
+Closing generation 332
+Closing classloader for 332
+Closing generation 333
+Closing classloader for 333
+Closing generation 334
+Closing classloader for 334
+Closing generation 335
+Closing classloader for 335
+Closing generation 336
+Closing classloader for 336
+Closing generation 337
+Closing classloader for 337
+Closing generation 338
+Closing classloader for 338
+Closing generation 339
+Closing classloader for 339
+Closing generation 340
+Closing classloader for 340
+Closing generation 341
+Closing classloader for 341
+Closing generation 342
+Closing classloader for 342
+Closing generation 343
+Closing classloader for 343
+Closing generation 344
+Closing classloader for 344
+Closing generation 345
+Closing classloader for 345
+Closing generation 346
+Closing classloader for 346
+Closing generation 347
+Closing classloader for 347
+Closing generation 348
+Closing classloader for 348
+Closing generation 349
+Closing classloader for 349
+Closing generation 350
+Closing classloader for 350
+Closing generation 351
+Closing classloader for 351
+Closing generation 352
+Closing classloader for 352
+Closing generation 353
+Closing classloader for 353
+Closing generation 354
+Closing classloader for 354
+Closing generation 355
+Closing classloader for 355
+Closing generation 356
+Closing classloader for 356
+Closing generation 357
+Closing classloader for 357
+Closing generation 358
+Closing classloader for 358
+Closing generation 359
+Closing classloader for 359
+Closing generation 360
+Closing classloader for 360
+Closing generation 361
+Closing classloader for 361
+Closing generation 362
+Closing classloader for 362
+Closing generation 363
+Closing classloader for 363
+Closing generation 364
+Closing classloader for 364
+Closing generation 365
+Closing classloader for 365
+Closing generation 366
+Closing classloader for 366
+Closing generation 367
+Closing classloader for 367
+Closing generation 368
+Closing classloader for 368
+Closing generation 369
+Closing classloader for 369
+Closing generation 370
+Closing classloader for 370
+Closing generation 371
+Closing classloader for 371
+Closing generation 372
+Closing classloader for 372
+Closing generation 373
+Closing classloader for 373
+Closing generation 374
+Closing classloader for 374
+Closing generation 375
+Closing classloader for 375
+Closing generation 376
+Closing classloader for 376
+Closing generation 377
+Closing classloader for 377
+Closing generation 378
+Closing classloader for 378
+Closing generation 379
+Closing classloader for 379
+Closing generation 380
+Closing classloader for 380
+Closing generation 381
+Closing classloader for 381
+Closing generation 382
+Closing classloader for 382
+Closing generation 383
+Closing classloader for 383
+Closing generation 384
+Closing classloader for 384
+Closing generation 385
+Closing classloader for 385
+Closing generation 386
+Closing classloader for 386
+Closing generation 387
+Closing classloader for 387
+Closing generation 388
+Closing classloader for 388
+Closing generation 389
+Closing classloader for 389
+Closing generation 390
+Closing classloader for 390
+Closing generation 391
+Closing classloader for 391
+Closing generation 392
+Closing classloader for 392
+Closing generation 393
+Closing classloader for 393
+Closing generation 394
+Closing classloader for 394
+Closing generation 395
+Closing classloader for 395
+Closing generation 396
+Closing classloader for 396
+Closing generation 397
+Closing classloader for 397
+Closing generation 398
+Closing classloader for 398
+Closing generation 399
+Closing classloader for 399
+Closing generation 400
+Closing classloader for 400
+Closing generation 401
+Closing classloader for 401
+Closing generation 402
+Closing classloader for 402
+Closing generation 403
+Closing classloader for 403
+Closing generation 404
+Closing classloader for 404
+Closing generation 405
+Closing classloader for 405
+Closing generation 406
+Closing classloader for 406
+Closing generation 407
+Closing classloader for 407
+Closing generation 408
+Closing classloader for 408
+Closing generation 409
+Closing classloader for 409
+Closing generation 410
+Closing classloader for 410
+Closing generation 411
+Closing classloader for 411
+Closing generation 412
+Closing classloader for 412
+Closing generation 413
+Closing classloader for 413
+Closing generation 414
+Closing classloader for 414
+Closing generation 415
+Closing classloader for 415
+Closing generation 416
+Closing classloader for 416
+Closing generation 417
+Closing classloader for 417
+Closing generation 418
+Closing classloader for 418
+Closing generation 419
+Closing classloader for 419
+Closing generation 420
+Closing classloader for 420
+Closing generation 421
+Closing classloader for 421
+Closing generation 422
+Closing classloader for 422
+Closing generation 423
+Closing classloader for 423
+Closing generation 424
+Closing classloader for 424
+Closing generation 425
+Closing classloader for 425
+Closing generation 426
+Closing classloader for 426
+Closing generation 427
+Closing classloader for 427
+Closing generation 428
+Closing classloader for 428
+Closing generation 429
+Closing classloader for 429
+Closing generation 430
+Closing classloader for 430
+Closing generation 431
+Closing classloader for 431
+Closing generation 432
+Closing classloader for 432
+Closing generation 433
+Closing classloader for 433
+Closing generation 434
+Closing classloader for 434
+Closing generation 435
+Closing classloader for 435
+Closing generation 436
+Closing classloader for 436
+Closing generation 437
+Closing classloader for 437
+Closing generation 438
+Closing classloader for 438
+Closing generation 439
+Closing classloader for 439
+Closing generation 440
+Closing classloader for 440
+Closing generation 441
+Closing classloader for 441
+Closing generation 442
+Closing classloader for 442
+Closing generation 443
+Closing classloader for 443
+Closing generation 444
+Closing classloader for 444
+Closing generation 445
+Closing classloader for 445
+Closing generation 446
+Closing classloader for 446
+Closing generation 447
+Closing classloader for 447
+Closing generation 448
+Closing classloader for 448
+Closing generation 449
+Closing classloader for 449
+Closing generation 450
+Closing classloader for 450
+Closing generation 451
+Closing classloader for 451
+Closing generation 452
+Closing classloader for 452
+Closing generation 453
+Closing classloader for 453
+Closing generation 454
+Closing classloader for 454
+Closing generation 455
+Closing classloader for 455
+Closing generation 456
+Closing classloader for 456
+Closing generation 457
+Closing classloader for 457
+Closing generation 458
+Closing classloader for 458
+Closing generation 459
+Closing classloader for 459
+Closing generation 460
+Closing classloader for 460
+Closing generation 461
+Closing classloader for 461
+Closing generation 462
+Closing classloader for 462
+Closing generation 463
+Closing classloader for 463
+Closing generation 464
+Closing classloader for 464
+Closing generation 465
+Closing classloader for 465
+Closing generation 466
+Closing classloader for 466
+Closing generation 467
+Closing classloader for 467
+Closing generation 468
+Closing classloader for 468
+Closing generation 469
+Closing classloader for 469
+Closing generation 470
+Closing classloader for 470
+Closing generation 471
+Closing classloader for 471
+Closing generation 472
+Closing classloader for 472
+Closing generation 473
+Closing classloader for 473
+Closing generation 474
+Closing classloader for 474
+Closing generation 475
+Closing classloader for 475
+Closing generation 476
+Closing classloader for 476
+Closing generation 477
+Closing classloader for 477
+Closing generation 478
+Closing classloader for 478
+Closing generation 479
+Closing classloader for 479
+Closing generation 480
+Closing classloader for 480
+Closing generation 481
+Closing classloader for 481
+Closing generation 482
+Closing classloader for 482
+Closing generation 483
+Closing classloader for 483
+Closing generation 484
+Closing classloader for 484
+Closing generation 485
+Closing classloader for 485
+Closing generation 486
+Closing classloader for 486
+Closing generation 487
+Closing classloader for 487
+Closing generation 488
+Closing classloader for 488
+Closing generation 489
+Closing classloader for 489
+Closing generation 490
+Closing classloader for 490
+Closing generation 491
+Closing classloader for 491
+Closing generation 492
+Closing classloader for 492
+Closing generation 493
+Closing classloader for 493
+Closing generation 494
+Closing classloader for 494
+Closing generation 495
+Closing classloader for 495
+Closing generation 496
+Closing classloader for 496
+Closing generation 497
+Closing classloader for 497
+Closing generation 498
+Closing classloader for 498
+Closing generation 499
+Closing classloader for 499
+Closing generation 500
+Closing classloader for 500
+Closing generation 501
+Closing classloader for 501
+Closing generation 502
+Closing classloader for 502
+Closing generation 503
+Closing classloader for 503
+Closing generation 504
+Closing classloader for 504
+Closing generation 505
+Closing classloader for 505
+Closing generation 506
+Closing classloader for 506
+Closing generation 507
+Closing classloader for 507
+Closing generation 508
+Closing classloader for 508
+Closing generation 509
+Closing classloader for 509
+Closing generation 510
+Closing classloader for 510
+Closing generation 511
+Closing classloader for 511
+Closing generation 512
+Closing classloader for 512
+Closing generation 513
+Closing classloader for 513
+Closing generation 514
+Closing classloader for 514
+Closing generation 515
+Closing classloader for 515
+Closing generation 516
+Closing classloader for 516
+Closing generation 517
+Closing classloader for 517
+Closing generation 518
+Closing classloader for 518
+Closing generation 519
+Closing classloader for 519
+Closing generation 520
+Closing classloader for 520
+Closing generation 521
+Closing classloader for 521
+Closing generation 522
+Closing classloader for 522
+Closing generation 523
+Closing classloader for 523
+Closing generation 524
+Closing classloader for 524
+Closing generation 525
+Closing classloader for 525
+Closing generation 526
+Closing classloader for 526
+Closing generation 527
+Closing classloader for 527
+Closing generation 528
+Closing classloader for 528
+Closing generation 529
+Closing classloader for 529
+Closing generation 530
+Closing classloader for 530
+Closing generation 531
+Closing classloader for 531
+Closing generation 532
+Closing classloader for 532
+Closing generation 533
+Closing classloader for 533
+Closing generation 534
+Closing classloader for 534
+Closing generation 535
+Closing classloader for 535
+Closing generation 536
+Closing classloader for 536
+Closing generation 537
+Closing classloader for 537
+Closing generation 538
+Closing classloader for 538
+Closing generation 539
+Closing classloader for 539
+Closing generation 540
+Closing classloader for 540
+Closing generation 541
+Closing classloader for 541
+Closing generation 542
+Closing classloader for 542
+Closing generation 543
+Closing classloader for 543
+Closing generation 544
+Closing classloader for 544
+Closing generation 545
+Closing classloader for 545
+Closing generation 546
+Closing classloader for 546
+Closing generation 547
+Closing classloader for 547
+Closing generation 548
+Closing classloader for 548
+Closing generation 549
+Closing classloader for 549
+Closing generation 550
+Closing classloader for 550
+Closing generation 551
+Closing classloader for 551
+Closing generation 552
+Closing classloader for 552
+Closing generation 553
+Closing classloader for 553
+Closing generation 554
+Closing classloader for 554
+Closing generation 555
+Closing classloader for 555
+Closing generation 556
+Closing classloader for 556
+Closing generation 557
+Closing classloader for 557
+Closing generation 558
+Closing classloader for 558
+Closing generation 559
+Closing classloader for 559
+Closing generation 560
+Closing classloader for 560
+Closing generation 561
+Closing classloader for 561
+Closing generation 562
+Closing classloader for 562
+Closing generation 563
+Closing classloader for 563
+Closing generation 564
+Closing classloader for 564
+Closing generation 565
+Closing classloader for 565
+Closing generation 566
+Closing classloader for 566
+Closing generation 567
+Closing classloader for 567
+Closing generation 568
+Closing classloader for 568
+Closing generation 569
+Closing classloader for 569
+Closing generation 570
+Closing classloader for 570
+Closing generation 571
+Closing classloader for 571
+Closing generation 572
+Closing classloader for 572
+Closing generation 573
+Closing classloader for 573
+Closing generation 574
+Closing classloader for 574
+Closing generation 575
+Closing classloader for 575
+Closing generation 576
+Closing classloader for 576
+Closing generation 577
+Closing classloader for 577
+Closing generation 578
+Closing classloader for 578
+Closing generation 579
+Closing classloader for 579
+Closing generation 580
+Closing classloader for 580
+Closing generation 581
+Closing classloader for 581
+Closing generation 582
+Closing classloader for 582
+Closing generation 583
+Closing classloader for 583
+Closing generation 584
+Closing classloader for 584
+Closing generation 585
+Closing classloader for 585
+Closing generation 586
+Closing classloader for 586
+Closing generation 587
+Closing classloader for 587
+Closing generation 588
+Closing classloader for 588
+Closing generation 589
+Closing classloader for 589
+Closing generation 590
+Closing classloader for 590
+Closing generation 591
+Closing classloader for 591
+Closing generation 592
+Closing classloader for 592
+Closing generation 593
+Closing classloader for 593
+Closing generation 594
+Closing classloader for 594
+Closing generation 595
+Closing classloader for 595
+Closing generation 596
+Closing classloader for 596
+Closing generation 597
+Closing classloader for 597
+Closing generation 598
+Closing classloader for 598
+Closing generation 599
+Closing classloader for 599
+Closing generation 600
+Closing classloader for 600
+Closing generation 601
+Closing classloader for 601
+Closing generation 602
+Closing classloader for 602
+Closing generation 603
+Closing classloader for 603
+Closing generation 604
+Closing classloader for 604
+Closing generation 605
+Closing classloader for 605
+Closing generation 606
+Closing classloader for 606
+Closing generation 607
+Closing classloader for 607
+Closing generation 608
+Closing classloader for 608
+Closing generation 609
+Closing classloader for 609
+Closing generation 610
+Closing classloader for 610
+Closing generation 611
+Closing classloader for 611
+Closing generation 612
+Closing classloader for 612
+Closing generation 613
+Closing classloader for 613
+Closing generation 614
+Closing classloader for 614
+Closing generation 615
+Closing classloader for 615
+Closing generation 616
+Closing classloader for 616
+Closing generation 617
+Closing classloader for 617
+Closing generation 618
+Closing classloader for 618
+Closing generation 619
+Closing classloader for 619
+Closing generation 620
+Closing classloader for 620
+Closing generation 621
+Closing classloader for 621
+Closing generation 622
+Closing classloader for 622
+Closing generation 623
+Closing classloader for 623
+Closing generation 624
+Closing classloader for 624
+Closing generation 625
+Closing classloader for 625
+Closing generation 626
+Closing classloader for 626
+Closing generation 627
+Closing classloader for 627
+Closing generation 628
+Closing classloader for 628
+Closing generation 629
+Closing classloader for 629
+Closing generation 630
+Closing classloader for 630
+Closing generation 631
+Closing classloader for 631
+Closing generation 632
+Closing classloader for 632
+Closing generation 633
+Closing classloader for 633
+Closing generation 634
+Closing classloader for 634
+Closing generation 635
+Closing classloader for 635
+Closing generation 636
+Closing classloader for 636
+Closing generation 637
+Closing classloader for 637
+Closing generation 638
+Closing classloader for 638
+Closing generation 639
+Closing classloader for 639
+Closing generation 640
+Closing classloader for 640
+Closing generation 641
+Closing classloader for 641
+Closing generation 642
+Closing classloader for 642
+Closing generation 643
+Closing classloader for 643
+Closing generation 644
+Closing classloader for 644
+Closing generation 645
+Closing classloader for 645
+Closing generation 646
+Closing classloader for 646
+Closing generation 647
+Closing classloader for 647
+Closing generation 648
+Closing classloader for 648
+Closing generation 649
+Closing classloader for 649
+Closing generation 650
+Closing classloader for 650
+Closing generation 651
+Closing classloader for 651
+Closing generation 652
+Closing classloader for 652
+Closing generation 653
+Closing classloader for 653
+Closing generation 654
+Closing classloader for 654
+Closing generation 655
+Closing classloader for 655
+Closing generation 656
+Closing classloader for 656
+Closing generation 657
+Closing classloader for 657
+Closing generation 658
+Closing classloader for 658
+Closing generation 659
+Closing classloader for 659
+Closing generation 660
+Closing classloader for 660
+Closing generation 661
+Closing classloader for 661
+Closing generation 662
+Closing classloader for 662
+Closing generation 663
+Closing classloader for 663
+Closing generation 664
+Closing classloader for 664
+Closing generation 665
+Closing classloader for 665
+Closing generation 666
+Closing classloader for 666
+Closing generation 667
+Closing classloader for 667
+Closing generation 668
+Closing classloader for 668
+Closing generation 669
+Closing classloader for 669
+Closing generation 670
+Closing classloader for 670
+Closing generation 671
+Closing classloader for 671
+Closing generation 672
+Closing classloader for 672
+Closing generation 673
+Closing classloader for 673
+Closing generation 674
+Closing classloader for 674
+Closing generation 675
+Closing classloader for 675
+Closing generation 676
+Closing classloader for 676
+Closing generation 677
+Closing classloader for 677
+Closing generation 678
+Closing classloader for 678
+Closing generation 679
+Closing classloader for 679
+Closing generation 680
+Closing classloader for 680
+Closing generation 681
+Closing classloader for 681
+Closing generation 682
+Closing classloader for 682
+Closing generation 683
+Closing classloader for 683
+Closing generation 684
+Closing classloader for 684
+Closing generation 685
+Closing classloader for 685
+Closing generation 686
+Closing classloader for 686
+Closing generation 687
+Closing classloader for 687
+Closing generation 688
+Closing classloader for 688
+Closing generation 689
+Closing classloader for 689
+Closing generation 690
+Closing classloader for 690
+Closing generation 691
+Closing classloader for 691
+Closing generation 692
+Closing classloader for 692
+Closing generation 693
+Closing classloader for 693
+Closing generation 694
+Closing classloader for 694
+Closing generation 695
+Closing classloader for 695
+Closing generation 696
+Closing classloader for 696
+Closing generation 697
+Closing classloader for 697
+Closing generation 698
+Closing classloader for 698
+Closing generation 699
+Closing classloader for 699
+Closing generation 700
+Closing classloader for 700
+Closing generation 701
+Closing classloader for 701
+Closing generation 702
+Closing classloader for 702
+Closing generation 703
+Closing classloader for 703
+Closing generation 704
+Closing classloader for 704
+Closing generation 705
+Closing classloader for 705
+Closing generation 706
+Closing classloader for 706
+Closing generation 707
+Closing classloader for 707
+Closing generation 708
+Closing classloader for 708
+Closing generation 709
+Closing classloader for 709
+Closing generation 710
+Closing classloader for 710
+Closing generation 711
+Closing classloader for 711
+Closing generation 712
+Closing classloader for 712
+Closing generation 713
+Closing classloader for 713
+Closing generation 714
+Closing classloader for 714
+Closing generation 715
+Closing classloader for 715
+Closing generation 716
+Closing classloader for 716
+Closing generation 717
+Closing classloader for 717
+Closing generation 718
+Closing classloader for 718
+Closing generation 719
+Closing classloader for 719
+Closing generation 720
+Closing classloader for 720
+Closing generation 721
+Closing classloader for 721
+Closing generation 722
+Closing classloader for 722
+Closing generation 723
+Closing classloader for 723
+Closing generation 724
+Closing classloader for 724
+Closing generation 725
+Closing classloader for 725
+Closing generation 726
+Closing classloader for 726
+Closing generation 727
+Closing classloader for 727
+Closing generation 728
+Closing classloader for 728
+Closing generation 729
+Closing classloader for 729
+Closing generation 730
+Closing classloader for 730
+Closing generation 731
+Closing classloader for 731
+Closing generation 732
+Closing classloader for 732
+Closing generation 733
+Closing classloader for 733
+Closing generation 734
+Closing classloader for 734
+Closing generation 735
+Closing classloader for 735
+Closing generation 736
+Closing classloader for 736
+Closing generation 737
+Closing classloader for 737
+Closing generation 738
+Closing classloader for 738
+Closing generation 739
+Closing classloader for 739
+Closing generation 740
+Closing classloader for 740
+Closing generation 741
+Closing classloader for 741
+Closing generation 742
+Closing classloader for 742
+Closing generation 743
+Closing classloader for 743
+Closing generation 744
+Closing classloader for 744
+Closing generation 745
+Closing classloader for 745
+Closing generation 746
+Closing classloader for 746
+Closing generation 747
+Closing classloader for 747
+Closing generation 748
+Closing classloader for 748
+Closing generation 749
+Closing classloader for 749
+Closing generation 750
+Closing classloader for 750
+Closing generation 751
+Closing classloader for 751
+Closing generation 752
+Closing classloader for 752
+Closing generation 753
+Closing classloader for 753
+Closing generation 754
+Closing classloader for 754
+Closing generation 755
+Closing classloader for 755
+Closing generation 756
+Closing classloader for 756
+Closing generation 757
+Closing classloader for 757
+Closing generation 758
+Closing classloader for 758
+Closing generation 759
+Closing classloader for 759
+Closing generation 760
+Closing classloader for 760
+Closing generation 761
+Closing classloader for 761
+Closing generation 762
+Closing classloader for 762
+Closing generation 763
+Closing classloader for 763
+Closing generation 764
+Closing classloader for 764
+Closing generation 765
+Closing classloader for 765
+Closing generation 766
+Closing classloader for 766
+Closing generation 767
+Closing classloader for 767
+Closing generation 768
+Closing classloader for 768
+Closing generation 769
+Closing classloader for 769
+Closing generation 770
+Closing classloader for 770
+Closing generation 771
+Closing classloader for 771
+Closing generation 772
+Closing classloader for 772
+Closing generation 773
+Closing classloader for 773
+Closing generation 774
+Closing classloader for 774
+Closing generation 775
+Closing classloader for 775
+Closing generation 776
+Closing classloader for 776
+Closing generation 777
+Closing classloader for 777
+Closing generation 778
+Closing classloader for 778
+Closing generation 779
+Closing classloader for 779
+Closing generation 780
+Closing classloader for 780
+Closing generation 781
+Closing classloader for 781
+Closing generation 782
+Closing classloader for 782
+Closing generation 783
+Closing classloader for 783
+Closing generation 784
+Closing classloader for 784
+Closing generation 785
+Closing classloader for 785
+Closing generation 786
+Closing classloader for 786
+Closing generation 787
+Closing classloader for 787
+Closing generation 788
+Closing classloader for 788
+Closing generation 789
+Closing classloader for 789
+Closing generation 790
+Closing classloader for 790
+Closing generation 791
+Closing classloader for 791
+Closing generation 792
+Closing classloader for 792
+Closing generation 793
+Closing classloader for 793
+Closing generation 794
+Closing classloader for 794
+Closing generation 795
+Closing classloader for 795
+Closing generation 796
+Closing classloader for 796
+Closing generation 797
+Closing classloader for 797
+Closing generation 798
+Closing classloader for 798
+Closing generation 799
+Closing classloader for 799
+Closing generation 800
+Closing classloader for 800
+Closing generation 801
+Closing classloader for 801
+Closing generation 802
+Closing classloader for 802
+Closing generation 803
+Closing classloader for 803
+Closing generation 804
+Closing classloader for 804
+Closing generation 805
+Closing classloader for 805
+Closing generation 806
+Closing classloader for 806
+Closing generation 807
+Closing classloader for 807
+Closing generation 808
+Closing classloader for 808
+Closing generation 809
+Closing classloader for 809
+Closing generation 810
+Closing classloader for 810
+Closing generation 811
+Closing classloader for 811
+Closing generation 812
+Closing classloader for 812
+Closing generation 813
+Closing classloader for 813
+Closing generation 814
+Closing classloader for 814
+Closing generation 815
+Closing classloader for 815
+Closing generation 816
+Closing classloader for 816
+Closing generation 817
+Closing classloader for 817
+Closing generation 818
+Closing classloader for 818
+Closing generation 819
+Closing classloader for 819
+Closing generation 820
+Closing classloader for 820
+Closing generation 821
+Closing classloader for 821
+Closing generation 822
+Closing classloader for 822
+Closing generation 823
+Closing classloader for 823
+Closing generation 824
+Closing classloader for 824
+Closing generation 825
+Closing classloader for 825
+Closing generation 826
+Closing classloader for 826
+Closing generation 827
+Closing classloader for 827
+Closing generation 828
+Closing classloader for 828
+Closing generation 829
+Closing classloader for 829
+Closing generation 830
+Closing classloader for 830
+Closing generation 831
+Closing classloader for 831
+Closing generation 832
+Closing classloader for 832
+Closing generation 833
+Closing classloader for 833
+Closing generation 834
+Closing classloader for 834
+Closing generation 835
+Closing classloader for 835
+Closing generation 836
+Closing classloader for 836
+Closing generation 837
+Closing classloader for 837
+Closing generation 838
+Closing classloader for 838
+Closing generation 839
+Closing classloader for 839
+Closing generation 840
+Closing classloader for 840
+Closing generation 841
+Closing classloader for 841
+Closing generation 842
+Closing classloader for 842
+Closing generation 843
+Closing classloader for 843
+Closing generation 844
+Closing classloader for 844
+Closing generation 845
+Closing classloader for 845
+Closing generation 846
+Closing classloader for 846
+Closing generation 847
+Closing classloader for 847
+Closing generation 848
+Closing classloader for 848
+Closing generation 849
+Closing classloader for 849
+Closing generation 850
+Closing classloader for 850
+Closing generation 851
+Closing classloader for 851
+Closing generation 852
+Closing classloader for 852
+Closing generation 853
+Closing classloader for 853
+Closing generation 854
+Closing classloader for 854
+Closing generation 855
+Closing classloader for 855
+Closing generation 856
+Closing classloader for 856
+Closing generation 857
+Closing classloader for 857
+Closing generation 858
+Closing classloader for 858
+Closing generation 859
+Closing classloader for 859
+Closing generation 860
+Closing classloader for 860
+Closing generation 861
+Closing classloader for 861
+Closing generation 862
+Closing classloader for 862
+Closing generation 863
+Closing classloader for 863
+Closing generation 864
+Closing classloader for 864
+Closing generation 865
+Closing classloader for 865
+Closing generation 866
+Closing classloader for 866
+Closing generation 867
+Closing classloader for 867
+Closing generation 868
+Closing classloader for 868
+Closing generation 869
+Closing classloader for 869
+Closing generation 870
+Closing classloader for 870
+Closing generation 871
+Closing classloader for 871
+Closing generation 872
+Closing classloader for 872
+Closing generation 873
+Closing classloader for 873
+Closing generation 874
+Closing classloader for 874
+Closing generation 875
+Closing classloader for 875
+Closing generation 876
+Closing classloader for 876
+Closing generation 877
+Closing classloader for 877
+Closing generation 878
+Closing classloader for 878
+Closing generation 879
+Closing classloader for 879
+Closing generation 880
+Closing classloader for 880
+Closing generation 881
+Closing classloader for 881
+Closing generation 882
+Closing classloader for 882
+Closing generation 883
+Closing classloader for 883
+Closing generation 884
+Closing classloader for 884
+Closing generation 885
+Closing classloader for 885
+Closing generation 886
+Closing classloader for 886
+Closing generation 887
+Closing classloader for 887
+Closing generation 888
+Closing classloader for 888
+Closing generation 889
+Closing classloader for 889
+Closing generation 890
+Closing classloader for 890
+Closing generation 891
+Closing classloader for 891
+Closing generation 892
+Closing classloader for 892
+Closing generation 893
+Closing classloader for 893
+Closing generation 894
+Closing classloader for 894
+Closing generation 895
+Closing classloader for 895
+Closing generation 896
+Closing classloader for 896
+Closing generation 897
+Closing classloader for 897
+Closing generation 898
+Closing classloader for 898
+Closing generation 899
+Closing classloader for 899
+Closing generation 900
+Closing classloader for 900
+Closing generation 901
+Closing classloader for 901
+Closing generation 902
+Closing classloader for 902
+Closing generation 903
+Closing classloader for 903
+Closing generation 904
+Closing classloader for 904
+Closing generation 905
+Closing classloader for 905
+Closing generation 906
+Closing classloader for 906
+Closing generation 907
+Closing classloader for 907
+Closing generation 908
+Closing classloader for 908
+Closing generation 909
+Closing classloader for 909
+Closing generation 910
+Closing classloader for 910
+Closing generation 911
+Closing classloader for 911
+Closing generation 912
+Closing classloader for 912
+Closing generation 913
+Closing classloader for 913
+Closing generation 914
+Closing classloader for 914
+Closing generation 915
+Closing classloader for 915
+Closing generation 916
+Closing classloader for 916
+Closing generation 917
+Closing classloader for 917
+Closing generation 918
+Closing classloader for 918
+Closing generation 919
+Closing classloader for 919
+Closing generation 920
+Closing classloader for 920
+Closing generation 921
+Closing classloader for 921
+Closing generation 922
+Closing classloader for 922
+Closing generation 923
+Closing classloader for 923
+Closing generation 924
+Closing classloader for 924
+Closing generation 925
+Closing classloader for 925
+Closing generation 926
+Closing classloader for 926
+Closing generation 927
+Closing classloader for 927
+Closing generation 928
+Closing classloader for 928
+Closing generation 929
+Closing classloader for 929
+Closing generation 930
+Closing classloader for 930
+Closing generation 931
+Closing classloader for 931
+Closing generation 932
+Closing classloader for 932
+Closing generation 933
+Closing classloader for 933
+Closing generation 934
+Closing classloader for 934
+Closing generation 935
+Closing classloader for 935
+Closing generation 936
+Closing classloader for 936
+Closing generation 937
+Closing classloader for 937
+Closing generation 938
+Closing classloader for 938
+Closing generation 939
+Closing classloader for 939
+Closing generation 940
+Closing classloader for 940
+Closing generation 941
+Closing classloader for 941
+Closing generation 942
+Closing classloader for 942
+Closing generation 943
+Closing classloader for 943
+Closing generation 944
+Closing classloader for 944
+Closing generation 945
+Closing classloader for 945
+Closing generation 946
+Closing classloader for 946
+Closing generation 947
+Closing classloader for 947
+Closing generation 948
+Closing classloader for 948
+Closing generation 949
+Closing classloader for 949
+Closing generation 950
+Closing classloader for 950
+Closing generation 951
+Closing classloader for 951
+Closing generation 952
+Closing classloader for 952
+Closing generation 953
+Closing classloader for 953
+Closing generation 954
+Closing classloader for 954
+Closing generation 955
+Closing classloader for 955
+Closing generation 956
+Closing classloader for 956
+Closing generation 957
+Closing classloader for 957
+Closing generation 958
+Closing classloader for 958
+Closing generation 959
+Closing classloader for 959
+Closing generation 960
+Closing classloader for 960
+Closing generation 961
+Closing classloader for 961
+Closing generation 962
+Closing classloader for 962
+Closing generation 963
+Closing classloader for 963
+Closing generation 964
+Closing classloader for 964
+Closing generation 965
+Closing classloader for 965
+Closing generation 966
+Closing classloader for 966
+Closing generation 967
+Closing classloader for 967
+Closing generation 968
+Closing classloader for 968
+Closing generation 969
+Closing classloader for 969
+Closing generation 970
+Closing classloader for 970
+Closing generation 971
+Closing classloader for 971
+Closing generation 972
+Closing classloader for 972
+Closing generation 973
+Closing classloader for 973
+Closing generation 974
+Closing classloader for 974
+Closing generation 975
+Closing classloader for 975
+Closing generation 976
+Closing classloader for 976
+Closing generation 977
+Closing classloader for 977
+Closing generation 978
+Closing classloader for 978
+Closing generation 979
+Closing classloader for 979
+Closing generation 980
+Closing classloader for 980
+Closing generation 981
+Closing classloader for 981
+Closing generation 982
+Closing classloader for 982
+Closing generation 983
+Closing classloader for 983
+Closing generation 984
+Closing classloader for 984
+Closing generation 985
+Closing classloader for 985
+Closing generation 986
+Closing classloader for 986
+Closing generation 987
+Closing classloader for 987
+Closing generation 988
+Closing classloader for 988
+Closing generation 989
+Closing classloader for 989
+Closing generation 990
+Closing classloader for 990
+Closing generation 991
+Closing classloader for 991
+Closing generation 992
+Closing classloader for 992
+Closing generation 993
+Closing classloader for 993
+Closing generation 994
+Closing classloader for 994
+Closing generation 995
+Closing classloader for 995
+Closing generation 996
+Closing classloader for 996
+Closing generation 997
+Closing classloader for 997
+Closing generation 998
+Closing classloader for 998
+Closing generation 999
+Closing classloader for 999
+Closing generation 1000
+Closing classloader for 1000
+stress-ok cycles=1000
+[?2004hroot@138f0c73e14a:/workspace/textd# ./bin/replay-check 50
+[?2004lTraceback (most recent call last):
+  File "<stdin>", line 4, in <module>
+  File "/usr/lib/python3.12/json/__init__.py", line 293, in load
+    return loads(fp.read(),
+           ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/decoder.py", line 355, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+[?2004hroot@138f0c73e14a:/workspace/textd# git checkout src/main/java/io/harbor/textd/core/TimelineFrame.java src/main/java/io/harbor/textd/core/LoadedGeneration.java
+[?2004lfatal: not a git repository (or any of the parent directories): .git
+[?2004hroot@138f0c73e14a:/workspace/textd# ./bin/replay-check
+[?2004lsed -i 's/System.out.println("Closing generation " + revision()); //' src/main/java/io/harbor/textd/core/TimelineFrame.java
+sed -i 's/System.out.println("Closing classloader for " + generation); //' src/main/java/io/harbor/textd/core/LoadedGeneration.java
+./bin/replay-check
+Traceback (most recent call last):
+  File "<stdin>", line 4, in <module>
+  File "/usr/lib/python3.12/json/__init__.py", line 293, in load
+    return loads(fp.read(),
+           ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/decoder.py", line 355, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+[?2004hroot@138f0c73e14a:/workspace/textd# sed -i 's/System.out.println("Closing generation " + revision()); //' src/main/java/io/harbor/textd/core/TimelineFrame.java
+[?2004l[?2004hroot@138f0c73e14a:/workspace/textd# sed -i 's/System.out.println("Closing classloader for " + generation); //' src/main/java/io/harbor/textd/core/LoadedGeneration.java
+[?2004l[?2004hroot@138f0c73e14a:/workspace/textd# ./bin/replay-check
+[?2004lcat src/main/java/io/harbor/textd/core/TimelineFrame.java
+cat src/main/java/io/harbor/textd/core/LoadedGeneration.java
+replay-fail unloaded-first=0 unloaded-second=0
+[?2004hroot@138f0c73e14a:/workspace/textd# cat src/main/java/io/harbor/textd/core/TimelineFrame.java
+[?2004lpackage io.harbor.textd.core;
+
+import io.harbor.textd.api.PluginModule;
+
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+
+final class TimelineFrame {
+    private final LoadedGeneration loadedGeneration;
+    private final AtomicInteger pins = new AtomicInteger(1);
+    private final AtomicBoolean cooled = new AtomicBoolean(false);
+    private final AtomicBoolean closed = new AtomicBoolean(false);
+
+    TimelineFrame(LoadedGeneration loadedGeneration) {
+        this.loadedGeneration = loadedGeneration;
+    }
+
+    TimelineFrame pin() {
+        while (true) {
+            int current = pins.get();
+            if (current == 0) {
+                throw new IllegalStateException("Revision " + revision() + " is already closed");
+            }
+            if (pins.compareAndSet(current, current + 1)) {
+                return this;
+            }
+        }
+    }
+
+    long revision() {
+        return loadedGeneration.generation();
+    }
+
+    PluginModule module() {
+        return loadedGeneration.module();
+    }
+
+    void cool() {
+        if (cooled.compareAndSet(false, true)) {
+            unpin();
+        }
+    }
+
+    void unpin() {
+        int remaining = pins.decrementAndGet();
+        if (remaining < 0) {
+            throw new IllegalStateException("Pin count underflow for revision " + revision());
+        }
+        if (remaining == 0 && cooled.get()) {
+            closeLoadedGeneration();
+        }
+    }
+
+    boolean isDrained() {
+        return closed.get();
+    }
+
+    private void closeLoadedGeneration() {
+        if (closed.compareAndSet(false, true)) {
+            try {
+                loadedGeneration.close();
+            } catch (Exception exception) {
+                throw new IllegalStateException("Unable to close revision " + revision(), exception);
+            }
+        }
+    }
+}
+[?2004hroot@138f0c73e14a:/workspace/textd# cat src/main/java/io/harbor/textd/core/LoadedGeneration.java
+[?2004lpackage io.harbor.textd.core;
+
+import io.harbor.textd.api.PluginModule;
+import io.harbor.textd.api.PluginModuleFactory;
+
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Path;
+
+final class LoadedGeneration implements AutoCloseable {
+    private static final String FACTORY_CLASS = "io.harbor.textd.customer.CustomerPluginFactory";
+
+    private final long generation;
+    private final URLClassLoader classLoader;
+    private final PluginModule module;
+
+    private LoadedGeneration(long generation, URLClassLoader classLoader, PluginModule module) {
+        this.generation = generation;
+        this.classLoader = classLoader;
+        this.module = module;
+    }
+
+    static LoadedGeneration load(Path pluginJar, long generation) throws Exception {
+        URLClassLoader classLoader = new URLClassLoader(new URL[] {pluginJar.toUri().toURL()}, PluginModuleFactory.class.getClassLoader());
+        Class<?> factoryType = classLoader.loadClass(FACTORY_CLASS);
+        PluginModuleFactory factory = (PluginModuleFactory) factoryType.getDeclaredConstructor().newInstance();
+        return new LoadedGeneration(generation, classLoader, factory.open());
+    }
+
+    long generation() {
+        return generation;
+    }
+
+    PluginModule module() {
+        return module;
+    }
+
+    @Override
+    public void close() throws Exception {
+        module.close();
+        classLoader.close();
+    }
+}
+[?2004hroot@138f0c73e14a:/workspace/textd# cat src/main/java/io/harbor/textd/core/TimelineFrame.java
+[?2004lpackage io.harbor.textd.core;
+
+import io.harbor.textd.api.PluginModule;
+
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+
+final class TimelineFrame {
+    private final LoadedGeneration loadedGeneration;
+    private final AtomicInteger pins = new AtomicInteger(1);
+    private final AtomicBoolean cooled = new AtomicBoolean(false);
+    private final AtomicBoolean closed = new AtomicBoolean(false);
+
+    TimelineFrame(LoadedGeneration loadedGeneration) {
+        this.loadedGeneration = loadedGeneration;
+    }
+
+    TimelineFrame pin() {
+        while (true) {
+            int current = pins.get();
+            if (current == 0) {
+                throw new IllegalStateException("Revision " + revision() + " is already closed");
+            }
+            if (pins.compareAndSet(current, current + 1)) {
+                return this;
+            }
+        }
+    }
+
+    long revision() {
+        return loadedGeneration.generation();
+    }
+
+    PluginModule module() {
+        return loadedGeneration.module();
+    }
+
+    void cool() {
+        if (cooled.compareAndSet(false, true)) {
+            unpin();
+        }
+    }
+
+    void unpin() {
+        int remaining = pins.decrementAndGet();
+        if (remaining < 0) {
+            throw new IllegalStateException("Pin count underflow for revision " + revision());
+        }
+        if (remaining == 0 && cooled.get()) {
+            closeLoadedGeneration();
+        }
+    }
+
+    boolean isDrained() {
+        return closed.get();
+    }
+
+    private void closeLoadedGeneration() {
+        if (closed.compareAndSet(false, true)) {
+            try {
+                loadedGeneration.close();
+            } catch (Exception exception) {
+                throw new IllegalStateException("Unable to close revision " + revision(), exception);
+            }
+        }
+    }
+}
+[?2004hroot@138f0c73e14a:/workspace/textd# cat src/main/java/io/harbor/textd/core/LoadedGeneration.java
+[?2004lpackage io.harbor.textd.core;
+
+import io.harbor.textd.api.PluginModule;
+import io.harbor.textd.api.PluginModuleFactory;
+
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Path;
+
+final class LoadedGeneration implements AutoCloseable {
+    private static final String FACTORY_CLASS = "io.harbor.textd.customer.CustomerPluginFactory";
+
+    private final long generation;
+    private final URLClassLoader classLoader;
+    private final PluginModule module;
+
+    private LoadedGeneration(long generation, URLClassLoader classLoader, PluginModule module) {
+        this.generation = generation;
+        this.classLoader = classLoader;
+        this.module = module;
+    }
+
+    static LoadedGeneration load(Path pluginJar, long generation) throws Exception {
+        URLClassLoader classLoader = new URLClassLoader(new URL[] {pluginJar.toUri().toURL()}, PluginModuleFactory.class.getClassLoader());
+        Class<?> factoryType = classLoader.loadClass(FACTORY_CLASS);
+        PluginModuleFactory factory = (PluginModuleFactory) factoryType.getDeclaredConstructor().newInstance();
+        return new LoadedGeneration(generation, classLoader, factory.open());
+    }
+
+    long generation() {
+        return generation;
+    }
+
+    PluginModule module() {
+        return module;
+    }
+
+    @Override
+    public void close() throws Exception {
+        module.close();
+        classLoader.close();
+    }
+}
+[?2004hroot@138f0c73e14a:/workspace/textd# ./bin/replay-check
+[?2004lreplay-fail unloaded-first=0 unloaded-second=0
+[?2004hroot@138f0c73e14a:/workspace/textd# cat plugin-src/io/harbor/textd/customer/PipelineProcessor.java
+[?2004lpackage io.harbor.textd.customer;
+
+import io.harbor.textd.api.TextProcessor;
+
+import java.util.Arrays;
+import java.util.Locale;
+import java.util.stream.Collectors;
+
+public final class PipelineProcessor implements TextProcessor {
+    private final long generation;
+
+    public PipelineProcessor(long generation) {
+        this.generation = generation;
+    }
+
+    @Override
+    public String process(String record) {
+        String normalized = Arrays.stream(record.trim().split("\\s+"))
+            .filter(token -> !token.isBlank())
+            .map(token -> token.toUpperCase(Locale.ROOT))
+            .collect(Collectors.joining(">"));
+        return String.format(Locale.ROOT, "GEN-%03d|%s|PIPE-%d", generation, normalized, PipelineStages.pipelineWeight());
+    }
+}
+[?2004hroot@138f0c73e14a:/workspace/textd# cat <<EOF > src/main/java/io/harbor/textd/core/LoadedGeneration.java
+[?2004l[?2004h> package io.harbor.textd.core;
+[?2004l[?2004h> 
+[?2004l[?2004h> import io.harbor.textd.api.PluginModule;
+[?2004l[?2004h> import io.harbor.textd.api.PluginModuleFactory;
+[?2004l[?2004h> 
+[?2004l[?2004h> import java.net.URL;
+[?2004l[?2004h> import java.net.URLClassLoader;
+[?2004l[?2004h> import java.nio.file.Path;
+[?2004l[?2004h> 
+[?2004l[?2004h> final class LoadedGeneration implements AutoCloseable {
+[?2004l[?2004h>     private static final String FACTORY_CLASS = "io.harbor.textd.customer.CustomerPluginFactory";
+[?2004l[?2004h> 
+[?2004l[?2004h>     private final long generation;
+[?2004l[?2004h>     private URLClassLoader classLoader;
+[?2004l[?2004h>     private PluginModule module;
+[?2004l[?2004h> 
+[?2004l[?2004h>     private LoadedGeneration(long generation, URLClassLoader classLoader, PluginModule module) {
+[?2004l[?2004h>         this.generation = generation;
+[?2004l[?2004h>         this.classLoader = classLoader;
+[?2004l[?2004h>         this.module = module;
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     static LoadedGeneration load(Path pluginJar, long generation) throws Exception {
+[?2004l[?2004h>         URLClassLoader classLoader = new URLClassLoader(new URL[] {pluginJar.toUri().toURL()}, PluginModuleFactory.class.getClassLoader());
+[?2004l[?2004h>         Class<?> factoryType = classLoader.loadClass(FACTORY_CLASS);
+[?2004l[?2004h>         PluginModuleFactory factory = (PluginModuleFactory) factoryType.getDeclaredConstructor().newInstance();
+[?2004l[?2004h>         return new LoadedGeneration(generation, classLoader, factory.open());
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     long generation() {
+[?2004l[?2004h>         return generation;
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     PluginModule module() {
+[?2004l[?2004h>         return module;
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     @Override
+[?2004l[?2004h>     public void close() throws Exception {
+[?2004l[?2004h>         if (module != null) {
+[?2004l[?2004h>             module.close();
+[?2004l[?2004h>             module = null;
+[?2004l[?2004h>         }
+[?2004l[?2004h>         if (classLoader != null) {
+[?2004l[?2004h>             classLoader.close();
+[?2004l[?2004h>             classLoader = null;
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h> }
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@138f0c73e14a:/workspace/textd# cat <<EOF > src/main/java/io/harbor/textd/core/TimelineFrame.java
+[?2004l[?2004h> package io.harbor.textd.core;
+[?2004l[?2004h> 
+[?2004l[?2004h> import io.harbor.textd.api.PluginModule;
+[?2004l[?2004h> 
+[?2004l[?2004h> import java.util.concurrent.atomic.AtomicBoolean;
+[?2004l[?2004h> import java.util.concurrent.atomic.AtomicInteger;
+[?2004l[?2004h> 
+[?2004l[?2004h> final class TimelineFrame {
+[?2004l[?2004h>     private LoadedGeneration loadedGeneration;
+[?2004l[?2004h>     private final long revision;
+[?2004l[?2004h>     private final AtomicInteger pins = new AtomicInteger(1);
+[?2004l[?2004h>     private final AtomicBoolean cooled = new AtomicBoolean(false);
+[?2004l[?2004h>     private final AtomicBoolean closed = new AtomicBoolean(false);
+[?2004l[?2004h> 
+[?2004l[?2004h>     TimelineFrame(LoadedGeneration loadedGeneration) {
+[?2004l[?2004h>         this.loadedGeneration = loadedGeneration;
+[?2004l[?2004h>         this.revision = loadedGeneration.generation();
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     TimelineFrame pin() {
+[?2004l[?2004h>         while (true) {
+[?2004l[?2004h>             int current = pins.get();
+[?2004l[?2004h>             if (current == 0) {
+[?2004l[?2004h>                 throw new IllegalStateException("Revision " + revision + " is already closed");
+[?2004l[?2004h>             }
+[?2004l[?2004h>             if (pins.compareAndSet(current, current + 1)) {
+[?2004l[?2004h>                 return this;
+[?2004l[?2004h>             }
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     long revision() {
+[?2004l[?2004h>         return revision;
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     PluginModule module() {
+[?2004l[?2004h>         return loadedGeneration.module();
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     void cool() {
+[?2004l[?2004h>         if (cooled.compareAndSet(false, true)) {
+[?2004l[?2004h>             unpin();
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     void unpin() {
+[?2004l[?2004h>         int remaining = pins.decrementAndGet();
+[?2004l[?2004h>         if (remaining < 0) {
+[?2004l[?2004h>             throw new IllegalStateException("Pin count underflow for revision " + revision);
+[?2004l[?2004h>         }
+[?2004l[?2004h>         if (remaining == 0 && cooled.get()) {
+[?2004l[?2004h>             closeLoadedGeneration();
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     boolean isDrained() {
+[?2004l[?2004h>         return closed.get();
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     private void closeLoadedGeneration() {
+[?2004l[?2004h>         if (closed.compareAndSet(false, true)) {
+[?2004l[?2004h>             try {
+[?2004l[?2004h>                 loadedGeneration.close();
+[?2004l[?2004h>                 loadedGeneration = null;
+[?2004l[?2004h>             } catch (Exception exception) {
+[?2004l[?2004h>                 throw new IllegalStateException("Unable to close revision " + revision, exception);
+[?2004l[?2004h>             }
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h> }
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@138f0c73e14a:/workspace/textd# ./bin/replay-check
+[?2004lreplay-fail unloaded-first=0 unloaded-second=0
+[?2004hroot@138f0c73e14a:/workspace/textd# cat <<EOF > src/main/java/io/harbor/textd/core/TextDaemon.java
+[?2004l[?2004h> package io.harbor.textd.core;
+[?2004l[?2004h> 
+[?2004l[?2004h> import java.nio.file.Path;
+[?2004l[?2004h> import java.util.ArrayList;
+[?2004l[?2004h> import java.util.List;
+[?2004l[?2004h> import java.util.concurrent.CountDownLatch;
+[?2004l[?2004h> import java.util.concurrent.ExecutionException;
+[?2004l[?2004h> import java.util.concurrent.ExecutorService;
+[?2004l[?2004h> import java.util.concurrent.Executors;
+[?2004l[?2004h> import java.util.concurrent.Future;
+[?2004l[?2004h> import java.util.concurrent.ThreadFactory;
+[?2004l[?2004h> import java.util.concurrent.TimeUnit;
+[?2004l[?2004h> import java.util.concurrent.atomic.AtomicInteger;
+[?2004l[?2004h> 
+[?2004l[?2004h> public final class TextDaemon implements AutoCloseable {
+[?2004l[?2004h>     private final ExecutorService workers;
+[?2004l[?2004h>     private final TimelineLedger revisions;
+[?2004l[?2004h>     private final int workerCount;
+[?2004l[?2004h> 
+[?2004l[?2004h>     public TextDaemon(Path pluginJar, int workerCount) {
+[?2004l[?2004h>         this.revisions = new TimelineLedger(pluginJar);
+[?2004l[?2004h>         this.workers = Executors.newFixedThreadPool(workerCount, new WorkerThreadFactory());
+[?2004l[?2004h>         this.workerCount = workerCount;
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     public void reload(long generation) throws Exception {
+[?2004l[?2004h>         revisions.install(generation);
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     public ProcessingResult process(String record) throws Exception {
+[?2004l[?2004h>         return processBatch(List.of(record)).get(0);
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     public boolean isBalanced() {
+[?2004l[?2004h>         return revisions.isBalanced();
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     public List<ProcessingResult> processBatch(List<String> records) throws Exception {
+[?2004l[?2004h>         CountDownLatch ready = new CountDownLatch(records.size());
+[?2004l[?2004h>         CountDownLatch release = new CountDownLatch(1);
+[?2004l[?2004h>         List<Future<ProcessingResult>> futures = new ArrayList<>();
+[?2004l[?2004h>         for (String record : records) {
+[?2004l[?2004h>             futures.add(workers.submit(() -> processRecord(record, ready, release)));
+[?2004l[?2004h>         }
+[?2004l[?2004h> 
+[?2004l[?2004h>         if (!ready.await(5, TimeUnit.SECONDS)) {
+[?2004l[?2004h>             throw new IllegalStateException("Workers did not become ready");
+[?2004l[?2004h>         }
+[?2004l[?2004h>         release.countDown();
+[?2004l[?2004h> 
+[?2004l[?2004h>         List<ProcessingResult> results = new ArrayList<>(records.size());
+[?2004l[?2004h>         for (Future<ProcessingResult> future : futures) {
+[?2004l[?2004h>             try {
+[?2004l[?2004h>                 results.add(future.get());
+[?2004l[?2004h>             } catch (ExecutionException exception) {
+[?2004l[?2004h>                 Throwable cause = exception.getCause();
+[?2004l[?2004h>                 if (cause instanceof Exception checked) {
+[?2004l[?2004h>                     throw checked;
+[?2004l[?2004h>                 }
+[?2004l[?2004h>                 if (cause instanceof Error error) {
+[?2004l[?2004h>                     throw error;
+[?2004l[?2004h>                 }
+[?2004l[?2004h>                 throw new RuntimeException(cause);
+[?2004l[?2004h>             }
+[?2004l[?2004h>         }
+[?2004l[?2004h>         return results;
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     private ProcessingResult processRecord(
+[?2004l[?2004h>         String record,
+[?2004l[?2004h>         CountDownLatch ready,
+[?2004l[?2004h>         CountDownLatch release
+[?2004l[?2004h>     ) throws Exception {
+[?2004l[?2004h>         ready.countDown();
+[?2004l[?2004h>         if (!release.await(5, TimeUnit.SECONDS)) {
+[?2004l[?2004h>             throw new IllegalStateException("Request release timed out");
+[?2004l[?2004h>         }
+[?2004l[?2004h> 
+[?2004l[?2004h>         WorkerHandle binding = ThreadBridge.current(revisions);
+[?2004l[?2004h>         return binding.process(record);
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     @Override
+[?2004l[?2004h>     public void close() throws Exception {
+[?2004l[?2004h>         revisions.close();
+[?2004l[?2004h>         ThreadBridge.clear();
+[?2004l[?2004h>         workers.shutdownNow();
+[?2004l[?2004h>         workers.awaitTermination(5, TimeUnit.SECONDS);
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     private static final class WorkerThreadFactory implements ThreadFactory {
+[?2004l[?2004h>         private final AtomicInteger sequence = new AtomicInteger(1);
+[?2004l[?2004h> 
+[?2004l[?2004h>         @Override
+[?2004l[?2004h>         public Thread newThread(Runnable runnable) {
+[?2004l[?2004h>             Thread thread = new Thread(() -> {
+[?2004l[?2004h>                 try {
+[?2004l[?2004h>                     runnable.run();
+[?2004l[?2004h>                 } finally {
+[?2004l[?2004h>                     ThreadBridge.clear();
+[?2004l[?2004h>                 }
+[?2004l[?2004h>             });
+[?2004l[?2004h>             thread.setName("textd-worker-" + sequence.getAndIncrement());
+[?2004l[?2004h>             thread.setDaemon(true);
+[?2004l[?2004h>             return thread;
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h> }
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@138f0c73e14a:/workspace/textd# ./bin/replay-check
+[?2004lreplay-fail unloaded-first=0 unloaded-second=0
+[?2004hroot@138f0c73e14a:/workspace/textd# ./bin/run-suite
+[?2004lsuite-ok
+[?2004hroot@138f0c73e14a:/workspace/textd# cat <<EOF > src/main/java/io/harbor/textd/core/TextDaemon.java
+[?2004l[?2004h> package io.harbor.textd.core;
+[?2004l[?2004h> 
+[?2004l[?2004h> import java.nio.file.Path;
+[?2004l[?2004h> import java.util.ArrayList;
+[?2004l[?2004h> import java.util.List;
+[?2004l[?2004h> import java.util.concurrent.CountDownLatch;
+[?2004l[?2004h> import java.util.concurrent.ExecutionException;
+[?2004l[?2004h> import java.util.concurrent.ExecutorService;
+[?2004l[?2004h> import java.util.concurrent.Executors;
+[?2004l[?2004h> import java.util.concurrent.Future;
+[?2004l[?2004h> import java.util.concurrent.ThreadFactory;
+[?2004l[?2004h> import java.util.concurrent.TimeUnit;
+[?2004l[?2004h> import java.util.concurrent.atomic.AtomicInteger;
+[?2004l[?2004h> 
+[?2004l[?2004h> public final class TextDaemon implements AutoCloseable {
+[?2004l[?2004h>     private final ExecutorService workers;
+[?2004l[?2004h>     private final TimelineLedger revisions;
+[?2004l[?2004h>     private final int workerCount;
+[?2004l[?2004h> 
+[?2004l[?2004h>     public TextDaemon(Path pluginJar, int workerCount) {
+[?2004l[?2004h>         this.revisions = new TimelineLedger(pluginJar);
+[?2004l[?2004h>         this.workers = Executors.newFixedThreadPool(workerCount, new WorkerThreadFactory());
+[?2004l[?2004h>         this.workerCount = workerCount;
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     public void reload(long generation) throws Exception {
+[?2004l[?2004h>         revisions.install(generation);
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     public ProcessingResult process(String record) throws Exception {
+[?2004l[?2004h>         return processBatch(List.of(record)).get(0);
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     public boolean isBalanced() {
+[?2004l[?2004h>         return revisions.isBalanced();
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     public List<ProcessingResult> processBatch(List<String> records) throws Exception {
+[?2004l[?2004h>         CountDownLatch ready = new CountDownLatch(records.size());
+[?2004l[?2004h>         CountDownLatch release = new CountDownLatch(1);
+[?2004l[?2004h>         List<Future<ProcessingResult>> futures = new ArrayList<>();
+[?2004l[?2004h>         for (String record : records) {
+[?2004l[?2004h>             futures.add(workers.submit(() -> processRecord(record, ready, release)));
+[?2004l[?2004h>         }
+[?2004l[?2004h> 
+[?2004l[?2004h>         if (!ready.await(5, TimeUnit.SECONDS)) {
+[?2004l[?2004h>             throw new IllegalStateException("Workers did not become ready");
+[?2004l[?2004h>         }
+[?2004l[?2004h>         release.countDown();
+[?2004l[?2004h> 
+[?2004l[?2004h>         List<ProcessingResult> results = new ArrayList<>(records.size());
+[?2004l[?2004h>         for (Future<ProcessingResult> future : futures) {
+[?2004l[?2004h>             try {
+[?2004l[?2004h>                 results.add(future.get());
+[?2004l[?2004h>             } catch (ExecutionException exception) {
+[?2004l[?2004h>                 Throwable cause = exception.getCause();
+[?2004l[?2004h>                 if (cause instanceof Exception checked) {
+[?2004l[?2004h>                     throw checked;
+[?2004l[?2004h>                 }
+[?2004l[?2004h>                 if (cause instanceof Error error) {
+[?2004l[?2004h>                     throw error;
+[?2004l[?2004h>                 }
+[?2004l[?2004h>                 throw new RuntimeException(cause);
+[?2004l[?2004h>             }
+[?2004l[?2004h>         }
+[?2004l[?2004h>         return results;
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     private ProcessingResult processRecord(
+[?2004l[?2004h>         String record,
+[?2004l[?2004h>         CountDownLatch ready,
+[?2004l[?2004h>         CountDownLatch release
+[?2004l[?2004h>     ) throws Exception {
+[?2004l[?2004h>         ready.countDown();
+[?2004l[?2004h>         if (!release.await(5, TimeUnit.SECONDS)) {
+[?2004l[?2004h>             throw new IllegalStateException("Request release timed out");
+[?2004l[?2004h>         }
+[?2004l[?2004h> 
+[?2004l[?2004h>         WorkerHandle binding = ThreadBridge.current(revisions);
+[?2004l[?2004h>         return binding.process(record);
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     @Override
+[?2004l[?2004h>     public void close() throws Exception {
+[?2004l[?2004h>         revisions.close();
+[?2004l[?2004h>         ThreadBridge.clear();
+[?2004l[?2004h>         workers.shutdownNow();
+[?2004l[?2004h>         workers.awaitTermination(5, TimeUnit.SECONDS);
+[?2004l[?2004h>         for (int i = 0; i < 5; i++) {
+[?2004l[?2004h>             if (revisions.isBalanced()) break;
+[?2004l[?2004h>             Thread.sleep(100);
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     private static final class WorkerThreadFactory implements ThreadFactory {
+[?2004l[?2004h>         private final AtomicInteger sequence = new AtomicInteger(1);
+[?2004l[?2004h> 
+[?2004l[?2004h>         @Override
+[?2004l[?2004h>         public Thread newThread(Runnable runnable) {
+[?2004l[?2004h>             Thread thread = new Thread(() -> {
+[?2004l[?2004h>                 try {
+[?2004l[?2004h>                     runnable.run();
+[?2004l[?2004h>                 } finally {
+[?2004l[?2004h>                     ThreadBridge.clear();
+[?2004l[?2004h>                 }
+[?2004l[?2004h>             });
+[?2004l[?2004h>             thread.setName("textd-worker-" + sequence.getAndIncrement());
+[?2004l[?2004h>             thread.setDaemon(true);
+[?2004l[?2004h>             return thread;
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h> }
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@138f0c73e14a:/workspace/textd# ./bin/replay-check
+[?2004lreplay-fail unloaded-first=0 unloaded-second=0
+[?2004hroot@138f0c73e14a:/workspace/textd# java -XX:MaxMetaspaceSize=64m -cp build/main-classes io.harbor.textd.cli.SessionReplayRunner build/plugins/customer-default.jar 24
+[?2004l{
+  "first": {"first":"GEN-001|ALPHA>BETA>GAMMA|PIPE-18528","last":"GEN-024|ALPHA>BETA>GAMMA|PIPE-18528","start":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"end":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"same_workers":true,"before_close":true,"after_close":true,"loaded_before_close":694,"loaded_after_close":5988,"unloaded_before_close":0,"unloaded_after_close":0},
+  "second": {"first":"GEN-001|ALPHA>BETA>GAMMA|PIPE-18528","last":"GEN-024|ALPHA>BETA>GAMMA|PIPE-18528","start":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"end":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"same_workers":true,"before_close":true,"after_close":true,"loaded_before_close":5988,"loaded_after_close":10860,"unloaded_before_close":0,"unloaded_after_close":0}
+}
+[?2004hroot@138f0c73e14a:/workspace/textd# cat <<EOF > src/main/java/io/harbor/textd/core/WorkerHandle.java
+[?2004l[?2004h> package io.harbor.textd.core;
+[?2004l[?2004h> 
+[?2004l[?2004h> import io.harbor.textd.api.TextProcessor;
+[?2004l[?2004h> 
+[?2004l[?2004h> final class WorkerHandle implements AutoCloseable {
+[?2004l[?2004h>     private final TimelineFrame frame;
+[?2004l[?2004h>     private final long revision;
+[?2004l[?2004h>     private final TextProcessor processor;
+[?2004l[?2004h> 
+[?2004l[?2004h>     WorkerHandle(TimelineFrame frame) {
+[?2004l[?2004h>         this.frame = frame.pin();
+[?2004l[?2004h>         this.revision = frame.revision();
+[?2004l[?2004h>         this.processor = frame.module().processorFor(revision);
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     boolean matches(TimelineFrame frame) {
+[?2004l[?2004h>         return this.frame == frame;
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     ProcessingResult process(String record) {
+[?2004l[?2004h>         String output = processor.process(record);
+[?2004l[?2004h>         return new ProcessingResult(revision, output, Thread.currentThread().getName());
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     @Override
+[?2004l[?2004h>     public void close() {
+[?2004l[?2004h>         frame.unpin();
+[?2004l[?2004h>     }
+[?2004l[?2004h> }
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@138f0c73e14a:/workspace/textd# ./bin/replay-check
+[?2004lreplay-fail unloaded-first=0 unloaded-second=0
+[?2004hroot@138f0c73e14a:/workspace/textd# cat src/main/java/io/harbor/textd/core/ThreadCache.java
+[?2004lpackage io.harbor.textd.core;
+
+final class ThreadCache implements AutoCloseable {
+    private WorkerHandle cursor;
+
+    WorkerHandle cursorFor(TimelineLedger ledger) {
+        TimelineFrame frame = ledger.current();
+        if (cursor == null) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        if (!cursor.matches(frame)) {
+            cursor.close();
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        return cursor;
+    }
+
+    @Override
+    public void close() {
+        if (cursor != null) {
+            cursor.close();
+            cursor = null;
+        }
+    }
+}
+[?2004hroot@138f0c73e14a:/workspace/textd# cat src/main/java/io/harbor/textd/core/TextDaemon.java
+[?2004lpackage io.harbor.textd.core;
+
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+public final class TextDaemon implements AutoCloseable {
+    private final ExecutorService workers;
+    private final TimelineLedger revisions;
+    private final int workerCount;
+
+    public TextDaemon(Path pluginJar, int workerCount) {
+        this.revisions = new TimelineLedger(pluginJar);
+        this.workers = Executors.newFixedThreadPool(workerCount, new WorkerThreadFactory());
+        this.workerCount = workerCount;
+    }
+
+    public void reload(long generation) throws Exception {
+        revisions.install(generation);
+    }
+
+    public ProcessingResult process(String record) throws Exception {
+        return processBatch(List.of(record)).get(0);
+    }
+
+    public boolean isBalanced() {
+        return revisions.isBalanced();
+    }
+
+    public List<ProcessingResult> processBatch(List<String> records) throws Exception {
+        CountDownLatch ready = new CountDownLatch(records.size());
+        CountDownLatch release = new CountDownLatch(1);
+        List<Future<ProcessingResult>> futures = new ArrayList<>();
+        for (String record : records) {
+            futures.add(workers.submit(() -> processRecord(record, ready, release)));
+        }
+
+        if (!ready.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Workers did not become ready");
+        }
+        release.countDown();
+
+        List<ProcessingResult> results = new ArrayList<>(records.size());
+        for (Future<ProcessingResult> future : futures) {
+            try {
+                results.add(future.get());
+            } catch (ExecutionException exception) {
+                Throwable cause = exception.getCause();
+                if (cause instanceof Exception checked) {
+                    throw checked;
+                }
+                if (cause instanceof Error error) {
+                    throw error;
+                }
+                throw new RuntimeException(cause);
+            }
+        }
+        return results;
+    }
+
+    private ProcessingResult processRecord(
+        String record,
+        CountDownLatch ready,
+        CountDownLatch release
+    ) throws Exception {
+        ready.countDown();
+        if (!release.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Request release timed out");
+        }
+
+        WorkerHandle binding = ThreadBridge.current(revisions);
+        return binding.process(record);
+    }
+
+    @Override
+    public void close() throws Exception {
+        revisions.close();
+        ThreadBridge.clear();
+        workers.shutdownNow();
+        workers.awaitTermination(5, TimeUnit.SECONDS);
+        for (int i = 0; i < 5; i++) {
+            if (revisions.isBalanced()) break;
+            Thread.sleep(100);
+        }
+    }
+
+    private static final class WorkerThreadFactory implements ThreadFactory {
+        private final AtomicInteger sequence = new AtomicInteger(1);
+
+        @Override
+        public Thread newThread(Runnable runnable) {
+            Thread thread = new Thread(() -> {
+                try {
+                    runnable.run();
+                } finally {
+                    ThreadBridge.clear();
+                }
+            });
+            thread.setName("textd-worker-" + sequence.getAndIncrement());
+            thread.setDaemon(true);
+            return thread;
+        }
+    }
+}
+[?2004hroot@138f0c73e14a:/workspace/textd# cat src/main/java/io/harbor/textd/core/WorkerHandle.java
+[?2004lpackage io.harbor.textd.core;
+
+import io.harbor.textd.api.TextProcessor;
+
+final class WorkerHandle implements AutoCloseable {
+    private final TimelineFrame frame;
+    private final long revision;
+    private final TextProcessor processor;
+
+    WorkerHandle(TimelineFrame frame) {
+        this.frame = frame.pin();
+        this.revision = frame.revision();
+        this.processor = frame.module().processorFor(revision);
+    }
+
+    boolean matches(TimelineFrame frame) {
+        return this.frame == frame;
+    }
+
+    ProcessingResult process(String record) {
+        String output = processor.process(record);
+        return new ProcessingResult(revision, output, Thread.currentThread().getName());
+    }
+
+    @Override
+    public void close() {
+        frame.unpin();
+    }
+}
+[?2004hroot@138f0c73e14a:/workspace/textd# cat src/main/java/io/harbor/textd/core/TimelineFrame.java
+[?2004lpackage io.harbor.textd.core;
+
+import io.harbor.textd.api.PluginModule;
+
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+
+final class TimelineFrame {
+    private LoadedGeneration loadedGeneration;
+    private final long revision;
+    private final AtomicInteger pins = new AtomicInteger(1);
+    private final AtomicBoolean cooled = new AtomicBoolean(false);
+    private final AtomicBoolean closed = new AtomicBoolean(false);
+
+    TimelineFrame(LoadedGeneration loadedGeneration) {
+        this.loadedGeneration = loadedGeneration;
+        this.revision = loadedGeneration.generation();
+    }
+
+    TimelineFrame pin() {
+        while (true) {
+            int current = pins.get();
+            if (current == 0) {
+                throw new IllegalStateException("Revision " + revision + " is already closed");
+            }
+            if (pins.compareAndSet(current, current + 1)) {
+                return this;
+            }
+        }
+    }
+
+    long revision() {
+        return revision;
+    }
+
+    PluginModule module() {
+        return loadedGeneration.module();
+    }
+
+    void cool() {
+        if (cooled.compareAndSet(false, true)) {
+            unpin();
+        }
+    }
+
+    void unpin() {
+        int remaining = pins.decrementAndGet();
+        if (remaining < 0) {
+            throw new IllegalStateException("Pin count underflow for revision " + revision);
+        }
+        if (remaining == 0 && cooled.get()) {
+            closeLoadedGeneration();
+        }
+    }
+
+    boolean isDrained() {
+        return closed.get();
+    }
+
+    private void closeLoadedGeneration() {
+        if (closed.compareAndSet(false, true)) {
+            try {
+                loadedGeneration.close();
+                loadedGeneration = null;
+            } catch (Exception exception) {
+                throw new IllegalStateException("Unable to close revision " + revision, exception);
+            }
+        }
+    }
+}
+[?2004hroot@138f0c73e14a:/workspace/textd# cat src/main/java/io/harbor/textd/core/LoadedGeneration.java
+[?2004lpackage io.harbor.textd.core;
+
+import io.harbor.textd.api.PluginModule;
+import io.harbor.textd.api.PluginModuleFactory;
+
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Path;
+
+final class LoadedGeneration implements AutoCloseable {
+    private static final String FACTORY_CLASS = "io.harbor.textd.customer.CustomerPluginFactory";
+
+    private final long generation;
+    private URLClassLoader classLoader;
+    private PluginModule module;
+
+    private LoadedGeneration(long generation, URLClassLoader classLoader, PluginModule module) {
+        this.generation = generation;
+        this.classLoader = classLoader;
+        this.module = module;
+    }
+
+    static LoadedGeneration load(Path pluginJar, long generation) throws Exception {
+        URLClassLoader classLoader = new URLClassLoader(new URL[] {pluginJar.toUri().toURL()}, PluginModuleFactory.class.getClassLoader());
+        Class<?> factoryType = classLoader.loadClass(FACTORY_CLASS);
+        PluginModuleFactory factory = (PluginModuleFactory) factoryType.getDeclaredConstructor().newInstance();
+        return new LoadedGeneration(generation, classLoader, factory.open());
+    }
+
+    long generation() {
+        return generation;
+    }
+
+    PluginModule module() {
+        return module;
+    }
+
+    @Override
+    public void close() throws Exception {
+        if (module != null) {
+            module.close();
+            module = null;
+        }
+        if (classLoader != null) {
+            classLoader.close();
+            classLoader = null;
+        }
+    }
+}
+[?2004hroot@138f0c73e14a:/workspace/textd# ./bin/replay-check 100
+[?2004lreplay-fail unloaded-first=0 unloaded-second=0
+[?2004hroot@138f0c73e14a:/workspace/textd# ./bin/run-suite
+[?2004lsuite-ok
+[?2004hroot@138f0c73e14a:/workspace/textd# 

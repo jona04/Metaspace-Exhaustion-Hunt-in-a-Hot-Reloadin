@@ -1,0 +1,10 @@
+{
+  "analysis": "In `TextDaemon.java`, `processRecord` calls `ThreadBridge.current(revisions)`, which gets the `WorkerHandle` from the `ThreadLocal`. \n\nBefore my fix, every time a new generation was installed, `ThreadCache.cursorFor` would create a new `WorkerHandle` and overwrite the old one without closing it. Since the workers are in a fixed thread pool, they keep running and their `ThreadLocal` `ThreadCache` stays alive. The old `WorkerHandle`s were being leaked on every generation swap because they were never closed and thus never unpinned the `TimelineFrame`.\n\nAfter my fix, `cursor.close()` is called before replacing it, which unpins the `TimelineFrame`. This allows the frame to be closed and its `URLClassLoader` to be eligible for collection once all workers have moved to a newer generation.\n\nWhen `TextDaemon` is closed, `workers.shutdownNow()` is called. The threads will stop. When the threads die, the `ThreadLocal` values will be unreachable and eventually GCed. Although `close()` won't be called on the *last* `WorkerHandle` of each thread, the task description says \"Old plugin generations must be fully reclaimed by the runtime once sessions close.\" and the issue was about surviving repeated processor swaps during a long run. My fix addresses exactly that. \n\nAlso, `TimelineLedger.isBalanced()` is used to check if all old generations have been drained. If workers still held pins to old generations, `isBalanced()` would return false.",
+  "plan": "I am confident with the fix. I'll check if there's anything else in the task description I might have missed. \"Old plugin generations must be fully reclaimed by the runtime once sessions close.\" sessions here probably refer to the processing of records or the lifetime of the daemon. If it refers to the daemon's lifetime, then shutting down the threads is enough. If it refers to something else, I should check.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.5
+    }
+  ]
+}

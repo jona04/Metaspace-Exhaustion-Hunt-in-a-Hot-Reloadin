@@ -1,0 +1,14 @@
+{
+  "analysis": "I've reviewed `TimelineLedger`, `ThreadBridge`, and `ThreadCache`. \n- `TimelineLedger` keeps track of the current `TimelineFrame` and a `shadow` queue of old frames.\n- `pruneShadow()` removes frames that are 'drained'.\n- `ThreadCache` stores a `WorkerHandle` in a `ThreadLocal` via `ThreadBridge`.\n- When a new generation is installed, `TimelineLedger` adds the old frame to `shadow` and calls `previous.cool()`. \n- `ThreadCache.cursorFor` updates the `cursor` if it doesn't match the current frame.\n\nI need to see `TimelineFrame.java` and `WorkerHandle.java` to understand what `cool()` and `isDrained()` do, and how `WorkerHandle` is closed.",
+  "plan": "I will read the contents of `TimelineFrame.java` and `WorkerHandle.java` to investigate how they track usage and handle reclamation of old plugin generations.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    }
+  ]
+}

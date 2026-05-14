@@ -1,0 +1,105 @@
+New Terminal Output:
+
+root@afcea8aff0c9:/workspace/textd# cat src/main/java/io/harbor/textd/core/TextDaemon.java
+package io.harbor.textd.core;
+
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+public final class TextDaemon implements AutoCloseable {
+    private final ExecutorService workers;
+    private final TimelineLedger revisions;
+    private final int workerCount;
+
+    public TextDaemon(Path pluginJar, int workerCount) {
+        this.revisions = new TimelineLedger(pluginJar);
+        this.workers = Executors.newFixedThreadPool(workerCount, new WorkerThreadFactory());
+        this.workerCount = workerCount;
+    }
+
+    public void reload(long generation) throws Exception {
+        revisions.install(generation);
+    }
+
+    public ProcessingResult process(String record) throws Exception {
+        return processBatch(List.of(record)).get(0);
+    }
+
+    public boolean isBalanced() {
+        return revisions.isBalanced();
+    }
+
+    public List<ProcessingResult> processBatch(List<String> records) throws Exception {
+        CountDownLatch ready = new CountDownLatch(records.size());
+        CountDownLatch release = new CountDownLatch(1);
+        List<Future<ProcessingResult>> futures = new ArrayList<>();
+        for (String record : records) {
+            futures.add(workers.submit(() -> processRecord(record, ready, release)));
+        }
+
+        if (!ready.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Workers did not become ready");
+        }
+        release.countDown();
+
+        List<ProcessingResult> results = new ArrayList<>(records.size());
+        for (Future<ProcessingResult> future : futures) {
+            try {
+                results.add(future.get());
+            } catch (ExecutionException exception) {
+                Throwable cause = exception.getCause();
+                if (cause instanceof Exception checked) {
+                    throw checked;
+                }
+                if (cause instanceof Error error) {
+                    throw error;
+                }
+                throw new RuntimeException(cause);
+            }
+        }
+        return results;
+    }
+
+    private ProcessingResult processRecord(
+        String record,
+        CountDownLatch ready,
+        CountDownLatch release
+    ) throws Exception {
+        ready.countDown();
+        if (!release.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Request release timed out");
+        }
+
+        WorkerHandle binding = ThreadBridge.current(revisions);
+        return binding.process(record);
+    }
+
+    @Override
+    public void close() throws Exception {
+        revisions.close();
+        workers.shutdownNow();
+        workers.awaitTermination(5, TimeUnit.SECONDS);
+    }
+
+    private static final class WorkerThreadFactory implements ThreadFactory {
+        private final AtomicInteger sequence = new AtomicInteger(1);
+
+        @Override
+        public Thread newThread(Runnable runnable) {
+            Thread thread = new Thread(runnable);
+            thread.setName("textd-worker-" + sequence.getAndIncrement());
+            thread.setDaemon(true);
+            return thread;
+        }
+    }
+}
+root@afcea8aff0c9:/workspace/textd#

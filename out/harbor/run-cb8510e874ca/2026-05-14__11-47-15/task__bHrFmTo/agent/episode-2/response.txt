@@ -1,0 +1,10 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with a 64MB limit on Metaspace (`-XX:MaxMetaspaceSize=64m`). This confirms that the issue is likely related to class loading and Metaspace exhaustion due to old plugin generations not being reclaimed.",
+  "plan": "1. Run the `bin/stress` script and observe the failure.\n2. Examine the code in `src/main/java/io/harbor/textd/core/TextDaemon.java`, `LoadedGeneration.java`, and `HotReloadStressRunner.java` to see how plugins are loaded and if they are properly unloaded.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 20\n",
+      "duration": 5.0
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+Current Terminal Screen:
+>         }
+>         return results;
+>     }
+>
+>     private ProcessingResult processRecord(
+>         String record,
+>         CountDownLatch ready,
+>         CountDownLatch release
+>     ) throws Exception {
+>         ready.countDown();
+>         if (!release.await(5, TimeUnit.SECONDS)) {
+>             throw new IllegalStateException("Request release timed out");
+>         }
+>
+>         try (WorkerHandle binding = ThreadBridge.current(revisions)) {
+>             return binding.process(record);
+>         }
+>     }
+>
+>     @Override
+>     public void close() throws Exception {
+>         workers.shutdownNow();
+>         workers.awaitTermination(5, TimeUnit.SECONDS);
+>         revisions.close();
+>     }
+>
+>     private static final class WorkerThreadFactory implements ThreadFactory {
+>         private final AtomicInteger sequence = new AtomicInteger(1);
+>
+>         @Override
+>         public Thread newThread(Runnable runnable) {
+>             Thread thread = new Thread(runnable);
+>             thread.setName("textd-worker-" + sequence.getAndIncrement());
+>             thread.setDaemon(true);
+>             return thread;
+>         }
+>     }
+> }
+> EOF
+root@c432f645dca5:/workspace/textd#

@@ -1,0 +1,14 @@
+{
+  "analysis": "I've analyzed `TimelineLedger.java`, `ThreadBridge.java`, and `WorkerHandle.java`.\n\n- `TimelineLedger` manages `TimelineFrame` objects. When a new revision is installed, the old one is moved to a `shadow` queue and cooled. `pruneShadow` removes drained frames.\n- `ThreadBridge` uses a `ThreadLocal<ThreadCache>` to store `WorkerHandle`s.\n- `WorkerHandle` pins a `TimelineFrame` on creation and unpins it on `close()`.\n\nI need to check `ThreadCache.java` and `TimelineFrame.java` to see how pinning and draining are implemented, and how `ThreadCache` manages `WorkerHandle`s.",
+  "plan": "I will examine `src/main/java/io/harbor/textd/core/ThreadCache.java` and `src/main/java/io/harbor/textd/core/TimelineFrame.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    }
+  ]
+}

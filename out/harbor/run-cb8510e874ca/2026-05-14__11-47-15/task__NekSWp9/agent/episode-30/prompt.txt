@@ -1,0 +1,36 @@
+New Terminal Output:
+
+root@f71bd1e69418:/workspace/textd# cat <<EOF > check_unloading.java
+> import java.lang.management.*;
+> import io.harbor.textd.core.*;
+> import java.nio.file.Path;
+> import java.util.List;
+>
+> public class check_unloading {
+>     public static void main(String[] args) throws Exception {
+>         ClassLoadingMXBean bean = ManagementFactory.getClassLoadingMXBean();
+>         Path jar = Path.of("build/plugins/customer-default.jar");
+>         try (TextDaemon daemon = new TextDaemon(jar, 4)) {
+>             for (int i = 1; i <= 50; i++) {
+>                 daemon.reload(i);
+>                 daemon.process("test");
+>                 if (i % 10 == 0) {
+>                     System.gc();
+>                     System.out.println("Cycle " + i + ": loaded=" + bean.getLoadedClassCount() + ", unloaded=" + bean.getUnloadedClassCount());
+>                 }
+>             }
+>         }
+>         for (int i=0; i<5; i++) { System.gc(); Thread.sleep(100); }
+>         System.out.println("After close: loaded=" + bean.getLoadedClassCount() + ", unloaded=" + bean.getUnloadedClassCount());
+>     }
+> }
+> EOF
+root@f71bd1e69418:/workspace/textd# javac -cp build/main-classes:src/main/java check_unloading.java
+root@f71bd1e69418:/workspace/textd# java -cp build/main-classes:src/main/java:. check_unloading
+Cycle 10: loaded=3014, unloaded=0
+Cycle 20: loaded=5025, unloaded=0
+Cycle 30: loaded=7015, unloaded=0
+Cycle 40: loaded=9005, unloaded=0
+Cycle 50: loaded=10997, unloaded=0
+After close: loaded=11000, unloaded=0
+root@f71bd1e69418:/workspace/textd#

@@ -1,0 +1,10 @@
+{
+  "analysis": "The stress test failed with `java.lang.OutOfMemoryError: Metaspace`, as expected. This confirms the memory leak.",
+  "plan": "I will now apply the fix to `src/main/java/io/harbor/textd/core/ThreadCache.java` by ensuring the old `cursor` is closed when a new one is created.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "analysis": "The `bin/stress` script runs `io.harbor.textd.cli.HotReloadStressRunner` with a `MaxMetaspaceSize` of 64m. This constraint is likely where the daemon fails during a long run if plugin generations are not reclaimed, as each generation probably loads new classes.",
+  "plan": "I will run the stress test to confirm it fails and then examine `HotReloadStressRunner.java` and `TextDaemon.java` to understand how plugins are reloaded and why they might not be getting garbage collected.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 20\n",
+      "duration": 5.0
+    }
+  ]
+}

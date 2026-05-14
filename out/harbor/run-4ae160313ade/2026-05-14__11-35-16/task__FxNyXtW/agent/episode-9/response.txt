@@ -1,0 +1,10 @@
+{
+  "analysis": "The stress test now passes with 200 cycles. I should also check if there are any other possible leaks. The `ThreadBridge` uses a `ThreadLocal`, and its `clear()` method calls `routeState.close()` and `ROUTES.remove()`. However, `TextDaemon` does not seem to call `ThreadBridge.clear()` at any point. While this might not be a problem if the worker threads are reused and the daemon is long-lived, it's good practice to clean up `ThreadLocal` variables.",
+  "plan": "I will check `HotReloadStressRunner.java` to see how it uses `TextDaemon` and if it's supposed to clean up after itself.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.2
+    }
+  ]
+}

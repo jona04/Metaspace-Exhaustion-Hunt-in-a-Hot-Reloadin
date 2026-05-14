@@ -1,0 +1,10 @@
+{
+  "analysis": "The `TextDaemon.processRecord` gets the `WorkerHandle` via `ThreadBridge.current(revisions)`. Since `ThreadBridge` uses a `ThreadLocal`, each worker thread has its own `ThreadCache`. In my fix, I made sure that when `cursorFor` is called and the revision has changed, the old `WorkerHandle` is closed. This correctly unpins the old `TimelineFrame`, allowing it to be closed and its classloader to be GC'd.",
+  "plan": "I am confident with the fix. I'll just check if there's any other place where `WorkerHandle` is used and not closed. It seems `ThreadCache` is the only place where `WorkerHandle` is stored. `ThreadBridge.clear()` could be used to clean up the `ThreadLocal` when the `TextDaemon` is closed, but since the threads themselves are terminated, it's not strictly necessary for the metaspace leak issue which occurs *during* the long run. The task says 'Old plugin generations must be fully reclaimed by the runtime once sessions close.'",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.1
+    }
+  ]
+}

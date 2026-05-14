@@ -1,0 +1,57 @@
+New Terminal Output:
+
+root@c432f645dca5:/workspace/textd# cat bin/replay-check
+#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+if [[ "${TEXTD_SKIP_BUILD:-0}" != "1" ]]; then
+  "$ROOT_DIR/bin/build"
+fi
+
+REPLAY_TMP=$(mktemp)
+trap 'rm -f "$REPLAY_TMP"' EXIT
+
+java -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.SessionReplayRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" 24 > "$REPLAY_TMP"
+
+python3 - "$REPLAY_TMP" <<'PYEOF'
+import json, sys
+
+with open(sys.argv[1]) as f:
+    data = json.load(f)
+
+first  = data['first']
+second = data['second']
+
+d1 = first['unloaded_after_close']  - first['unloaded_before_close']
+d2 = second['unloaded_after_close'] - second['unloaded_before_close']
+
+if d1 > 0 and d2 > 0:
+    print(f"replay-ok unloaded-first={d1} unloaded-second={d2}")
+else:
+    print(f"replay-fail unloaded-first={d1} unloaded-second={d2}", file=sys.stderr)
+    sys.exit(1)
+PYEOF
+root@c432f645dca5:/workspace/textd# cat bin/run-suite
+#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+"$ROOT_DIR/bin/build"
+TEXTD_SKIP_BUILD=1 "$ROOT_DIR/bin/integration" 24 >/tmp/textd-integration.json
+java -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.RuntimeDigestRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" \
+  24 >/tmp/textd-session.json
+java -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.SessionReplayRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" \
+  24 >/tmp/textd-replay.json
+TEXTD_SKIP_BUILD=1 "$ROOT_DIR/bin/stress" 500 >/tmp/textd-stress.log
+
+echo "suite-ok"
+root@c432f645dca5:/workspace/textd#

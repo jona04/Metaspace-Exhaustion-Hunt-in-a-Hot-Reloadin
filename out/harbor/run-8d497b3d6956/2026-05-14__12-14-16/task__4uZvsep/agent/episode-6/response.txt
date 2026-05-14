@@ -1,0 +1,10 @@
+{
+  "analysis": "The fix in `ThreadCache.java` looks correct for the immediate leak during plugin refresh. Now I should consider if there are other leaks. \n\nIn `TextDaemon.java`, `ThreadBridge.current(revisions)` is called inside `processRecord`, which is executed by threads in the `workers` thread pool. These threads are persistent. `ThreadBridge` uses a `ThreadLocal<ThreadCache>`. When the daemon is closed, `workers.shutdownNow()` is called, but the threads might not be immediately destroyed, and even if they are, the `ThreadLocal` might still hold onto the `ThreadCache` if the threads are reused (though here it's a fixed thread pool and we're shutting it down).\n\nWait, `TextDaemon.close()` calls `workers.shutdownNow()`. If the daemon is recreated multiple times in the same process, we might have an issue if the thread pool threads were somehow shared, but here they are created per `TextDaemon` instance. However, it's good practice to clear the `ThreadLocal` in the worker threads when they are done or when the daemon is closing.\n\nActually, the problem description says: \"Old plugin generations must be fully reclaimed by the runtime once sessions close.\"\n\nLet's check `HotReloadStressRunner.java` to see how it uses `TextDaemon`.",
+  "plan": "I will examine `src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java` and also check if I should run the stress test to see if it fails without my change and passes with it.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.5
+    }
+  ]
+}

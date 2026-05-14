@@ -1,0 +1,10 @@
+{
+  "analysis": "I've reviewed `TimelineFrame.java` and `ThreadCache.java`. \n\nIn `ThreadCache.cursorFor`, when the current frame doesn't match the cursor's frame, a new `WorkerHandle` is created and assigned to `cursor`: \n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\nHowever, the old `cursor` is NOT closed before it's replaced. This means the `WorkerHandle` (and the `TimelineFrame` it pins) might not be unpinned until the thread is destroyed or `ThreadBridge.clear()` is called. Since `TextDaemon` uses a fixed thread pool, these threads live for a long time. If `WorkerHandle` pins the frame, this is a leak.",
+  "plan": "I will examine `WorkerHandle.java` to see if it pins the frame and if it has a `close()` method that should be called.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    }
+  ]
+}_

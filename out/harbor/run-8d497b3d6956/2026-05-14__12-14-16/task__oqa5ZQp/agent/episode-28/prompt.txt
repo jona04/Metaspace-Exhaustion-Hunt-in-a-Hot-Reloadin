@@ -1,0 +1,42 @@
+New Terminal Output:
+
+root@161795032ee1:/workspace/textd# cat <<EOF > src/main/java/io/harbor/textd/core/ThreadBridge.java
+> package io.harbor.textd.core;
+>
+> import java.util.Queue;
+> import java.util.concurrent.ConcurrentLinkedQueue;
+>
+> final class ThreadBridge {
+>     private static final Queue<ThreadCache> ALL_CACHES = new ConcurrentLinkedQueue<>();
+>     private static final ThreadLocal<ThreadCache> ROUTES = ThreadLocal.withInitial(() -> {
+>         ThreadCache cache = new ThreadCache();
+>         ALL_CACHES.add(cache);
+>         return cache;
+>     });
+>
+>     private ThreadBridge() {
+>     }
+>
+>     static WorkerHandle current(TimelineLedger ledger) {
+>         return ROUTES.get().cursorFor(ledger);
+>     }
+>
+>     static void clear() {
+>         ThreadCache routeState = ROUTES.get();
+>         routeState.close();
+>         ROUTES.remove();
+>         ALL_CACHES.remove(routeState);
+>     }
+>
+>     static void clearAll() {
+>         // We don't use poll() because we want to keep them in ALL_CACHES
+>         // if the threads are still alive and might be reused.
+>         // But wait, if they are reused, they will just have a null cursor.
+>         // Actually, for TextDaemon, we want to clear everything.
+>         for (ThreadCache cache : ALL_CACHES) {
+>             cache.close();
+>         }
+>     }
+> }
+> EOF
+root@161795032ee1:/workspace/textd#

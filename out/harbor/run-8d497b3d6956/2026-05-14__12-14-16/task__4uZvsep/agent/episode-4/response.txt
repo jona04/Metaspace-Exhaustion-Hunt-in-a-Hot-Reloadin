@@ -1,0 +1,10 @@
+{
+  "analysis": "I found a potential leak in `ThreadCache.cursorFor`. \n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n\nWhen `!cursor.matches(frame)`, a new `WorkerHandle` is created and assigned to `cursor`, but the old `cursor` is never closed. Since `WorkerHandle.close()` is what unpins the `TimelineFrame`, the old frame will never reach a pin count of 0 and thus will never be closed/reclaimed.\n\nAlso, I should verify if `ThreadCache.close()` is called correctly. It is called from `ThreadBridge.clear()`, but I don't see `ThreadBridge.clear()` being called anywhere in `TextDaemon` or elsewhere yet.",
+  "plan": "I will fix the leak in `ThreadCache.java` by closing the old cursor before replacing it. I'll also check if `ThreadBridge.clear()` needs to be called to clean up thread locals when the daemon is closed, although the primary issue seems to be the missing `close()` on the old `WorkerHandle` during a refresh.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/if (!cursor.matches(frame)) {/if (!cursor.matches(frame)) { cursor.close();/' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ]
+}

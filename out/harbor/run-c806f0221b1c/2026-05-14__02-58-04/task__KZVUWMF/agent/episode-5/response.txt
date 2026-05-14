@@ -1,0 +1,10 @@
+{
+  "analysis": "I've reviewed the code. Here's how it works:\n1. `TimelineFrame` starts with `pins = 1`.\n2. When a `WorkerHandle` is created, it calls `frame.pin()`, incrementing `pins`.\n3. When a new generation is installed, `TimelineLedger` calls `previous.cool()`, which calls `unpin()`.\n4. When a `WorkerHandle` is replaced in `ThreadCache.cursorFor`, it's supposed to be closed, but `ThreadCache.cursorFor` doesn't close the old `WorkerHandle`!\n\nWait, looking at `ThreadCache.cursorFor` again:\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\nWhen `!cursor.matches(frame)`, it creates a new `WorkerHandle` and assigns it to `cursor`, but it never calls `close()` on the previous `cursor`. This means the `TimelineFrame` for the previous generation remains pinned by the `WorkerHandle` that was just discarded. Since the pin count never reaches zero, `closeLoadedGeneration()` is never called, and the `URLClassLoader` is never closed, leading to a memory leak.",
+  "plan": "I will fix `ThreadCache.java` to close the old `cursor` before creating a new one. Before that, I'll try to run the stress test to confirm it fails (or at least see how it behaves). I'll check the `bin/stress` script first.",
+  "commands": [
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.5
+    }
+  ]
+}

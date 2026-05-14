@@ -1,0 +1,10 @@
+{
+  "analysis": "The `ThreadBridge.clear()` method is not used anywhere. This means the `ThreadLocal` in `ThreadBridge` will keep a `ThreadCache` (and thus one `WorkerHandle` and its associated `TimelineFrame`) for each worker thread, even after the `TextDaemon` is closed, until the worker thread itself is terminated. In the stress test, the `TextDaemon` is created in a try-with-resources block, and its `close()` method is called, which shuts down the worker threads. So in this specific case, it's fine. However, for better resource management, especially if threads were reused across different `TextDaemon` instances, we should ensure `ThreadBridge.clear()` is called or the `ThreadCache` is properly cleaned up.",
+  "plan": "I will check `TextDaemon.close()` again to see if it could benefit from clearing the thread locals. But wait, the threads are owned by the `ExecutorService` inside `TextDaemon`, so when the executor is shut down, the threads should eventually die and their thread locals will be GC'd. The issue I fixed was that the `ThreadCache` was holding onto *old* `WorkerHandle`s *while* the threads were still alive, preventing old plugin generations from being reclaimed. My fix in `ThreadCache.cursorFor` addressed this.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.1
+    }
+  ]
+}

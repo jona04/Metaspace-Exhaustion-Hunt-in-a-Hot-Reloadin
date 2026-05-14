@@ -1,0 +1,14 @@
+{
+  "analysis": "The stress test with 500 cycles also passed. The memory leak in `ThreadCache` is fixed.",
+  "plan": "I should also check if there are any other places where `WorkerHandle` might be leaked or if there's anything else needed for 'full reclamation'. The task mentions 'Old plugin generations must be fully reclaimed by the runtime once sessions close'. \n\nI noticed `ThreadBridge.clear()` is available but I don't see it being called anywhere. In `TextDaemon.close()`, it shuts down the workers, but doesn't necessarily clear the `ThreadLocal` in those threads (though since the threads themselves are dying, it might not matter for the workers). However, if `TextDaemon` is used in a context where threads are reused, it might be an issue. \n\nWait, `TextDaemon.close()` calls `workers.shutdownNow()`. The worker threads will terminate, and their `ThreadLocal` maps will be eligible for GC.\n\nLet's check `TimelineLedger.isBalanced()`. The stress test doesn't seem to check it. The `TextDaemon` has an `isBalanced()` method that calls `revisions.isBalanced()`.\n\nLet's check if there's any integration test I should run.",
+  "commands": [
+    {
+      "keystrokes": "ls bin\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/run-suite\n",
+      "duration": 10.0
+    }
+  ]
+}

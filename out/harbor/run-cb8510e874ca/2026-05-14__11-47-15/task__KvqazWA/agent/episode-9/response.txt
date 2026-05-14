@@ -1,0 +1,10 @@
+{
+  "analysis": "I see the `OutOfMemoryError: Metaspace`! This confirms the leak. The `NoClassDefFoundError` and `ExceptionInInitializerError` are consequences of the Metaspace being full when trying to load or initialize classes in the new plugin generation. The leak is definitely caused by old `TimelineFrame` objects (and thus their `URLClassLoader`s) not being closed because `WorkerHandle`s are not being closed in `ThreadCache.java` when a new generation is loaded.",
+  "plan": "I will modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before creating a new one.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    }
+  ]
+}

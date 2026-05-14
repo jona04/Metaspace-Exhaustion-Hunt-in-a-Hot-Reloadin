@@ -1,0 +1,10 @@
+{
+  "analysis": "Wait, `suite-ok`! This means all tests passed, including the integration test, the session test, the replay test, and the stress test! \n\nIf `./bin/run-suite` passed, it means `./bin/replay-check` must have passed too, because `run-suite` runs similar commands.\n\nWait, let me check `bin/run-suite` again.\n\n```bash\n#!/bin/bash\nset -euo pipefail\n\nROOT_DIR=$(cd \"$(dirname \"${BASH_SOURCE[0]}\")/..\" && pwd)\n\n\"$ROOT_DIR/bin/build\"\nTEXTD_SKIP_BUILD=1 \"$ROOT_DIR/bin/integration\" 24 >/tmp/textd-integration.json\njava -cp \"$ROOT_DIR/build/main-classes\" \\\n  io.harbor.textd.cli.RuntimeDigestRunner \\\n  \"$ROOT_DIR/build/plugins/customer-default.jar\" \\\n  24 >/tmp/textd-session.json\njava -cp \"$ROOT_DIR/build/main-classes\" \\\n  io.harbor.textd.cli.SessionReplayRunner \\\n  \"$ROOT_DIR/build/plugins/customer-default.jar\" \\\n  24 >/tmp/textd-replay.json\nTEXTD_SKIP_BUILD=1 \"$ROOT_DIR/bin/stress\" 500 >/tmp/textd-stress.log\n\necho \"suite-ok\"\n```\n\nActually, `run-suite` does NOT run `bin/replay-check`. It just runs `SessionReplayRunner` and redirects the output to `/tmp/textd-replay.json`, but it never checks the content of that file!\n\nSo `suite-ok` doesn't mean the memory leak is fixed. \n\nLet's run `bin/replay-check` specifically.",
+  "plan": "I will run `./bin/replay-check`.",
+  "commands": [
+    {
+      "keystrokes": "./bin/replay-check\n",
+      "duration": 10.0
+    }
+  ]
+}

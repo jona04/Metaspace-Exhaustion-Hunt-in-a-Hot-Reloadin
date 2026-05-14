@@ -1,0 +1,6 @@
+{
+  "analysis": "The logic seems sound. `TimelineFrame` starts with 1 pin. When `cool()` is called (during `install` of a new revision), it calls `unpin()`. If there are no other pins (from `WorkerHandle`s), `remaining` becomes 0, and `closeLoadedGeneration()` is called, setting `closed` to true. `isDrained()` then returns true, allowing `TimelineLedger` to remove it from the `shadow` queue. My fix ensures that `WorkerHandle`s are closed when they are no longer needed, which calls `unpin()` and allows the pin count to reach 0.",
+  "plan": "The task is complete. I've identified the leak, fixed it, and verified the fix with the stress test and the full suite.",
+  "commands": [],
+  "task_complete": true
+}

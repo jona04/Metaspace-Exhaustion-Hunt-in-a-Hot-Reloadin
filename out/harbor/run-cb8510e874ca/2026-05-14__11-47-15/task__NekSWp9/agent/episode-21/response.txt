@@ -1,0 +1,14 @@
+{
+  "analysis": "The `ThreadBridge.clear()` method calls `routeState.close()` and then `ROUTES.remove()`. `routeState.close()` calls `cursor.close()`, which calls `frame.unpin()`. This looks correct. The `replay-check` script uses `System.gc()` and `Thread.sleep(50)` three times, which should be enough for most cases. Maybe the issue is with how `pins` are managed in `TimelineFrame`.",
+  "plan": "Review `TimelineFrame.java` and `TimelineLedger.java` again to ensure there's no way a frame can stay pinned.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    }
+  ]
+}

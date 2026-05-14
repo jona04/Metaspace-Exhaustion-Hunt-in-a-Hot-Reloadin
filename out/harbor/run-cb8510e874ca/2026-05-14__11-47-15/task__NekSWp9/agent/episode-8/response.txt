@@ -1,0 +1,14 @@
+{
+  "analysis": "In `TimelineLedger.java`, `pruneShadow()` removes frames that are 'drained'. `TimelineFrame` likely tracks active users. `ThreadBridge` uses a `ThreadLocal<ThreadCache>`. `ThreadCache` holds a `WorkerHandle` which refers to a `TimelineFrame`. If the `ThreadLocal` is not cleared, the `WorkerHandle` and its `TimelineFrame` will stay alive as long as the worker thread is alive.",
+  "plan": "I need to check `TimelineFrame.java` and `WorkerHandle.java` to see how they track usage and if they are properly releasing resources.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    }
+  ]
+}

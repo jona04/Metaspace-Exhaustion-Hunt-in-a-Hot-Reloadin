@@ -1,0 +1,59 @@
+New Terminal Output:
+
+root@f71bd1e69418:/workspace/textd# cat plugin-src/io/harbor/textd/customer/PipelineProcessor.java
+package io.harbor.textd.customer;
+
+import io.harbor.textd.api.TextProcessor;
+
+import java.util.Arrays;
+import java.util.Locale;
+import java.util.stream.Collectors;
+
+public final class PipelineProcessor implements TextProcessor {
+    private final long generation;
+
+    public PipelineProcessor(long generation) {
+        this.generation = generation;
+    }
+
+    @Override
+    public String process(String record) {
+        String normalized = Arrays.stream(record.trim().split("\\s+"))
+            .filter(token -> !token.isBlank())
+            .map(token -> token.toUpperCase(Locale.ROOT))
+            .collect(Collectors.joining(">"));
+        return String.format(Locale.ROOT, "GEN-%03d|%s|PIPE-%d", generation, normalized, PipelineStages.pipelineWeight());
+    }
+}
+root@f71bd1e69418:/workspace/textd# head -n 30 plugin-src/io/harbor/textd/customer/PipelineStages.java
+package io.harbor.textd.customer;
+
+import java.util.List;
+
+final class PipelineStages {
+    private interface Stage {
+        int weight();
+    }
+
+    private static final List<Stage> STAGES = List.of(
+        new Stage001(),
+        new Stage002(),
+        new Stage003(),
+        new Stage004(),
+        new Stage005(),
+        new Stage006(),
+        new Stage007(),
+        new Stage008(),
+        new Stage009(),
+        new Stage010(),
+        new Stage011(),
+        new Stage012(),
+        new Stage013(),
+        new Stage014(),
+        new Stage015(),
+        new Stage016(),
+        new Stage017(),
+        new Stage018(),
+        new Stage019(),
+        new Stage020(),
+root@f71bd1e69418:/workspace/textd#

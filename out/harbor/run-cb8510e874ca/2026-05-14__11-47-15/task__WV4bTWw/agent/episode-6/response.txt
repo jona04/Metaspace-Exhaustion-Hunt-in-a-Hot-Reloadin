@@ -1,0 +1,10 @@
+{
+  "analysis": "The stress test runs `HotReloadStressRunner` with a limited `MaxMetaspaceSize=64m`. Metaspace is where class metadata is stored. If `URLClassLoader` instances are not being garbage collected because they are still referenced (via the pinned `TimelineFrame`), the Metaspace will eventually fill up and cause an `OutOfMemoryError`. This confirms my finding in `ThreadCache.java`.",
+  "plan": "I will run the stress test to confirm it fails, then fix `ThreadCache.java`, and run it again to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 20\n",
+      "duration": 10.0
+    }
+  ]
+}

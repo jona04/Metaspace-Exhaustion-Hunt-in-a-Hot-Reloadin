@@ -1,0 +1,39 @@
+New Terminal Output:
+
+root@66decc2965ed:/workspace/textd# cat <<EOF > src/main/java/io/harbor/textd/cli/BalanceCheckRunner.java
+> package io.harbor.textd.cli;
+>
+> import io.harbor.textd.core.TextDaemon;
+> import java.nio.file.Path;
+> import java.util.List;
+>
+> public final class BalanceCheckRunner {
+>     public static void main(String[] args) throws Exception {
+>         Path pluginJar = Path.of(args[0]);
+>         try (TextDaemon daemon = new TextDaemon(pluginJar, 4)) {
+>             for (int i = 1; i <= 10; i++) {
+>                 daemon.reload(i);
+>                 daemon.processBatch(List.of("a", "b", "c", "d"));
+>             }
+>             if (!daemon.isBalanced()) {
+>                 throw new IllegalStateException("Daemon is not balanced after full batch processing");
+>             }
+>             // Now process with only 1 worker
+>             daemon.reload(11);
+>             daemon.process("single");
+>             if (daemon.isBalanced()) {
+>                 // This might actually be balanced if the other workers haven't pinned anything yet,
+>                 // but they should have pinned generation 10.
+>             }
+>             // To be fully balanced, all workers must have moved to generation 11
+>             daemon.processBatch(List.of("a", "b", "c", "d"));
+>             if (!daemon.isBalanced()) {
+>                 throw new IllegalStateException("Daemon is not balanced after second full batch processing");
+>             }
+>         }
+>         System.out.println("balance-check-ok");
+>     }
+> }
+> EOF
+root@66decc2965ed:/workspace/textd# ./bin/build && java -cp build/main-classes io.harbor.textd.cli.BalanceCheckRunner build/plugins/customer-default.jar
+

@@ -1,0 +1,10 @@
+{
+  "analysis": "Even with restricted Metaspace, `replay-check` fails. This means the classes are still not being unloaded. Wait, I might have missed something very important. `URLClassLoader` only unloads classes if the class loader itself is GC'd. And the class loader is only GC'd if ALL classes it loaded are no longer reachable. Is there any other reference to the classes? The `PipelineProcessor` is held by the `WorkerHandle`. The `WorkerHandle` is held by the `ThreadCache`. The `ThreadCache` is held by the `ThreadLocal`. I've cleared the `ThreadLocal` on all worker threads. But wait, what about the thread that called `processBatch`? No, it doesn't use the `ThreadBridge`.",
+  "plan": "Wait, let's look at `ThreadBridge.java` again. It has a static `ThreadLocal`. When I call `clear()`, I'm clearing it for the current thread. I do this for all worker threads. But what about the main thread? In `SessionReplayRunner`, the main thread also calls `daemon.isBalanced()`, but it doesn't call `process`. Wait, it *does* call `daemon.processBatch` and `daemon.process`? No, the worker threads do the processing.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.1
+    }
+  ]
+}

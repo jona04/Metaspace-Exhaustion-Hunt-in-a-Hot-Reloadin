@@ -1,0 +1,14 @@
+{
+  "analysis": "The stress test passed. Now I want to ensure that generations are indeed being reclaimed. I'll check `isBalanced()` at the end of a run. I'll create a small test script for this.",
+  "plan": "I will create a new runner `src/main/java/io/harbor/textd/cli/BalanceCheckRunner.java` that performs some reloads and then checks if the daemon is balanced.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/cli/BalanceCheckRunner.java\npackage io.harbor.textd.cli;\n\nimport io.harbor.textd.core.TextDaemon;\nimport java.nio.file.Path;\nimport java.util.List;\n\npublic final class BalanceCheckRunner {\n    public static void main(String[] args) throws Exception {\n        Path pluginJar = Path.of(args[0]);\n        try (TextDaemon daemon = new TextDaemon(pluginJar, 4)) {\n            for (int i = 1; i <= 10; i++) {\n                daemon.reload(i);\n                daemon.processBatch(List.of(\"a\", \"b\", \"c\", \"d\"));\n            }\n            if (!daemon.isBalanced()) {\n                throw new IllegalStateException(\"Daemon is not balanced after full batch processing\");\n            }\n            // Now process with only 1 worker\n            daemon.reload(11);\n            daemon.process(\"single\");\n            if (daemon.isBalanced()) {\n                // This might actually be balanced if the other workers haven't pinned anything yet,\n                // but they should have pinned generation 10.\n            }\n            // To be fully balanced, all workers must have moved to generation 11\n            daemon.processBatch(List.of(\"a\", \"b\", \"c\", \"d\"));\n            if (!daemon.isBalanced()) {\n                throw new IllegalStateException(\"Daemon is not balanced after second full batch processing\");\n            }\n        }\n        System.out.println(\"balance-check-ok\");\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/build && java -cp build/main-classes io.harbor.textd.cli.BalanceCheckRunner build/plugins/customer-default.jar\n",
+      "duration": 5.0
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "analysis": "I have identified the resource leak in the `textd` service. The `ThreadCache` class was not closing the old `WorkerHandle` when a new plugin generation was loaded. Since each `WorkerHandle` pins a `TimelineFrame`, and a `TimelineFrame` only closes its associated `LoadedGeneration` (and `ClassLoader`) when its pin count reaches zero, this was causing a leak of class loaders and other resources. This eventually led to the service falling over during long runs due to Metaspace exhaustion (enforced by the `-XX:MaxMetaspaceSize=64m` flag in the stress test). I have fixed this by ensuring the old `WorkerHandle` is closed before a new one is created. I have verified the fix by running the full test suite and a stress test with 1000 cycles, both of which passed successfully.",
+  "plan": "The task is complete. I have verified the fix with the provided stress tests and ensured it meets the requirements of reclaiming old plugin generations.",
+  "commands": [
+    {
+      "keystrokes": "./bin/run-suite\n",
+      "duration": 20.0
+    }
+  ],
+  "task_complete": true
+}

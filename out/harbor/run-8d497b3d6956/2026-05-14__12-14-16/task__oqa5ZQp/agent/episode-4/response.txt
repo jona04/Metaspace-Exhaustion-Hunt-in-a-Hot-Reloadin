@@ -1,0 +1,14 @@
+{
+  "analysis": "In `ThreadCache.java`, the `cursorFor` method replaces the `cursor` with a new `WorkerHandle` if the current one doesn't match the new frame: \n\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\n\nHowever, it **doesn't close** the old `cursor` before replacing it. Since `WorkerHandle.close()` is responsible for calling `frame.unpin()`, the old `TimelineFrame` will never have its pin count decreased by this thread. This prevents the pin count from reaching zero, which in turn prevents `closeLoadedGeneration()` from being called, leading to a resource leak (classes and modules not being reclaimed).\n\nThis perfectly matches the task description: \"Old plugin generations must be fully reclaimed by the runtime once sessions close.\"",
+  "plan": "I will modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before creating a new one when the generation changes. \n\nBefore that, I want to run the stress test to confirm the failure.",
+  "commands": [
+    {
+      "keystrokes": "ls bin\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 10.0
+    }
+  ]
+}

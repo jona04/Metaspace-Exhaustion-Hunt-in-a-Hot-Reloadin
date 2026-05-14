@@ -1,0 +1,10 @@
+{
+  "analysis": "I have identified the memory leak in `ThreadCache.java`, where old `WorkerHandle` instances were not being closed when replaced by new ones. This prevented the associated `TimelineFrame` from being unpinned, which in turn prevented the `LoadedGeneration` (and its `URLClassLoader`) from being closed and reclaimed. I have fixed this by adding a call to `cursor.close()` before creating a new `WorkerHandle`. I have verified the fix with a stress test that previously failed and with a custom balance check.",
+  "plan": "I will perform a final run of the stress test with 200 cycles to be absolutely sure.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 200\n",
+      "duration": 20.0
+    }
+  ]
+}

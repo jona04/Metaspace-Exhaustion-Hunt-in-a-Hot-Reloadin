@@ -1,0 +1,18 @@
+{
+  "analysis": "The stress test failed with `java.lang.OutOfMemoryError: Metaspace`. This confirms that old plugin generations are not being properly unloaded, leading to Metaspace exhaustion. \n\nLooking at the code:\n- `TimelineLedger` keeps track of the current and shadowed (old) `TimelineFrame`s.\n- `TimelineFrame` has a `cool()` method and an `isDrained()` method.\n- `TimelineLedger.pruneShadow()` removes frames that are \"drained\".\n- `ThreadBridge` uses a `ThreadLocal<ThreadCache>` to store `WorkerHandle`s.\n\nI need to check `TimelineFrame.java`, `ThreadCache.java`, and `WorkerHandle.java` to see how they interact and if they're holding onto old generations.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/TimelineFrame.java`.\n2. Examine `src/main/java/io/harbor/textd/core/ThreadCache.java`.\n3. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    }
+  ]
+}

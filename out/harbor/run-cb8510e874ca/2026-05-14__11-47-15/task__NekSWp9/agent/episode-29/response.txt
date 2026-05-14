@@ -1,0 +1,18 @@
+{
+  "analysis": "The stress test with 200 cycles passed. This means Metaspace is being reclaimed. If it wasn't, 200 cycles * 200 classes/cycle * ~0.5-1KB/class would definitely exceed 64MB. Let's verify how many classes are actually loaded. I'll create a small script to monitor class loading.",
+  "plan": "I'll create a script to run the daemon and print class loading stats.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > check_unloading.java\nimport java.lang.management.*;\nimport io.harbor.textd.core.*;\nimport java.nio.file.Path;\nimport java.util.List;\n\npublic class check_unloading {\n    public static void main(String[] args) throws Exception {\n        ClassLoadingMXBean bean = ManagementFactory.getClassLoadingMXBean();\n        Path jar = Path.of(\"build/plugins/customer-default.jar\");\n        try (TextDaemon daemon = new TextDaemon(jar, 4)) {\n            for (int i = 1; i <= 50; i++) {\n                daemon.reload(i);\n                daemon.process(\"test\");\n                if (i % 10 == 0) {\n                    System.gc();\n                    System.out.println(\"Cycle \" + i + \": loaded=\" + bean.getLoadedClassCount() + \", unloaded=\" + bean.getUnloadedClassCount());\n                }\n            }\n        }\n        for (int i=0; i<5; i++) { System.gc(); Thread.sleep(100); }\n        System.out.println(\"After close: loaded=\" + bean.getLoadedClassCount() + \", unloaded=\" + bean.getUnloadedClassCount());\n    }\n}\nEOF\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "javac -cp build/main-classes:src/main/java check_unloading.java\n",
+      "duration": 2.0
+    },
+    {
+      "keystrokes": "java -cp build/main-classes:src/main/java:. check_unloading\n",
+      "duration": 10.0
+    }
+  ]
+}

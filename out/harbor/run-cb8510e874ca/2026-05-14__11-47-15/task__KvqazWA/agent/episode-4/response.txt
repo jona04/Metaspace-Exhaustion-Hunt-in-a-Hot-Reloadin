@@ -1,0 +1,10 @@
+{
+  "analysis": "I've identified a potential leak in `ThreadCache.java`. When `cursorFor` is called and the current frame doesn't match the cursor's frame, a new `WorkerHandle` is created and assigned to `cursor`, but the old `cursor` is never closed. This means the old `TimelineFrame` remains pinned, preventing it from being drained and closed.",
+  "plan": "I will verify this by running the stress test and checking if it fails. I'll use the `bin/stress` script.",
+  "commands": [
+    {
+      "keystrokes": "bin/stress\n",
+      "duration": 5.0
+    }
+  ]
+}

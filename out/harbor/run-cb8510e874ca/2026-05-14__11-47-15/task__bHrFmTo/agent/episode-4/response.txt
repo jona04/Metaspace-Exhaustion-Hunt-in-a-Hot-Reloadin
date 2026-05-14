@@ -1,0 +1,10 @@
+{
+  "analysis": "The `TextDaemon` uses a `TimelineLedger` to manage revisions and a fixed thread pool of workers. `ThreadBridge.current(revisions)` seems to be where the worker gets its binding to a plugin generation. The `HotReloadStressRunner` performs reloads and processing. If I run it with more cycles, it should eventually fail if there's a leak.",
+  "plan": "1. Run the stress test with 500 cycles (as suggested by the default in `HotReloadStressRunner`) to see it fail.\n2. Examine `TimelineLedger.java`, `ThreadBridge.java`, and `LoadedGeneration.java` to see how generations are managed and if they are closed/unloaded.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 10.0
+    }
+  ]
+}
