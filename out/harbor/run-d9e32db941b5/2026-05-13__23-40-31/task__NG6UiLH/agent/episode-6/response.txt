@@ -1,0 +1,14 @@
+{
+  "analysis": "In `TextDaemon.java`, `processRecord` uses `ThreadBridge.current(revisions)` to get a `WorkerHandle`. This looks like it might be using `ThreadLocal` or some other thread-specific storage that could be holding onto references. The `TimelineLedger` seems to manage the different versions (generations) of the plugin.",
+  "plan": "I will examine `ThreadBridge.java` and `TimelineLedger.java` to see how they manage state and if they could be causing a class loader leak.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    }
+  ]
+}

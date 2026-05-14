@@ -1,0 +1,18 @@
+{
+  "analysis": "The project is a Java-based text processing daemon. The directory structure suggests a core system (`src/main/java/io/harbor/textd/core`) and a plugin system (`plugin-src`). There are scripts in `bin/` for running suites and stress tests. The task mentions 'repeated processor swaps' and 'constrained CI profile', which aligns with the presence of `HotReloadStressRunner.java` and `HotReloadIntegrationRunner.java` in the `cli` package. These likely simulate the 'swaps' (reloading plugins or processors).",
+  "plan": "1. Look at the scripts in `bin/` to understand how the daemon is executed.\n2. Examine `bin/stress` and `bin/run-suite` to see how to reproduce the failure.\n3. Analyze `TextDaemon.java` and `HotReloadStressRunner.java` to understand the 'processor swap' mechanism and look for potential resource leaks (e.g., thread leaks, unclosed classloaders, or cache accumulation).",
+  "commands": [
+    {
+      "keystrokes": "ls -l bin/\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat bin/run-suite\n",
+      "duration": 0.1
+    }
+  ]
+}

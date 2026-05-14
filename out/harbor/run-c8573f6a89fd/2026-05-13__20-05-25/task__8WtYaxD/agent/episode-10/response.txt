@@ -1,0 +1,19 @@
+{
+  "analysis": "I've reviewed the code:\n1. `TimelineLedger`: Manages `TimelineFrame` objects. When a new generation is installed, the old frame is added to a `shadow` queue and cooled. `pruneShadow` removes frames that are 'drained'.\n2. `ThreadBridge`: Uses a `ThreadLocal<ThreadCache>` to store state per thread.\n3. `ThreadCache`: Holds a `WorkerHandle`. If the current frame doesn't match the one in the `WorkerHandle`, it creates a new `WorkerHandle` and discards the old one *without closing it*.\n\nPotential Leak: In `ThreadCache.cursorFor`, when `cursor.matches(frame)` is false, a new `WorkerHandle` is created and assigned to `cursor`. The previous `WorkerHandle` is never closed. If `WorkerHandle` holds references to resources or classes from the old classloader, this would cause a leak.",
+  "plan": "1. Examine `WorkerHandle.java` and `TimelineFrame.java` to see what they hold and how they are 'drained' or 'closed'.\n2. Verify if `WorkerHandle` needs to be closed to release resources and allow the classloader to be GCed.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

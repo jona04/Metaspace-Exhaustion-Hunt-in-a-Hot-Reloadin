@@ -1,0 +1,15 @@
+{
+  "analysis": "The project is a Java-based text processing daemon (`textd`). The source structure suggests a core system (`src/main/java/io/harbor/textd/core`) that supports plugins (`plugin-src`). There are CLI runners for stress testing and hot reloading (`HotReloadStressRunner.java`, `HotReloadIntegrationRunner.java`). The issue involves failures during long runs with 'processor swaps', which likely refers to the hot-reloading mechanism of plugins.",
+  "plan": "1. Examine `bin/stress` and `bin/run-suite` to see how the long run is executed.\n2. Look at `TextDaemon.java` and `WorkerHandle.java` to understand how processors are loaded and swapped.\n3. Check `ThreadCache.java` and `ThreadBridge.java` as they are common places for resource leaks in multi-threaded Java applications.",
+  "commands": [
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

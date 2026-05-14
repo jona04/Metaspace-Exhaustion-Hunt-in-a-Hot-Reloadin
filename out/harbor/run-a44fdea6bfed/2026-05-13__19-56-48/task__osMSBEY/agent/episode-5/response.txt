@@ -1,0 +1,19 @@
+{
+  "analysis": "The `OutOfMemoryError: Metaspace` confirms that class loaders are not being garbage collected. As suspected, `ThreadCache` is leaking `WorkerHandle` objects, which in turn keep `TimelineFrame` pins active. Each `TimelineFrame` holds a `LoadedGeneration` which likely contains a `URLClassLoader`. Since the `WorkerHandle` is never closed when replaced in `ThreadCache.cursorFor`, the pin count never reaches zero (or rather, the `unpin` that should happen on close doesn't happen), so `closeLoadedGeneration()` is never called, and the class loader is never closed.",
+  "plan": "I will modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the existing `cursor` before replacing it with a new one.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/build\n",
+      "duration": 2.0
+    },
+    {
+      "keystrokes": "./bin/stress 200\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

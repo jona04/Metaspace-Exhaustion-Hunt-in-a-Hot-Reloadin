@@ -1,0 +1,10 @@
+{
+  "analysis": "The `LIVE` map in `LoadedGeneration.java` is indeed only used for `put`. It's a memory leak. I should remove it or at least remove entries from it when they are closed.",
+  "plan": "I will perform two fixes:\n1. Update `ThreadCache.java` to close the old cursor.\n2. Update `LoadedGeneration.java` to remove the generation from the `LIVE` map when closed (or just remove the `LIVE` map if it's truly useless). Given it's a private field and only used in `put`, I'll see if I should just remove it.",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.1
+    }
+  ]
+}

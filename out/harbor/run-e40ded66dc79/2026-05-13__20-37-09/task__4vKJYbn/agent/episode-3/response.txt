@@ -1,0 +1,19 @@
+{
+  "analysis": "The `ThreadCache` uses a `ThreadLocal` to store a `WorkerHandle`. When `cursorFor` is called, it checks if the current `cursor` matches the `TimelineFrame`. If it doesn't match (meaning a reload happened), it creates a *new* `WorkerHandle`. However, it *never closes the old `WorkerHandle`* before replacing it.\n\n`WorkerHandle` likely holds a reference to a `ClassLoader` (via `TimelineFrame`). If the old `WorkerHandle` isn't closed, and it's just overwritten in the `ThreadCache`, the previous `WorkerHandle` and its associated `ClassLoader` might still be reachable or at least not properly cleaned up if `WorkerHandle.close()` does something important (like closing the classloader or clearing references).\n\nWait, even if it's overwritten, the old `WorkerHandle` should be eligible for GC. But if `WorkerHandle` or the objects it holds have some native resources or if the `ClassLoader` is kept alive by something else, we have a leak. \n\nAlso, `ThreadCache.close()` is only called by `ThreadBridge.clear()`, but `ThreadBridge.clear()` doesn't seem to be called anywhere in `TextDaemon.java`.",
+  "plan": "1. Look at `WorkerHandle.java` and `TimelineFrame.java` to see what they hold and what `close()` does.\n2. Fix the leak in `ThreadCache.java` by closing the old cursor when replacing it.\n3. Check if `ThreadBridge.clear()` should be used.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

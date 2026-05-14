@@ -1,0 +1,15 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with a constrained `-XX:MaxMetaspaceSize=64m`. This confirms that the issue is likely related to class loading or metadata accumulation during processor swaps (hot-reloading). Since Metaspace stores class metadata, repeated loading of plugins without proper unloading will eventually exhaust this 64MB limit.",
+  "plan": "1. Wait for the `./bin/stress` command to complete or fail to see the error message.\n2. Examine `src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java` and `src/main/java/io/harbor/textd/core/TextDaemon.java` to see how plugins are loaded and if classloaders are being leaked.\n3. Specifically look for where `URLClassLoader` or similar is instantiated and if it's being closed or if references to it are being held.",
+  "commands": [
+    {
+      "keystrokes": "",
+      "duration": 10.0
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

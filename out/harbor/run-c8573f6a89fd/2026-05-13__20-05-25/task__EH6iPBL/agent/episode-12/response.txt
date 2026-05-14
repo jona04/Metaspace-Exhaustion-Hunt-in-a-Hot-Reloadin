@@ -1,0 +1,19 @@
+{
+  "analysis": "The stress test passed with 500 cycles! This confirms the fix worked. Now I'll clean up the `ThreadCache.java` code to make it cleaner and more idiomatic.",
+  "plan": "Clean up `src/main/java/io/harbor/textd/core/ThreadCache.java` to properly handle the replacement of the cursor.",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor != null && !cursor.matches(frame)) {\n            cursor.close();\n            cursor = null;\n        }\n\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 20.0
+    }
+  ],
+  "task_complete": false
+}

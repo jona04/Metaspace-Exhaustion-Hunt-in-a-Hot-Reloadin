@@ -1,0 +1,6 @@
+{
+  "analysis": "The investigation revealed a Metaspace leak caused by unreleased `URLClassLoader` instances. In `ThreadCache.java`, when a processor swap occurred, the old `WorkerHandle` (which holds a 'pin' on a `TimelineFrame`) was simply overwritten without being closed. This prevented the `TimelineFrame` from being drained and its associated `LoadedGeneration` (and `URLClassLoader`) from being closed. By adding `cursor.close()` before creating a new `WorkerHandle`, the pins are correctly released, allowing the JVM to reclaim Metaspace. The fix was verified with multiple successful stress test runs.",
+  "plan": "The task is complete. I have identified the leak, patched the code, and verified the fix with the provided stress test suite.",
+  "commands": [],
+  "task_complete": true
+}

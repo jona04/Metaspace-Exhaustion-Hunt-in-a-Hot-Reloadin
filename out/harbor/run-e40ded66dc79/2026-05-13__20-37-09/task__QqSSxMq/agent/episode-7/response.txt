@@ -1,0 +1,18 @@
+{
+  "analysis": "My analysis is confirmed:\n1. `ThreadCache.cursorFor` creates a new `WorkerHandle` when the revision changes, but it doesn't call `close()` on the old `WorkerHandle`.\n2. `WorkerHandle`'s constructor calls `frame.pin()`, which increments the pin count.\n3. `WorkerHandle.close()` calls `frame.unpin()`, which decrements the pin count.\n4. `TimelineFrame` only closes the `LoadedGeneration` (and thus the `URLClassLoader`) when the pin count reaches 0 and it has been 'cooled'.\n5. Since the old `WorkerHandle` is never closed, the pin count never reaches 0 for old revisions.\n6. This leads to a leak of `URLClassLoader` objects and their associated Metaspace, eventually causing the daemon to crash or hang when Metaspace is full.\n\nTo fix this, I need to modify `ThreadCache.java` to close the old `cursor` before replacing it.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the existing `cursor` if it doesn't match the current frame.\n2. Re-run the stress test to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/cursor.close(); cursor = new WorkerHandle(frame);/' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 10.0
+    }
+  ]
+}

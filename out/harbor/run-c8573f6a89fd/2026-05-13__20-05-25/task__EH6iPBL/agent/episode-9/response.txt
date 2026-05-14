@@ -1,0 +1,19 @@
+{
+  "analysis": "The stress test failed with `java.lang.OutOfMemoryError: Metaspace`. This confirms a classloader leak.\n\nLooking at the code:\n1. `WorkerHandle` constructor calls `frame.pin()`. \n2. `WorkerHandle.close()` calls `frame.unpin()`.\n3. `TimelineFrame` is closed only when `pins` reach 0 AND it has been 'cooled'.\n4. In `ThreadCache.cursorFor(TimelineLedger ledger)`:\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\nWhen `cursor.matches(frame)` is false, a new `WorkerHandle` is created, but the old `cursor` is never closed. \nSince `WorkerHandle` pins the `TimelineFrame`, and the old `WorkerHandle` is never closed, the old `TimelineFrame`'s pin count never reaches 0 (or at least doesn't reach 0 in a way that triggers closing because the `ThreadCache` keeps holding the reference to the old `WorkerHandle` until it's overwritten, and even then, `unpin()` was never called).\nActually, the old `WorkerHandle` is just lost (overwritten), so its `close()` is never called, and thus `frame.unpin()` is never called for that handle.\n\nThis explains why the old generations are never closed and their classloaders stay in memory, leading to Metaspace OOM.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to call `cursor.close()` before overwriting it with a new `WorkerHandle`.\n2. Re-run the stress test to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/if (cursor != null) cursor.close(); cursor = new WorkerHandle(frame);/' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 15.0
+    }
+  ],
+  "task_complete": false
+}

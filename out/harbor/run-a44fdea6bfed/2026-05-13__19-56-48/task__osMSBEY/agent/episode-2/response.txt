@@ -1,0 +1,15 @@
+{
+  "analysis": "I've reviewed `TextDaemon.java` and `HotReloadStressRunner.java`. The daemon uses a `TimelineLedger` to manage revisions and `ThreadBridge.current(revisions)` to get a `WorkerHandle` for the current thread. The stress test performs many reloads. If `ThreadBridge` or `TimelineLedger` doesn't properly clean up old generations or handles when they are no longer needed, we'll see a resource leak. Specifically, `TextDaemon.processRecord` calls `ThreadBridge.current(revisions)`, which likely binds a worker handle to the current thread. If these handles or the associated class loaders for each generation aren't released, we'll run out of memory or file descriptors.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/ThreadBridge.java` and `src/main/java/io/harbor/textd/core/TimelineLedger.java` to see how generations and handles are managed.\n2. Examine `src/main/java/io/harbor/textd/core/ThreadCache.java` as it's likely used by `ThreadBridge`.\n3. Run the stress test to observe the failure.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java src/main/java/io/harbor/textd/core/TimelineLedger.java src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/stress 200\n",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}

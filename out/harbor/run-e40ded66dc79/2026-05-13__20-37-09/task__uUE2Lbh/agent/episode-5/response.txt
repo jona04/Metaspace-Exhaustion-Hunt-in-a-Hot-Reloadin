@@ -1,0 +1,19 @@
+{
+  "analysis": "The stress test failed with `java.lang.OutOfMemoryError: Metaspace`. This confirms that ClassLoaders are being leaked. \n\nLooking at the code:\n1. `ThreadBridge` uses a `ThreadLocal<ThreadCache>`.\n2. `ThreadCache` holds a `WorkerHandle cursor`.\n3. `WorkerHandle` holds a `TimelineFrame`.\n4. `TimelineFrame` holds a `LoadedGeneration`.\n5. `LoadedGeneration` likely holds the `ClassLoader`.\n6. When `TextDaemon` reloads, it updates the `TimelineLedger`.\n7. `ThreadCache.cursorFor` checks if the current `cursor` matches the current `frame` from the ledger. If not, it creates a new `WorkerHandle`.\n8. **Crucially**, the old `WorkerHandle` (and its associated ClassLoader) is just replaced in the `cursor` field of `ThreadCache`. It is never explicitly closed or removed from the `ThreadLocal` until the thread itself dies or `ThreadBridge.clear()` is called. \n9. Since `TextDaemon` uses a fixed thread pool (`workers`), these threads live for the duration of the daemon. The `ThreadLocal` variables in these worker threads keep holding onto the old `WorkerHandle` objects, which in turn keep the old ClassLoaders alive, leading to Metaspace exhaustion.",
+  "plan": "1. Verify `LoadedGeneration.java` and `WorkerHandle.java` to see if they hold ClassLoaders.\n2. In `ThreadCache.cursorFor`, if the cursor doesn't match the frame, we should probably close the old cursor before replacing it.\n3. Check if `WorkerHandle.close()` actually does anything useful (like nulling out references or closing a ClassLoader).",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.2
+    }
+  ],
+  "task_complete": false
+}

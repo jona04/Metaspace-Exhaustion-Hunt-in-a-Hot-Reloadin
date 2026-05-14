@@ -1,0 +1,19 @@
+{
+  "analysis": "In `TextDaemon.java`, I see `ThreadBridge.current(revisions)` being used to get a `WorkerHandle`. The `revisions` object is a `TimelineLedger`. The reload mechanism uses `revisions.install(generation)` and then primes the binding. The `WorkerHandle` likely holds a reference to the loaded plugin classes.",
+  "plan": "1. Examine `TimelineLedger.java` to see how generations/revisions are managed.\n2. Examine `ThreadBridge.java` and `ThreadCache.java` to see how `WorkerHandle` instances are cached and if they are ever evicted or closed.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

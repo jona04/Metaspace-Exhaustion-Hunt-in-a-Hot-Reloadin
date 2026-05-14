@@ -1,0 +1,11 @@
+{
+  "analysis": "I have patched `ThreadCache.java` to properly close the old `WorkerHandle` during a processor swap. This should allow the old `TimelineFrame` to be unpinned and eventually closed, releasing the `URLClassLoader` and its Metaspace. \n\nNow I need to verify the fix by running the stress test again.",
+  "plan": "Run the stress test with a sufficient number of cycles to ensure the Metaspace leak is resolved. I'll use 100 cycles again, which should be enough to hit the 64MB limit if the leak still existed.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 100\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

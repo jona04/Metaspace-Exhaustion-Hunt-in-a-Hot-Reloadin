@@ -1,0 +1,10 @@
+{
+  "analysis": "I've analyzed the code and found a potential issue in `ThreadCache.java`. \n\nIn `ThreadCache.cursorFor`:\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\nWhen `cursor` is replaced because it doesn't match the current frame, the old `cursor` is not closed. `WorkerHandle.close()` likely unpins the `TimelineFrame`. If it's not unpinned, the `TimelineFrame`'s `pins` count will never reach zero, and `LoadedGeneration.close()` (which closes the `URLClassLoader`) will never be called. This would lead to a Metaspace leak.\n\nLet's verify `WorkerHandle.java` as well.",
+  "plan": "I will examine `src/main/java/io/harbor/textd/core/WorkerHandle.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    }
+  ]
+}

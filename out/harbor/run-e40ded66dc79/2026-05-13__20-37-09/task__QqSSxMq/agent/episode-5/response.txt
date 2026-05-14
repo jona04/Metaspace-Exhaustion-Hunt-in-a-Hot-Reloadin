@@ -1,0 +1,18 @@
+{
+  "analysis": "The `bin/stress` script uses a small Metaspace (`-XX:MaxMetaspaceSize=64m`). Since the daemon reloads plugins repeatedly, and each reload likely creates a new classloader, it's very likely that the Metaspace is being exhausted because old classloaders are not being garbage collected. \n\nLooking at `TextDaemon.java`:\n- `reload(long generation)` calls `revisions.install(generation)` and then `reloadExecutor.submit(this::primeReloadBinding).get()`. \n- `primeReloadBinding()` calls `ThreadBridge.current(revisions)`.\n- `processRecord` also calls `ThreadBridge.current(revisions)`.\n\nI need to see `ThreadBridge.java` and `TimelineLedger.java` to see how classloaders are managed and if they are being properly closed/released.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/ThreadBridge.java`.\n2. Examine `src/main/java/io/harbor/textd/core/TimelineLedger.java`.\n3. Examine `src/main/java/io/harbor/textd/core/ThreadCache.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    }
+  ]
+}

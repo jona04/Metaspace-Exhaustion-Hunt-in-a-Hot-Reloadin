@@ -1,0 +1,49 @@
+New Terminal Output:
+
+root@c868184e4faf:/workspace/textd# ./bin/stress 500
+Exception in thread "main" java.util.concurrent.ExecutionException: java.lang.NullPointerException: Cannot invoke "io.harbor.textd.core.WorkerHandle.close()" be
+cause "this.cursor" is null
+        at java.base/java.util.concurrent.FutureTask.report(FutureTask.java:122)
+        at java.base/java.util.concurrent.FutureTask.get(FutureTask.java:191)
+        at io.harbor.textd.core.TextDaemon.reload(TextDaemon.java:34)
+        at io.harbor.textd.cli.HotReloadStressRunner.main(HotReloadStressRunner.java:22)
+Caused by: java.lang.NullPointerException: Cannot invoke "io.harbor.textd.core.WorkerHandle.close()" because "this.cursor" is null
+        at io.harbor.textd.core.ThreadCache.cursorFor(ThreadCache.java:9)
+        at io.harbor.textd.core.ThreadBridge.current(ThreadBridge.java:10)
+        at io.harbor.textd.core.TextDaemon.primeReloadBinding(TextDaemon.java:91)
+        at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539)
+        at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+        at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
+        at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+        at java.base/java.lang.Thread.run(Thread.java:840)
+root@c868184e4faf:/workspace/textd# cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF
+> package io.harbor.textd.core;
+>
+> final class ThreadCache implements AutoCloseable {
+>     private WorkerHandle cursor;
+>
+>     WorkerHandle cursorFor(TimelineLedger ledger) {
+>         TimelineFrame frame = ledger.current();
+>         if (cursor != null && !cursor.matches(frame)) {
+>             cursor.close();
+>             cursor = null;
+>         }
+>
+>         if (cursor == null) {
+>             cursor = new WorkerHandle(frame);
+>         }
+>
+>         return cursor;
+>     }
+>
+>     @Override
+>     public void close() {
+>         if (cursor != null) {
+>             cursor.close();
+>             cursor = null;
+>         }
+>     }
+> }
+> EOF
+root@c868184e4faf:/workspace/textd# ./bin/stress 500
+

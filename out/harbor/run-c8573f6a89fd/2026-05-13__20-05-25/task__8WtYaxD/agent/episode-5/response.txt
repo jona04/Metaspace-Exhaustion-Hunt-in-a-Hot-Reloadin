@@ -1,0 +1,11 @@
+{
+  "analysis": "The `TextDaemon` uses `TimelineLedger` to manage plugin revisions and `ThreadBridge` to manage worker bindings. The `reload` method installs a new generation and calls `primeReloadBinding` on a single-threaded `reloadExecutor`. The `processRecord` method (run on worker threads) calls `ThreadBridge.current(revisions)` to get a `WorkerHandle`.\n\nThe `bin/stress 20` completed successfully. The task says the service falls over during a *long* refresh run. The default in `HotReloadStressRunner` is 500 cycles if no argument is provided. Let's try running it with 500 cycles to see if it fails.",
+  "plan": "1. Run `./bin/stress 500` to reproduce the failure.\n2. While it's running (or after it fails), examine `TimelineLedger.java`, `ThreadBridge.java`, and `ThreadCache.java` to see how they handle classloaders and plugin instances.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

@@ -1,0 +1,11 @@
+{
+  "analysis": "The stress test with 500 cycles passed. The fix in `ThreadCache.java` correctly closes old `WorkerHandle` instances, allowing the `TimelineFrame` to be unpinned and its resources (including the class loader) to be reclaimed. This prevents the Metaspace OOM during long runs with frequent reloads.",
+  "plan": "I have identified the leak, fixed it, and verified the fix with the stress test. I'll do one final check of the other files I haven't looked at much (`ThreadBridge.java`, `TimelineLedger.java`) to make sure there aren't any other obvious leaks, but the primary issue seems resolved.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

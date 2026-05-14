@@ -1,0 +1,11 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with a 64MB Metaspace limit. This is a very tight limit for Java, especially if many classloaders are being created and not collected. The task mentioned 'processor swaps', which in Java often involves loading new classes via a new ClassLoader. If the old ClassLoaders are not being garbage collected, Metaspace will eventually fill up, causing an OutOfMemoryError.",
+  "plan": "1. Wait for the stress test to complete or fail.\n2. Examine `HotReloadStressRunner.java` and `TextDaemon.java` to see how plugins are loaded and if old classloaders are being leaked.\n3. Check if `ThreadCache` or `WorkerHandle` are holding onto references that prevent classloader GC.",
+  "commands": [
+    {
+      "keystrokes": "",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

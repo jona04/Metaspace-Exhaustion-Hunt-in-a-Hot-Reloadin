@@ -1,0 +1,19 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with a 64MB Metaspace limit (`-XX:MaxMetaspaceSize=64m`). This is a very tight limit for a Java application that reloads code. 'Processor swaps' likely involve loading new classes from JARs. If the old class loaders are not being garbage collected, the Metaspace will eventually fill up, causing an `OutOfMemoryError: Metaspace`.\n\nIn `TextDaemon.java`, `ThreadBridge.current(revisions)` is used to get a `WorkerHandle`. This suggests some thread-local storage or caching of class loaders/processors.",
+  "plan": "1. Examine `ThreadBridge.java` and `ThreadCache.java` to see how processors/class loaders are stored.\n2. Examine `TimelineLedger.java` and `LoadedGeneration.java` to see how new generations of plugins are loaded and if old ones are closed/discarded.\n3. Run the stress test to confirm it fails with Metaspace OOM.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/stress 20\n",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}

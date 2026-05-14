@@ -1,0 +1,15 @@
+{
+  "analysis": "The stress test is running with 500 cycles. \n\nLooking at the code:\n- `TimelineLedger` keeps track of `TimelineFrame`s. When a new revision is installed, the previous one is moved to a `shadow` queue and cooled.\n- `pruneShadow()` removes frames if they are 'drained'.\n- `ThreadBridge` uses a `ThreadLocal<ThreadCache>`. \n- `ThreadCache` holds a `WorkerHandle`. If the generation changes, it creates a NEW `WorkerHandle` but **does not close the old one**.\n- `WorkerHandle` likely holds a reference to the `TimelineFrame` or `LoadedGeneration`.\n\nWait, in `ThreadCache.cursorFor`:\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\nIt replaces `cursor` with a new `WorkerHandle` but doesn't call `cursor.close()` on the old one. If `WorkerHandle.close()` is important for 'draining' the frame, then this is a leak.\n\nLet's check `WorkerHandle.java` and `TimelineFrame.java`.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java` and `src/main/java/io/harbor/textd/core/TimelineFrame.java`.\n2. Check if `WorkerHandle.close()` is necessary to release resources or mark the frame as drained.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.3
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.3
+    }
+  ],
+  "task_complete": false
+}

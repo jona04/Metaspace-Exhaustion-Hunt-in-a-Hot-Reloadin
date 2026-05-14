@@ -1,0 +1,49 @@
+New Terminal Output:
+
+root@2cd626188347:/workspace/textd# ./bin/stress 1000
+Exception in thread "main" java.lang.IllegalStateException: Pin count underflow for revision 1
+        at io.harbor.textd.core.TimelineFrame.unpin(TimelineFrame.java:47)
+        at io.harbor.textd.core.WorkerHandle.close(WorkerHandle.java:27)
+        at io.harbor.textd.core.ThreadCache.cursorFor(ThreadCache.java:13)
+        at io.harbor.textd.core.ThreadBridge.current(ThreadBridge.java:10)
+        at io.harbor.textd.core.TextDaemon.processRecord(TextDaemon.java:86)
+        at io.harbor.textd.core.TextDaemon.lambda$processBatch$1(TextDaemon.java:50)
+        at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+        at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
+        at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+        at java.base/java.lang.Thread.run(Thread.java:840)
+root@2cd626188347:/workspace/textd# cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF
+> package io.harbor.textd.core;
+>
+> final class ThreadCache implements AutoCloseable {
+>     private WorkerHandle cursor;
+>
+>     WorkerHandle cursorFor(TimelineLedger ledger) {
+>         TimelineFrame frame = ledger.current();
+>         if (cursor == null) {
+>             cursor = new WorkerHandle(frame);
+>             return cursor;
+>         }
+>
+>         if (!cursor.matches(frame)) {
+>             cursor.close();
+>             cursor = new WorkerHandle(frame);
+>             return cursor;
+>         }
+>
+>         return cursor;
+>     }
+>
+>     @Override
+>     public void close() {
+>         if (cursor != null) {
+>             cursor.close();
+>             cursor = null;
+>         }
+>     }
+> }
+> EOF
+root@2cd626188347:/workspace/textd# ./bin/build
+./bin/stress 1000
+root@2cd626188347:/workspace/textd# ./bin/stress 1000
+

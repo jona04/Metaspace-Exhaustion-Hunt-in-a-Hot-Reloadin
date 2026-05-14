@@ -1,0 +1,15 @@
+{
+  "analysis": "I found the leak! \n\nIn `ThreadCache.java`, when `cursorFor` is called and the `cursor` doesn't match the current frame (i.e., a reload happened), a new `WorkerHandle` is created and assigned to `cursor`:\n\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\n\nHowever, the old `cursor` is never closed! `cursor.close()` should be called before overwriting it. The `WorkerHandle` likely keeps a reference to the `TimelineFrame`, which in turn keeps the `LoadedGeneration` (and its ClassLoader) alive. \n\nAlso, `TimelineLedger` has a `pruneShadow` method that removes drained frames. A frame is considered drained if its reference count (implied by `TimelineFrame::isDrained`) reaches zero. If `WorkerHandle` isn't closed, the reference count won't drop, and the old frames (and their ClassLoaders) will stay in the `shadow` queue forever, leading to the Metaspace OOM.",
+  "plan": "1. Verify the `WorkerHandle` and `TimelineFrame` classes to confirm they handle reference counting.\n2. Fix `ThreadCache.java` to close the old `cursor` when a new one is created.\n3. Verify the fix by running the stress test again.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

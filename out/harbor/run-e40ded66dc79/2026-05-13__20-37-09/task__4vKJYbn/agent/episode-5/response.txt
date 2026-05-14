@@ -1,0 +1,15 @@
+{
+  "analysis": "The code uses a pinning mechanism to keep generations alive while they are being used. \n\n1. `TimelineLedger.install` creates a new `TimelineFrame` and sets it as `current`. The old one is moved to `shadow` and `cool()` is called.\n2. `TimelineFrame.cool()` decrements the pin count. If it hits 0, it closes the `LoadedGeneration`.\n3. `WorkerHandle` pins the frame on creation and unpins it on `close()`.\n4. **The Bug**: `ThreadCache.cursorFor` creates a new `WorkerHandle` when the revision changes, but it **never calls `close()` on the previous `WorkerHandle`**.\n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            // LEAK: cursor is overwritten without being closed\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n\nWhen `cursor` is overwritten, the old `WorkerHandle`'s `unpin()` is never called. This means the old `TimelineFrame`'s pin count never reaches 0, so the `LoadedGeneration` is never closed. This leaks the `ClassLoader` and the loaded classes, eventually filling up the Metaspace.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before creating a new one.\n2. Verify the fix by running `./bin/stress 100` (increasing the number of cycles to ensure it would have failed before).",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/stress 100\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

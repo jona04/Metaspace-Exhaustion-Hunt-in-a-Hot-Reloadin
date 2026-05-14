@@ -1,0 +1,23 @@
+{
+  "analysis": "The code confirms my hypothesis:\n1. `LoadedGeneration` has a `URLClassLoader` and a `close()` method that closes it.\n2. `TimelineFrame` manages the lifecycle of `LoadedGeneration` using a pin count. When the pin count reaches 0 and it's 'cooled', it closes the `LoadedGeneration`.\n3. `WorkerHandle` pins the `TimelineFrame` on creation and unpins it on `close()`.\n4. **The Bug**: In `ThreadCache.java`, when `cursorFor` switches to a new frame, it overwrites `cursor` without calling `close()` on the old one. This means the old `WorkerHandle` is never closed, the `TimelineFrame` remains pinned, and the `URLClassLoader` is never closed, leading to a Metaspace OOM.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to call `cursor.close()` before replacing it with a new `WorkerHandle`.\n2. Rebuild the project.\n3. Run the stress test again to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/if (cursor != null) cursor.close(); cursor = new WorkerHandle(frame);/g' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/build\n",
+      "duration": 5.0
+    },
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 20.0
+    }
+  ],
+  "task_complete": false
+}

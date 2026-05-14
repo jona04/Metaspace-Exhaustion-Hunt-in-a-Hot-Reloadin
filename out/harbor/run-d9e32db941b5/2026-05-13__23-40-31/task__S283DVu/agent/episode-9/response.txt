@@ -1,0 +1,10 @@
+{
+  "analysis": "Yes, `WorkerHandle` has a `close()` method that calls `frame.unpin()`. In `ThreadCache.java`, when a new `WorkerHandle` is created, the old one is replaced without being closed. This keeps the old `TimelineFrame` pinned forever, preventing the `LoadedGeneration` (and its `ClassLoader`) from being closed.",
+  "plan": "I will modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before creating a new one. Also, I noticed earlier that `LoadedGeneration.java` has a `LIVE` map that is never cleaned up. I should also fix that to avoid another potential leak, although the `ThreadCache` fix might be enough to solve the Metaspace issue if `classLoader.close()` is called.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    }
+  ]
+}

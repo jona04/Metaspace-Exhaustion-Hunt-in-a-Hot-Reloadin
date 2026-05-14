@@ -1,0 +1,18 @@
+{
+  "analysis": "The `ThreadBridge` uses a `ThreadLocal<ThreadCache>`. The `ThreadCache` holds a `WorkerHandle` which points to a `TimelineFrame`. When `cursorFor` is called, if the `cursor` doesn't match the current frame, it creates a new `WorkerHandle`. However, it doesn't seem to explicitly close the previous `WorkerHandle`. Even more importantly, `TimelineFrame` tracks whether it is 'drained'. If `WorkerHandle`s are not being closed or properly managed, `TimelineFrame::isDrained` might never return true, preventing `TimelineLedger` from pruning old frames.",
+  "plan": "I need to check `WorkerHandle.java` and `TimelineFrame.java` to see how they manage their state and whether they contribute to the leak.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.1
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "analysis": "The project is a Java-based text processing daemon (`textd`). \n- `src/main/java/io/harbor/textd/core` contains the core logic, including `TextDaemon.java`, `ThreadCache.java`, and `WorkerHandle.java`.\n- `src/main/java/io/harbor/textd/cli` contains runners like `HotReloadStressRunner.java`, which likely simulates the 'processor swaps' (hot reloading) mentioned in the task.\n- The task mentions failures during 'long refresh runs' and 'processor swaps'. This suggests a leak (memory or threads) when reloading plugins or switching processors.",
+  "plan": "1. Examine `TextDaemon.java` and `HotReloadStressRunner.java` to understand how processors are swapped.\n2. Check `ThreadCache.java` and `WorkerHandle.java` for potential resource leaks during these swaps.\n3. Run the stress test to confirm the failure.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}
