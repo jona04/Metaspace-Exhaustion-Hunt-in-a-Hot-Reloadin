@@ -449,4 +449,2915 @@ final class ThreadCache implements AutoCloseable {
 [?2004hroot@f6272bb5f269:/workspace/textd# bin/stress 50
 [?2004lstress-ok cycles=50
 [?2004hroot@f6272bb5f269:/workspace/textd# grep -r "ThreadBridge.clear" src
-[?2004l[?2004hroot@f6272bb5f269:/workspace/textd# 
+[?2004l[?2004hroot@f6272bb5f269:/workspace/textd# cat src/main/java/io/harbor/textd/core/TextDaemon.java
+[?2004lpackage io.harbor.textd.core;
+
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+public final class TextDaemon implements AutoCloseable {
+    private final ExecutorService workers;
+    private final TimelineLedger revisions;
+    private final int workerCount;
+
+    public TextDaemon(Path pluginJar, int workerCount) {
+        this.revisions = new TimelineLedger(pluginJar);
+        this.workers = Executors.newFixedThreadPool(workerCount, new WorkerThreadFactory());
+        this.workerCount = workerCount;
+    }
+
+    public void reload(long generation) throws Exception {
+        revisions.install(generation);
+    }
+
+    public ProcessingResult process(String record) throws Exception {
+        return processBatch(List.of(record)).get(0);
+    }
+
+    public boolean isBalanced() {
+        return revisions.isBalanced();
+    }
+
+    public List<ProcessingResult> processBatch(List<String> records) throws Exception {
+        CountDownLatch ready = new CountDownLatch(records.size());
+        CountDownLatch release = new CountDownLatch(1);
+        List<Future<ProcessingResult>> futures = new ArrayList<>();
+        for (String record : records) {
+            futures.add(workers.submit(() -> processRecord(record, ready, release)));
+        }
+
+        if (!ready.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Workers did not become ready");
+        }
+        release.countDown();
+
+        List<ProcessingResult> results = new ArrayList<>(records.size());
+        for (Future<ProcessingResult> future : futures) {
+            try {
+                results.add(future.get());
+            } catch (ExecutionException exception) {
+                Throwable cause = exception.getCause();
+                if (cause instanceof Exception checked) {
+                    throw checked;
+                }
+                if (cause instanceof Error error) {
+                    throw error;
+                }
+                throw new RuntimeException(cause);
+            }
+        }
+        return results;
+    }
+
+    private ProcessingResult processRecord(
+        String record,
+        CountDownLatch ready,
+        CountDownLatch release
+    ) throws Exception {
+        ready.countDown();
+        if (!release.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Request release timed out");
+        }
+
+        WorkerHandle binding = ThreadBridge.current(revisions);
+        return binding.process(record);
+    }
+
+    @Override
+    public void close() throws Exception {
+        revisions.close();
+        workers.shutdownNow();
+        workers.awaitTermination(5, TimeUnit.SECONDS);
+    }
+
+    private static final class WorkerThreadFactory implements ThreadFactory {
+        private final AtomicInteger sequence = new AtomicInteger(1);
+
+        @Override
+        public Thread newThread(Runnable runnable) {
+            Thread thread = new Thread(runnable);
+            thread.setName("textd-worker-" + sequence.getAndIncrement());
+            thread.setDaemon(true);
+            return thread;
+        }
+    }
+}
+[?2004hroot@f6272bb5f269:/workspace/textd# cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java
+[?2004lpackage io.harbor.textd.cli;
+
+import io.harbor.textd.core.OutputFormat;
+import io.harbor.textd.core.ProcessingResult;
+import io.harbor.textd.core.TextDaemon;
+
+import java.nio.file.Path;
+import java.util.List;
+
+public final class HotReloadStressRunner {
+    private static final String SAMPLE = "alpha beta gamma";
+
+    private HotReloadStressRunner() {
+    }
+
+    public static void main(String[] args) throws Exception {
+        Path pluginJar = Path.of(args[0]);
+        int cycles = args.length > 1 ? Integer.parseInt(args[1]) : 500;
+
+        try (TextDaemon daemon = new TextDaemon(pluginJar, 4)) {
+            for (int generation = 1; generation <= cycles; generation++) {
+                daemon.reload(generation);
+                assertOutputs(generation, daemon.processBatch(List.of(SAMPLE, SAMPLE, SAMPLE, SAMPLE)));
+                assertOutput(generation, daemon.process(SAMPLE));
+                if (generation % 3 == 0) {
+                    assertOutputs(generation, daemon.processBatch(List.of(SAMPLE, SAMPLE, SAMPLE, SAMPLE)));
+                }
+            }
+        }
+
+        System.out.println("stress-ok cycles=" + cycles);
+    }
+
+    private static void assertOutputs(long generation, List<ProcessingResult> results) {
+        for (ProcessingResult result : results) {
+            assertOutput(generation, result);
+        }
+    }
+
+    private static void assertOutput(long generation, ProcessingResult result) {
+        String expected = OutputFormat.expectedFor(generation, SAMPLE);
+        if (!expected.equals(result.output())) {
+            throw new IllegalStateException("Unexpected output at generation " + generation + ": " + result.output());
+        }
+    }
+}
+[?2004hroot@f6272bb5f269:/workspace/textd# cat src/main/java/io/harbor/textd/cli/SessionReplayRunner.java
+[?2004lpackage io.harbor.textd.cli;
+
+import io.harbor.textd.core.OutputFormat;
+import io.harbor.textd.core.ProcessingResult;
+import io.harbor.textd.core.TextDaemon;
+
+import java.lang.management.ClassLoadingMXBean;
+import java.lang.management.ManagementFactory;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.stream.Collectors;
+
+public final class SessionReplayRunner {
+    private static final String SAMPLE = "alpha beta gamma";
+    private static final ClassLoadingMXBean CLASS_LOADING = ManagementFactory.getClassLoadingMXBean();
+
+    private SessionReplayRunner() {
+    }
+
+    public static void main(String[] args) throws Exception {
+        Path pluginJar = Path.of(args[0]);
+        int revision = args.length > 1 ? Integer.parseInt(args[1]) : 24;
+
+        Session first = runSession(pluginJar, revision);
+        Session second = runSession(pluginJar, revision);
+
+        System.out.println("{");
+        System.out.println("  \"first\": " + first.toJson() + ",");
+        System.out.println("  \"second\": " + second.toJson());
+        System.out.println("}");
+    }
+
+    private static Session runSession(Path pluginJar, int revision) throws Exception {
+        long loadedBefore = CLASS_LOADING.getLoadedClassCount();
+        long unloadedBefore = CLASS_LOADING.getUnloadedClassCount();
+
+        TextDaemon daemon = new TextDaemon(pluginJar, 4);
+        try {
+            daemon.reload(1);
+            List<ProcessingResult> firstResults = daemon.processBatch(List.of(SAMPLE, SAMPLE, SAMPLE, SAMPLE));
+            assertOutputs(1, firstResults);
+
+            List<String> workersStart = workerThreads(firstResults);
+            List<ProcessingResult> finalResults = firstResults;
+            for (int current = 2; current <= revision; current++) {
+                daemon.reload(current);
+                finalResults = daemon.processBatch(List.of(SAMPLE, SAMPLE, SAMPLE, SAMPLE));
+                assertOutputs(current, finalResults);
+            }
+
+            List<String> workersEnd = workerThreads(finalResults);
+            boolean sameWorkers = workersStart.equals(workersEnd);
+            boolean beforeClose = daemon.isBalanced();
+            String first = firstResults.get(0).output();
+            String last = finalResults.get(0).output();
+
+            daemon.close();
+            drainGc();
+
+            return new Session(
+                first,
+                last,
+                workersStart,
+                workersEnd,
+                sameWorkers,
+                beforeClose,
+                daemon.isBalanced(),
+                loadedBefore,
+                CLASS_LOADING.getLoadedClassCount(),
+                unloadedBefore,
+                CLASS_LOADING.getUnloadedClassCount()
+            );
+        } catch (Exception exception) {
+            try {
+                daemon.close();
+            } catch (Exception closeException) {
+                exception.addSuppressed(closeException);
+            }
+            throw exception;
+        }
+    }
+
+    private static List<String> workerThreads(List<ProcessingResult> results) {
+        return results.stream()
+            .map(ProcessingResult::workerThread)
+            .sorted()
+            .collect(Collectors.toList());
+    }
+
+    private static void drainGc() throws InterruptedException {
+        for (int i = 0; i < 3; i++) {
+            System.gc();
+            Thread.sleep(50);
+        }
+    }
+
+    private static void assertOutputs(long revision, List<ProcessingResult> results) {
+        String expected = OutputFormat.expectedFor(revision, SAMPLE);
+        for (ProcessingResult result : results) {
+            if (!expected.equals(result.output())) {
+                throw new IllegalStateException("Unexpected output at revision " + revision + ": " + result.output());
+            }
+        }
+    }
+
+    private static String toJsonArray(List<String> values) {
+        return values.stream()
+            .map(value -> "\"" + value + "\"")
+            .collect(Collectors.joining(", ", "[", "]"));
+    }
+
+    private static final class Session {
+        private final String first;
+        private final String last;
+        private final List<String> start;
+        private final List<String> end;
+        private final boolean sameWorkers;
+        private final boolean beforeClose;
+        private final boolean afterClose;
+        private final long loadedBeforeClose;
+        private final long loadedAfterClose;
+        private final long unloadedBeforeClose;
+        private final long unloadedAfterClose;
+
+        private Session(
+            String first,
+            String last,
+            List<String> start,
+            List<String> end,
+            boolean sameWorkers,
+            boolean beforeClose,
+            boolean afterClose,
+            long loadedBeforeClose,
+            long loadedAfterClose,
+            long unloadedBeforeClose,
+            long unloadedAfterClose
+        ) {
+            this.first = first;
+            this.last = last;
+            this.start = start;
+            this.end = end;
+            this.sameWorkers = sameWorkers;
+            this.beforeClose = beforeClose;
+            this.afterClose = afterClose;
+            this.loadedBeforeClose = loadedBeforeClose;
+            this.loadedAfterClose = loadedAfterClose;
+            this.unloadedBeforeClose = unloadedBeforeClose;
+            this.unloadedAfterClose = unloadedAfterClose;
+        }
+
+        private String toJson() {
+            return "{"
+                + "\"first\":\"" + first + "\","
+                + "\"last\":\"" + last + "\","
+                + "\"start\":" + toJsonArray(start) + ","
+                + "\"end\":" + toJsonArray(end) + ","
+                + "\"same_workers\":" + sameWorkers + ","
+                + "\"before_close\":" + beforeClose + ","
+                + "\"after_close\":" + afterClose + ","
+                + "\"loaded_before_close\":" + loadedBeforeClose + ","
+                + "\"loaded_after_close\":" + loadedAfterClose + ","
+                + "\"unloaded_before_close\":" + unloadedBeforeClose + ","
+                + "\"unloaded_after_close\":" + unloadedAfterClose
+                + "}";
+        }
+    }
+}
+[?2004hroot@f6272bb5f269:/workspace/textd# cat > src/main/java/io/harbor/textd/core/TextDaemon.java <<EOF
+[?2004l[?2004h> package io.harbor.textd.core;
+[?2004l[?2004h> 
+[?2004l[?2004h> import java.nio.file.Path;
+[?2004l[?2004h> import java.util.ArrayList;
+[?2004l[?2004h> import java.util.List;
+[?2004l[?2004h> import java.util.concurrent.CountDownLatch;
+[?2004l[?2004h> import java.util.concurrent.ExecutionException;
+[?2004l[?2004h> import java.util.concurrent.ExecutorService;
+[?2004l[?2004h> import java.util.concurrent.Executors;
+[?2004l[?2004h> import java.util.concurrent.Future;
+[?2004l[?2004h> import java.util.concurrent.ThreadFactory;
+[?2004l[?2004h> import java.util.concurrent.TimeUnit;
+[?2004l[?2004h> import java.util.concurrent.atomic.AtomicInteger;
+[?2004l[?2004h> 
+[?2004l[?2004h> public final class TextDaemon implements AutoCloseable {
+[?2004l[?2004h>     private final ExecutorService workers;
+[?2004l[?2004h>     private final TimelineLedger revisions;
+[?2004l[?2004h>     private final int workerCount;
+[?2004l[?2004h> 
+[?2004l[?2004h>     public TextDaemon(Path pluginJar, int workerCount) {
+[?2004l[?2004h>         this.revisions = new TimelineLedger(pluginJar);
+[?2004l[?2004h>         this.workers = Executors.newFixedThreadPool(workerCount, new WorkerThreadFactory());
+[?2004l[?2004h>         this.workerCount = workerCount;
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     public void reload(long generation) throws Exception {
+[?2004l[?2004h>         revisions.install(generation);
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     public ProcessingResult process(String record) throws Exception {
+[?2004l[?2004h>         return processBatch(List.of(record)).get(0);
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     public boolean isBalanced() {
+[?2004l[?2004h>         return revisions.isBalanced();
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     public List<ProcessingResult> processBatch(List<String> records) throws Exception {
+[?2004l[?2004h>         CountDownLatch ready = new CountDownLatch(records.size());
+[?2004l[?2004h>         CountDownLatch release = new CountDownLatch(1);
+[?2004l[?2004h>         List<Future<ProcessingResult>> futures = new ArrayList<>();
+[?2004l[?2004h>         for (String record : records) {
+[?2004l[?2004h>             futures.add(workers.submit(() -> processRecord(record, ready, release)));
+[?2004l[?2004h>         }
+[?2004l[?2004h> 
+[?2004l[?2004h>         if (!ready.await(5, TimeUnit.SECONDS)) {
+[?2004l[?2004h>             throw new IllegalStateException("Workers did not become ready");
+[?2004l[?2004h>         }
+[?2004l[?2004h>         release.countDown();
+[?2004l[?2004h> 
+[?2004l[?2004h>         List<ProcessingResult> results = new ArrayList<>(records.size());
+[?2004l[?2004h>         for (Future<ProcessingResult> future : futures) {
+[?2004l[?2004h>             try {
+[?2004l[?2004h>                 results.add(future.get());
+[?2004l[?2004h>             } catch (ExecutionException exception) {
+[?2004l[?2004h>                 Throwable cause = exception.getCause();
+[?2004l[?2004h>                 if (cause instanceof Exception checked) {
+[?2004l[?2004h>                     throw checked;
+[?2004l[?2004h>                 }
+[?2004l[?2004h>                 if (cause instanceof Error error) {
+[?2004l[?2004h>                     throw error;
+[?2004l[?2004h>                 }
+[?2004l[?2004h>                 throw new RuntimeException(cause);
+[?2004l[?2004h>             }
+[?2004l[?2004h>         }
+[?2004l[?2004h>         return results;
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     private ProcessingResult processRecord(
+[?2004l[?2004h>         String record,
+[?2004l[?2004h>         CountDownLatch ready,
+[?2004l[?2004h>         CountDownLatch release
+[?2004l[?2004h>     ) throws Exception {
+[?2004l[?2004h>         ready.countDown();
+[?2004l[?2004h>         if (!release.await(5, TimeUnit.SECONDS)) {
+[?2004l[?2004h>             throw new IllegalStateException("Request release timed out");
+[?2004l[?2004h>         }
+[?2004l[?2004h> 
+[?2004l[?2004h>         WorkerHandle binding = ThreadBridge.current(revisions);
+[?2004l[?2004h>         return binding.process(record);
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     @Override
+[?2004l[?2004h>     public void close() throws Exception {
+[?2004l[?2004h>         List<Future<?>> clears = new ArrayList<>();
+[?2004l[?2004h>         for (int i = 0; i < workerCount; i++) {
+[?2004l[?2004h>             clears.add(workers.submit(ThreadBridge::clear));
+[?2004l[?2004h>         }
+[?2004l[?2004h>         for (Future<?> clear : clears) {
+[?2004l[?2004h>             clear.get(1, TimeUnit.SECONDS);
+[?2004l[?2004h>         }
+[?2004l[?2004h>         revisions.close();
+[?2004l[?2004h>         workers.shutdown();
+[?2004l[?2004h>         workers.awaitTermination(5, TimeUnit.SECONDS);
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     private static final class WorkerThreadFactory implements ThreadFactory {
+[?2004l[?2004h>         private final AtomicInteger sequence = new AtomicInteger(1);
+[?2004l[?2004h> 
+[?2004l[?2004h>         @Override
+[?2004l[?2004h>         public Thread newThread(Runnable runnable) {
+[?2004l[?2004h>             Thread thread = new Thread(runnable);
+[?2004l[?2004h>             thread.setName("textd-worker-" + sequence.getAndIncrement());
+[?2004l[?2004h>             thread.setDaemon(true);
+[?2004l[?2004h>             return thread;
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h> }
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@f6272bb5f269:/workspace/textd# cat bin/replay-check
+[?2004l#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+if [[ "${TEXTD_SKIP_BUILD:-0}" != "1" ]]; then
+  "$ROOT_DIR/bin/build"
+fi
+
+REPLAY_TMP=$(mktemp)
+trap 'rm -f "$REPLAY_TMP"' EXIT
+
+java -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.SessionReplayRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" 4 > "$REPLAY_TMP"
+
+python3 - "$REPLAY_TMP" <<'PYEOF'
+import json, sys
+
+with open(sys.argv[1]) as f:
+    data = json.load(f)
+
+first  = data['first']
+second = data['second']
+
+d1 = first['unloaded_after_close']  - first['unloaded_before_close']
+d2 = second['unloaded_after_close'] - second['unloaded_before_close']
+
+if d1 > 0 and d2 > 0:
+    print(f"replay-ok unloaded-first={d1} unloaded-second={d2}")
+else:
+    print(f"replay-fail unloaded-first={d1} unloaded-second={d2}", file=sys.stderr)
+    sys.exit(1)
+PYEOF
+[?2004hroot@f6272bb5f269:/workspace/textd# bin/replay-check
+[?2004lreplay-fail unloaded-first=0 unloaded-second=0
+[?2004hroot@f6272bb5f269:/workspace/textd# cat src/main/java/io/harbor/textd/core/LoadedGeneration.java
+[?2004lpackage io.harbor.textd.core;
+
+import io.harbor.textd.api.PluginModule;
+import io.harbor.textd.api.PluginModuleFactory;
+
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Path;
+
+final class LoadedGeneration implements AutoCloseable {
+    private static final String FACTORY_CLASS = "io.harbor.textd.customer.CustomerPluginFactory";
+
+    private final long generation;
+    private final URLClassLoader classLoader;
+    private final PluginModule module;
+
+    private LoadedGeneration(long generation, URLClassLoader classLoader, PluginModule module) {
+        this.generation = generation;
+        this.classLoader = classLoader;
+        this.module = module;
+    }
+
+    static LoadedGeneration load(Path pluginJar, long generation) throws Exception {
+        URLClassLoader classLoader = new URLClassLoader(new URL[] {pluginJar.toUri().toURL()}, PluginModuleFactory.class.getClassLoader());
+        Class<?> factoryType = classLoader.loadClass(FACTORY_CLASS);
+        PluginModuleFactory factory = (PluginModuleFactory) factoryType.getDeclaredConstructor().newInstance();
+        return new LoadedGeneration(generation, classLoader, factory.open());
+    }
+
+    long generation() {
+        return generation;
+    }
+
+    PluginModule module() {
+        return module;
+    }
+
+    @Override
+    public void close() throws Exception {
+        module.close();
+        classLoader.close();
+    }
+}
+[?2004hroot@f6272bb5f269:/workspace/textd# cat > src/main/java/io/harbor/textd/core/TextDaemon.java <<EOF
+[?2004l[?2004h> package io.harbor.textd.core;
+[?2004l[?2004h> 
+[?2004l[?2004h> import java.nio.file.Path;
+[?2004l[?2004h> import java.util.ArrayList;
+[?2004l[?2004h> import java.util.List;
+[?2004l[?2004h> import java.util.concurrent.CountDownLatch;
+[?2004l[?2004h> import java.util.concurrent.CyclicBarrier;
+[?2004l[?2004h> import java.util.concurrent.ExecutionException;
+[?2004l[?2004h> import java.util.concurrent.ExecutorService;
+[?2004l[?2004h> import java.util.concurrent.Executors;
+[?2004l[?2004h> import java.util.concurrent.Future;
+[?2004l[?2004h> import java.util.concurrent.ThreadFactory;
+[?2004l[?2004h> import java.util.concurrent.TimeUnit;
+[?2004l[?2004h> import java.util.concurrent.atomic.AtomicInteger;
+[?2004l[?2004h> 
+[?2004l[?2004h> public final class TextDaemon implements AutoCloseable {
+[?2004l[?2004h>     private final ExecutorService workers;
+[?2004l[?2004h>     private final TimelineLedger revisions;
+[?2004l[?2004h>     private final int workerCount;
+[?2004l[?2004h> 
+[?2004l[?2004h>     public TextDaemon(Path pluginJar, int workerCount) {
+[?2004l[?2004h>         this.revisions = new TimelineLedger(pluginJar);
+[?2004l[?2004h>         this.workers = Executors.newFixedThreadPool(workerCount, new WorkerThreadFactory());
+[?2004l[?2004h>         this.workerCount = workerCount;
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     public void reload(long generation) throws Exception {
+[?2004l[?2004h>         revisions.install(generation);
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     public ProcessingResult process(String record) throws Exception {
+[?2004l[?2004h>         return processBatch(List.of(record)).get(0);
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     public boolean isBalanced() {
+[?2004l[?2004h>         return revisions.isBalanced();
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     public List<ProcessingResult> processBatch(List<String> records) throws Exception {
+[?2004l[?2004h>         CountDownLatch ready = new CountDownLatch(records.size());
+[?2004l[?2004h>         CountDownLatch release = new CountDownLatch(1);
+[?2004l[?2004h>         List<Future<ProcessingResult>> futures = new ArrayList<>();
+[?2004l[?2004h>         for (String record : records) {
+[?2004l[?2004h>             futures.add(workers.submit(() -> processRecord(record, ready, release)));
+[?2004l[?2004h>         }
+[?2004l[?2004h> 
+[?2004l[?2004h>         if (!ready.await(5, TimeUnit.SECONDS)) {
+[?2004l[?2004h>             throw new IllegalStateException("Workers did not become ready");
+[?2004l[?2004h>         }
+[?2004l[?2004h>         release.countDown();
+[?2004l[?2004h> 
+[?2004l[?2004h>         List<ProcessingResult> results = new ArrayList<>(records.size());
+[?2004l[?2004h>         for (Future<ProcessingResult> future : futures) {
+[?2004l[?2004h>             try {
+[?2004l[?2004h>                 results.add(future.get());
+[?2004l[?2004h>             } catch (ExecutionException exception) {
+[?2004l[?2004h>                 Throwable cause = exception.getCause();
+[?2004l[?2004h>                 if (cause instanceof Exception checked) {
+[?2004l[?2004h>                     throw checked;
+[?2004l[?2004h>                 }
+[?2004l[?2004h>                 if (cause instanceof Error error) {
+[?2004l[?2004h>                     throw error;
+[?2004l[?2004h>                 }
+[?2004l[?2004h>                 throw new RuntimeException(cause);
+[?2004l[?2004h>             }
+[?2004l[?2004h>         }
+[?2004l[?2004h>         return results;
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     private ProcessingResult processRecord(
+[?2004l[?2004h>         String record,
+[?2004l[?2004h>         CountDownLatch ready,
+[?2004l[?2004h>         CountDownLatch release
+[?2004l[?2004h>     ) throws Exception {
+[?2004l[?2004h>         ready.countDown();
+[?2004l[?2004h>         if (!release.await(5, TimeUnit.SECONDS)) {
+[?2004l[?2004h>             throw new IllegalStateException("Request release timed out");
+[?2004l[?2004h>         }
+[?2004l[?2004h> 
+[?2004l[?2004h>         WorkerHandle binding = ThreadBridge.current(revisions);
+[?2004l[?2004h>         return binding.process(record);
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     @Override
+[?2004l[?2004h>     public void close() throws Exception {
+[?2004l[?2004h>         CyclicBarrier barrier = new CyclicBarrier(workerCount + 1);
+[?2004l[?2004h>         for (int i = 0; i < workerCount; i++) {
+[?2004l[?2004h>             workers.execute(() -> {
+[?2004l[?2004h>                 try {
+[?2004l[?2004h>                     ThreadBridge.clear();
+[?2004l[?2004h>                     barrier.await(1, TimeUnit.SECONDS);
+[?2004l[?2004h>                 } catch (Exception ignored) {
+[?2004l[?2004h>                 }
+[?2004l[?2004h>             });
+[?2004l[?2004h>         }
+[?2004l[?2004h>         barrier.await(1, TimeUnit.SECONDS);
+[?2004l[?2004h>         revisions.close();
+[?2004l[?2004h>         workers.shutdown();
+[?2004l[?2004h>         workers.awaitTermination(5, TimeUnit.SECONDS);
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     private static final class WorkerThreadFactory implements ThreadFactory {
+[?2004l[?2004h>         private final AtomicInteger sequence = new AtomicInteger(1);
+[?2004l[?2004h> 
+[?2004l[?2004h>         @Override
+[?2004l[?2004h>         public Thread newThread(Runnable runnable) {
+[?2004l[?2004h>             Thread thread = new Thread(runnable);
+[?2004l[?2004h>             thread.setName("textd-worker-" + sequence.getAndIncrement());
+[?2004l[?2004h>             thread.setDaemon(true);
+[?2004l[?2004h>             return thread;
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h> }
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@f6272bb5f269:/workspace/textd# bin/replay-check
+[?2004lreplay-fail unloaded-first=0 unloaded-second=0
+[?2004hroot@f6272bb5f269:/workspace/textd# sed -i 's/closeLoadedGeneration();/System.out.println("Closing generation " + revision()); closeLoadedGeneration();/' src/main/java/io/harbor/textd/core/TimelineFrame.java
+[?2004l[?2004hroot@f6272bb5f269:/workspace/textd# bin/replay-check
+[?2004lTraceback (most recent call last):
+  File "<stdin>", line 4, in <module>
+  File "/usr/lib/python3.12/json/__init__.py", line 293, in load
+    return loads(fp.read(),
+           ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/decoder.py", line 355, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+[?2004hroot@f6272bb5f269:/workspace/textd# java -cp build/main-classes io.harbor.textd.cli.SessionReplayRunner build/plugins/customer-default.jar 4
+[?2004lClosing generation 1
+Closing generation 2
+Closing generation 3
+Closing generation 4
+Closing generation 1
+Closing generation 2
+Closing generation 3
+Closing generation 4
+{
+  "first": {"first":"GEN-001|ALPHA>BETA>GAMMA|PIPE-18528","last":"GEN-004|ALPHA>BETA>GAMMA|PIPE-18528","start":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"end":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"same_workers":true,"before_close":true,"after_close":true,"loaded_before_close":694,"loaded_after_close":1868,"unloaded_before_close":0,"unloaded_after_close":0},
+  "second": {"first":"GEN-001|ALPHA>BETA>GAMMA|PIPE-18528","last":"GEN-004|ALPHA>BETA>GAMMA|PIPE-18528","start":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"end":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"same_workers":true,"before_close":true,"after_close":true,"loaded_before_close":1868,"loaded_after_close":2672,"unloaded_before_close":0,"unloaded_after_close":0}
+}
+[?2004hroot@f6272bb5f269:/workspace/textd# cat > src/main/java/io/harbor/textd/core/WorkerHandle.java <<EOF
+[?2004l[?2004h> package io.harbor.textd.core;
+[?2004l[?2004h> 
+[?2004l[?2004h> import io.harbor.textd.api.TextProcessor;
+[?2004l[?2004h> 
+[?2004l[?2004h> final class WorkerHandle implements AutoCloseable {
+[?2004l[?2004h>     private TimelineFrame frame;
+[?2004l[?2004h>     private final long revision;
+[?2004l[?2004h>     private TextProcessor processor;
+[?2004l[?2004h> 
+[?2004l[?2004h>     WorkerHandle(TimelineFrame frame) {
+[?2004l[?2004h>         this.frame = frame.pin();
+[?2004l[?2004h>         this.revision = frame.revision();
+[?2004l[?2004h>         this.processor = frame.module().processorFor(revision);
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     boolean matches(TimelineFrame frame) {
+[?2004l[?2004h>         return revision == frame.revision();
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     ProcessingResult process(String record) {
+[?2004l[?2004h>         if (processor == null) {
+[?2004l[?2004h>             throw new IllegalStateException("WorkerHandle is closed");
+[?2004l[?2004h>         }
+[?2004l[?2004h>         String output = processor.process(record);
+[?2004l[?2004h>         return new ProcessingResult(revision, output, Thread.currentThread().getName());
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     @Override
+[?2004l[?2004h>     public void close() {
+[?2004l[?2004h>         if (frame != null) {
+[?2004l[?2004h>             frame.unpin();
+[?2004l[?2004h>             frame = null;
+[?2004l[?2004h>             processor = null;
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h> }
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@f6272bb5f269:/workspace/textd# cat > src/main/java/io/harbor/textd/core/LoadedGeneration.java <<EOF
+[?2004l[?2004h> package io.harbor.textd.core;
+[?2004l[?2004h> 
+[?2004l[?2004h> import io.harbor.textd.api.PluginModule;
+[?2004l[?2004h> import io.harbor.textd.api.PluginModuleFactory;
+[?2004l[?2004h> 
+[?2004l[?2004h> import java.net.URL;
+[?2004l[?2004h> import java.net.URLClassLoader;
+[?2004l[?2004h> import java.nio.file.Path;
+[?2004l[?2004h> 
+[?2004l[?2004h> final class LoadedGeneration implements AutoCloseable {
+[?2004l[?2004h>     private static final String FACTORY_CLASS = "io.harbor.textd.customer.CustomerPluginFactory";
+[?2004l[?2004h> 
+[?2004l[?2004h>     private final long generation;
+[?2004l[?2004h>     private URLClassLoader classLoader;
+[?2004l[?2004h>     private PluginModule module;
+[?2004l[?2004h> 
+[?2004l[?2004h>     private LoadedGeneration(long generation, URLClassLoader classLoader, PluginModule module) {
+[?2004l[?2004h>         this.generation = generation;
+[?2004l[?2004h>         this.classLoader = classLoader;
+[?2004l[?2004h>         this.module = module;
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     static LoadedGeneration load(Path pluginJar, long generation) throws Exception {
+[?2004l[?2004h>         URLClassLoader classLoader = new URLClassLoader(new URL[] {pluginJar.toUri().toURL()}, PluginModuleFactory.class.getClassLoader());
+[?2004l[?2004h>         Class<?> factoryType = classLoader.loadClass(FACTORY_CLASS);
+[?2004l[?2004h>         PluginModuleFactory factory = (PluginModuleFactory) factoryType.getDeclaredConstructor().newInstance();
+[?2004l[?2004h>         return new LoadedGeneration(generation, classLoader, factory.open());
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     long generation() {
+[?2004l[?2004h>         return generation;
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     PluginModule module() {
+[?2004l[?2004h>         if (module == null) {
+[?2004l[?2004h>             throw new IllegalStateException("Generation is closed");
+[?2004l[?2004h>         }
+[?2004l[?2004h>         return module;
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     @Override
+[?2004l[?2004h>     public void close() throws Exception {
+[?2004l[?2004h>         if (module != null) {
+[?2004l[?2004h>             module.close();
+[?2004l[?2004h>             module = null;
+[?2004l[?2004h>         }
+[?2004l[?2004h>         if (classLoader != null) {
+[?2004l[?2004h>             classLoader.close();
+[?2004l[?2004h>             classLoader = null;
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h> }
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@f6272bb5f269:/workspace/textd# cat > src/main/java/io/harbor/textd/core/TimelineFrame.java <<EOF
+[?2004l[?2004h> package io.harbor.textd.core;
+[?2004l[?2004h> 
+[?2004l[?2004h> import io.harbor.textd.api.PluginModule;
+[?2004l[?2004h> 
+[?2004l[?2004h> import java.util.concurrent.atomic.AtomicBoolean;
+[?2004l[?2004h> import java.util.concurrent.atomic.AtomicInteger;
+[?2004l[?2004h> 
+[?2004l[?2004h> final class TimelineFrame {
+[?2004l[?2004h>     private LoadedGeneration loadedGeneration;
+[?2004l[?2004h>     private final AtomicInteger pins = new AtomicInteger(1);
+[?2004l[?2004h>     private final AtomicBoolean cooled = new AtomicBoolean(false);
+[?2004l[?2004h>     private final AtomicBoolean closed = new AtomicBoolean(false);
+[?2004l[?2004h>     private final long revision;
+[?2004l[?2004h> 
+[?2004l[?2004h>     TimelineFrame(LoadedGeneration loadedGeneration) {
+[?2004l[?2004h>         this.loadedGeneration = loadedGeneration;
+[?2004l[?2004h>         this.revision = loadedGeneration.generation();
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     TimelineFrame pin() {
+[?2004l[?2004h>         while (true) {
+[?2004l[?2004h>             int current = pins.get();
+[?2004l[?2004h>             if (current == 0) {
+[?2004l[?2004h>                 throw new IllegalStateException("Revision " + revision + " is already closed");
+[?2004l[?2004h>             }
+[?2004l[?2004h>             if (pins.compareAndSet(current, current + 1)) {
+[?2004l[?2004h>                 return this;
+[?2004l[?2004h>             }
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     long revision() {
+[?2004l[?2004h>         return revision;
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     PluginModule module() {
+[?2004l[?2004h>         if (loadedGeneration == null) {
+[?2004l[?2004h>             throw new IllegalStateException("Revision " + revision + " is already closed");
+[?2004l[?2004h>         }
+[?2004l[?2004h>         return loadedGeneration.module();
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     void cool() {
+[?2004l[?2004h>         if (cooled.compareAndSet(false, true)) {
+[?2004l[?2004h>             unpin();
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     void unpin() {
+[?2004l[?2004h>         int remaining = pins.decrementAndGet();
+[?2004l[?2004h>         if (remaining < 0) {
+[?2004l[?2004h>             throw new IllegalStateException("Pin count underflow for revision " + revision);
+[?2004l[?2004h>         }
+[?2004l[?2004h>         if (remaining == 0 && cooled.get()) {
+[?2004l[?2004h>             closeLoadedGeneration();
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     boolean isDrained() {
+[?2004l[?2004h>         return closed.get();
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     private void closeLoadedGeneration() {
+[?2004l[?2004h>         if (closed.compareAndSet(false, true)) {
+[?2004l[?2004h>             try {
+[?2004l[?2004h>                 loadedGeneration.close();
+[?2004l[?2004h>                 loadedGeneration = null;
+[?2004l[?2004h>             } catch (Exception exception) {
+[?2004l[?2004h>                 throw new IllegalStateException("Unable to close revision " + revision, exception);
+[?2004l[?2004h>             }
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h> }
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@f6272bb5f269:/workspace/textd# bin/replay-check
+[?2004lreplay-fail unloaded-first=0 unloaded-second=0
+[?2004hroot@f6272bb5f269:/workspace/textd# bin/stress 100
+[?2004lstress-ok cycles=100
+[?2004hroot@f6272bb5f269:/workspace/textd# find build/main-classes -name "*CustomerPluginFactory*"
+[?2004l[?2004hroot@f6272bb5f269:/workspace/textd# cat plugin-src/io/harbor/textd/customer/CustomerPluginFactory.java
+[?2004lpackage io.harbor.textd.customer;
+
+import io.harbor.textd.api.PluginModule;
+import io.harbor.textd.api.PluginModuleFactory;
+
+public final class CustomerPluginFactory implements PluginModuleFactory {
+    @Override
+    public PluginModule open() {
+        return new CustomerPluginModule();
+    }
+}
+[?2004hroot@f6272bb5f269:/workspace/textd# cat plugin-src/io/harbor/textd/customer/CustomerPluginModule.java
+[?2004lpackage io.harbor.textd.customer;
+
+import io.harbor.textd.api.PluginModule;
+import io.harbor.textd.api.TextProcessor;
+
+public final class CustomerPluginModule implements PluginModule {
+    @Override
+    public TextProcessor processorFor(long generation) {
+        return new PipelineProcessor(generation);
+    }
+}
+[?2004hroot@f6272bb5f269:/workspace/textd# cat plugin-src/io/harbor/textd/customer/PipelineProcessor.java
+[?2004lpackage io.harbor.textd.customer;
+
+import io.harbor.textd.api.TextProcessor;
+
+import java.util.Arrays;
+import java.util.Locale;
+import java.util.stream.Collectors;
+
+public final class PipelineProcessor implements TextProcessor {
+    private final long generation;
+
+    public PipelineProcessor(long generation) {
+        this.generation = generation;
+    }
+
+    @Override
+    public String process(String record) {
+        String normalized = Arrays.stream(record.trim().split("\\s+"))
+            .filter(token -> !token.isBlank())
+            .map(token -> token.toUpperCase(Locale.ROOT))
+            .collect(Collectors.joining(">"));
+        return String.format(Locale.ROOT, "GEN-%03d|%s|PIPE-%d", generation, normalized, PipelineStages.pipelineWeight());
+    }
+}
+[?2004hroot@f6272bb5f269:/workspace/textd# cat plugin-src/io/harbor/textd/customer/PipelineStages.java
+[?2004lpackage io.harbor.textd.customer;
+
+import java.util.List;
+
+final class PipelineStages {
+    private interface Stage {
+        int weight();
+    }
+
+    private static final List<Stage> STAGES = List.of(
+        new Stage001(),
+        new Stage002(),
+        new Stage003(),
+        new Stage004(),
+        new Stage005(),
+        new Stage006(),
+        new Stage007(),
+        new Stage008(),
+        new Stage009(),
+        new Stage010(),
+        new Stage011(),
+        new Stage012(),
+        new Stage013(),
+        new Stage014(),
+        new Stage015(),
+        new Stage016(),
+        new Stage017(),
+        new Stage018(),
+        new Stage019(),
+        new Stage020(),
+        new Stage021(),
+        new Stage022(),
+        new Stage023(),
+        new Stage024(),
+        new Stage025(),
+        new Stage026(),
+        new Stage027(),
+        new Stage028(),
+        new Stage029(),
+        new Stage030(),
+        new Stage031(),
+        new Stage032(),
+        new Stage033(),
+        new Stage034(),
+        new Stage035(),
+        new Stage036(),
+        new Stage037(),
+        new Stage038(),
+        new Stage039(),
+        new Stage040(),
+        new Stage041(),
+        new Stage042(),
+        new Stage043(),
+        new Stage044(),
+        new Stage045(),
+        new Stage046(),
+        new Stage047(),
+        new Stage048(),
+        new Stage049(),
+        new Stage050(),
+        new Stage051(),
+        new Stage052(),
+        new Stage053(),
+        new Stage054(),
+        new Stage055(),
+        new Stage056(),
+        new Stage057(),
+        new Stage058(),
+        new Stage059(),
+        new Stage060(),
+        new Stage061(),
+        new Stage062(),
+        new Stage063(),
+        new Stage064(),
+        new Stage065(),
+        new Stage066(),
+        new Stage067(),
+        new Stage068(),
+        new Stage069(),
+        new Stage070(),
+        new Stage071(),
+        new Stage072(),
+        new Stage073(),
+        new Stage074(),
+        new Stage075(),
+        new Stage076(),
+        new Stage077(),
+        new Stage078(),
+        new Stage079(),
+        new Stage080(),
+        new Stage081(),
+        new Stage082(),
+        new Stage083(),
+        new Stage084(),
+        new Stage085(),
+        new Stage086(),
+        new Stage087(),
+        new Stage088(),
+        new Stage089(),
+        new Stage090(),
+        new Stage091(),
+        new Stage092(),
+        new Stage093(),
+        new Stage094(),
+        new Stage095(),
+        new Stage096(),
+        new Stage097(),
+        new Stage098(),
+        new Stage099(),
+        new Stage100(),
+        new Stage101(),
+        new Stage102(),
+        new Stage103(),
+        new Stage104(),
+        new Stage105(),
+        new Stage106(),
+        new Stage107(),
+        new Stage108(),
+        new Stage109(),
+        new Stage110(),
+        new Stage111(),
+        new Stage112(),
+        new Stage113(),
+        new Stage114(),
+        new Stage115(),
+        new Stage116(),
+        new Stage117(),
+        new Stage118(),
+        new Stage119(),
+        new Stage120(),
+        new Stage121(),
+        new Stage122(),
+        new Stage123(),
+        new Stage124(),
+        new Stage125(),
+        new Stage126(),
+        new Stage127(),
+        new Stage128(),
+        new Stage129(),
+        new Stage130(),
+        new Stage131(),
+        new Stage132(),
+        new Stage133(),
+        new Stage134(),
+        new Stage135(),
+        new Stage136(),
+        new Stage137(),
+        new Stage138(),
+        new Stage139(),
+        new Stage140(),
+        new Stage141(),
+        new Stage142(),
+        new Stage143(),
+        new Stage144(),
+        new Stage145(),
+        new Stage146(),
+        new Stage147(),
+        new Stage148(),
+        new Stage149(),
+        new Stage150(),
+        new Stage151(),
+        new Stage152(),
+        new Stage153(),
+        new Stage154(),
+        new Stage155(),
+        new Stage156(),
+        new Stage157(),
+        new Stage158(),
+        new Stage159(),
+        new Stage160(),
+        new Stage161(),
+        new Stage162(),
+        new Stage163(),
+        new Stage164(),
+        new Stage165(),
+        new Stage166(),
+        new Stage167(),
+        new Stage168(),
+        new Stage169(),
+        new Stage170(),
+        new Stage171(),
+        new Stage172(),
+        new Stage173(),
+        new Stage174(),
+        new Stage175(),
+        new Stage176(),
+        new Stage177(),
+        new Stage178(),
+        new Stage179(),
+        new Stage180(),
+        new Stage181(),
+        new Stage182(),
+        new Stage183(),
+        new Stage184(),
+        new Stage185(),
+        new Stage186(),
+        new Stage187(),
+        new Stage188(),
+        new Stage189(),
+        new Stage190(),
+        new Stage191(),
+        new Stage192()
+    );
+
+    private PipelineStages() {
+    }
+
+    static int pipelineWeight() {
+        int total = 0;
+        for (Stage stage : STAGES) {
+            total += stage.weight();
+        }
+        return total;
+    }
+
+    private static final class Stage001 implements Stage {
+        @Override
+        public int weight() {
+            return 1;
+        }
+    }
+
+    private static final class Stage002 implements Stage {
+        @Override
+        public int weight() {
+            return 2;
+        }
+    }
+
+    private static final class Stage003 implements Stage {
+        @Override
+        public int weight() {
+            return 3;
+        }
+    }
+
+    private static final class Stage004 implements Stage {
+        @Override
+        public int weight() {
+            return 4;
+        }
+    }
+
+    private static final class Stage005 implements Stage {
+        @Override
+        public int weight() {
+            return 5;
+        }
+    }
+
+    private static final class Stage006 implements Stage {
+        @Override
+        public int weight() {
+            return 6;
+        }
+    }
+
+    private static final class Stage007 implements Stage {
+        @Override
+        public int weight() {
+            return 7;
+        }
+    }
+
+    private static final class Stage008 implements Stage {
+        @Override
+        public int weight() {
+            return 8;
+        }
+    }
+
+    private static final class Stage009 implements Stage {
+        @Override
+        public int weight() {
+            return 9;
+        }
+    }
+
+    private static final class Stage010 implements Stage {
+        @Override
+        public int weight() {
+            return 10;
+        }
+    }
+
+    private static final class Stage011 implements Stage {
+        @Override
+        public int weight() {
+            return 11;
+        }
+    }
+
+    private static final class Stage012 implements Stage {
+        @Override
+        public int weight() {
+            return 12;
+        }
+    }
+
+    private static final class Stage013 implements Stage {
+        @Override
+        public int weight() {
+            return 13;
+        }
+    }
+
+    private static final class Stage014 implements Stage {
+        @Override
+        public int weight() {
+            return 14;
+        }
+    }
+
+    private static final class Stage015 implements Stage {
+        @Override
+        public int weight() {
+            return 15;
+        }
+    }
+
+    private static final class Stage016 implements Stage {
+        @Override
+        public int weight() {
+            return 16;
+        }
+    }
+
+    private static final class Stage017 implements Stage {
+        @Override
+        public int weight() {
+            return 17;
+        }
+    }
+
+    private static final class Stage018 implements Stage {
+        @Override
+        public int weight() {
+            return 18;
+        }
+    }
+
+    private static final class Stage019 implements Stage {
+        @Override
+        public int weight() {
+            return 19;
+        }
+    }
+
+    private static final class Stage020 implements Stage {
+        @Override
+        public int weight() {
+            return 20;
+        }
+    }
+
+    private static final class Stage021 implements Stage {
+        @Override
+        public int weight() {
+            return 21;
+        }
+    }
+
+    private static final class Stage022 implements Stage {
+        @Override
+        public int weight() {
+            return 22;
+        }
+    }
+
+    private static final class Stage023 implements Stage {
+        @Override
+        public int weight() {
+            return 23;
+        }
+    }
+
+    private static final class Stage024 implements Stage {
+        @Override
+        public int weight() {
+            return 24;
+        }
+    }
+
+    private static final class Stage025 implements Stage {
+        @Override
+        public int weight() {
+            return 25;
+        }
+    }
+
+    private static final class Stage026 implements Stage {
+        @Override
+        public int weight() {
+            return 26;
+        }
+    }
+
+    private static final class Stage027 implements Stage {
+        @Override
+        public int weight() {
+            return 27;
+        }
+    }
+
+    private static final class Stage028 implements Stage {
+        @Override
+        public int weight() {
+            return 28;
+        }
+    }
+
+    private static final class Stage029 implements Stage {
+        @Override
+        public int weight() {
+            return 29;
+        }
+    }
+
+    private static final class Stage030 implements Stage {
+        @Override
+        public int weight() {
+            return 30;
+        }
+    }
+
+    private static final class Stage031 implements Stage {
+        @Override
+        public int weight() {
+            return 31;
+        }
+    }
+
+    private static final class Stage032 implements Stage {
+        @Override
+        public int weight() {
+            return 32;
+        }
+    }
+
+    private static final class Stage033 implements Stage {
+        @Override
+        public int weight() {
+            return 33;
+        }
+    }
+
+    private static final class Stage034 implements Stage {
+        @Override
+        public int weight() {
+            return 34;
+        }
+    }
+
+    private static final class Stage035 implements Stage {
+        @Override
+        public int weight() {
+            return 35;
+        }
+    }
+
+    private static final class Stage036 implements Stage {
+        @Override
+        public int weight() {
+            return 36;
+        }
+    }
+
+    private static final class Stage037 implements Stage {
+        @Override
+        public int weight() {
+            return 37;
+        }
+    }
+
+    private static final class Stage038 implements Stage {
+        @Override
+        public int weight() {
+            return 38;
+        }
+    }
+
+    private static final class Stage039 implements Stage {
+        @Override
+        public int weight() {
+            return 39;
+        }
+    }
+
+    private static final class Stage040 implements Stage {
+        @Override
+        public int weight() {
+            return 40;
+        }
+    }
+
+    private static final class Stage041 implements Stage {
+        @Override
+        public int weight() {
+            return 41;
+        }
+    }
+
+    private static final class Stage042 implements Stage {
+        @Override
+        public int weight() {
+            return 42;
+        }
+    }
+
+    private static final class Stage043 implements Stage {
+        @Override
+        public int weight() {
+            return 43;
+        }
+    }
+
+    private static final class Stage044 implements Stage {
+        @Override
+        public int weight() {
+            return 44;
+        }
+    }
+
+    private static final class Stage045 implements Stage {
+        @Override
+        public int weight() {
+            return 45;
+        }
+    }
+
+    private static final class Stage046 implements Stage {
+        @Override
+        public int weight() {
+            return 46;
+        }
+    }
+
+    private static final class Stage047 implements Stage {
+        @Override
+        public int weight() {
+            return 47;
+        }
+    }
+
+    private static final class Stage048 implements Stage {
+        @Override
+        public int weight() {
+            return 48;
+        }
+    }
+
+    private static final class Stage049 implements Stage {
+        @Override
+        public int weight() {
+            return 49;
+        }
+    }
+
+    private static final class Stage050 implements Stage {
+        @Override
+        public int weight() {
+            return 50;
+        }
+    }
+
+    private static final class Stage051 implements Stage {
+        @Override
+        public int weight() {
+            return 51;
+        }
+    }
+
+    private static final class Stage052 implements Stage {
+        @Override
+        public int weight() {
+            return 52;
+        }
+    }
+
+    private static final class Stage053 implements Stage {
+        @Override
+        public int weight() {
+            return 53;
+        }
+    }
+
+    private static final class Stage054 implements Stage {
+        @Override
+        public int weight() {
+            return 54;
+        }
+    }
+
+    private static final class Stage055 implements Stage {
+        @Override
+        public int weight() {
+            return 55;
+        }
+    }
+
+    private static final class Stage056 implements Stage {
+        @Override
+        public int weight() {
+            return 56;
+        }
+    }
+
+    private static final class Stage057 implements Stage {
+        @Override
+        public int weight() {
+            return 57;
+        }
+    }
+
+    private static final class Stage058 implements Stage {
+        @Override
+        public int weight() {
+            return 58;
+        }
+    }
+
+    private static final class Stage059 implements Stage {
+        @Override
+        public int weight() {
+            return 59;
+        }
+    }
+
+    private static final class Stage060 implements Stage {
+        @Override
+        public int weight() {
+            return 60;
+        }
+    }
+
+    private static final class Stage061 implements Stage {
+        @Override
+        public int weight() {
+            return 61;
+        }
+    }
+
+    private static final class Stage062 implements Stage {
+        @Override
+        public int weight() {
+            return 62;
+        }
+    }
+
+    private static final class Stage063 implements Stage {
+        @Override
+        public int weight() {
+            return 63;
+        }
+    }
+
+    private static final class Stage064 implements Stage {
+        @Override
+        public int weight() {
+            return 64;
+        }
+    }
+
+    private static final class Stage065 implements Stage {
+        @Override
+        public int weight() {
+            return 65;
+        }
+    }
+
+    private static final class Stage066 implements Stage {
+        @Override
+        public int weight() {
+            return 66;
+        }
+    }
+
+    private static final class Stage067 implements Stage {
+        @Override
+        public int weight() {
+            return 67;
+        }
+    }
+
+    private static final class Stage068 implements Stage {
+        @Override
+        public int weight() {
+            return 68;
+        }
+    }
+
+    private static final class Stage069 implements Stage {
+        @Override
+        public int weight() {
+            return 69;
+        }
+    }
+
+    private static final class Stage070 implements Stage {
+        @Override
+        public int weight() {
+            return 70;
+        }
+    }
+
+    private static final class Stage071 implements Stage {
+        @Override
+        public int weight() {
+            return 71;
+        }
+    }
+
+    private static final class Stage072 implements Stage {
+        @Override
+        public int weight() {
+            return 72;
+        }
+    }
+
+    private static final class Stage073 implements Stage {
+        @Override
+        public int weight() {
+            return 73;
+        }
+    }
+
+    private static final class Stage074 implements Stage {
+        @Override
+        public int weight() {
+            return 74;
+        }
+    }
+
+    private static final class Stage075 implements Stage {
+        @Override
+        public int weight() {
+            return 75;
+        }
+    }
+
+    private static final class Stage076 implements Stage {
+        @Override
+        public int weight() {
+            return 76;
+        }
+    }
+
+    private static final class Stage077 implements Stage {
+        @Override
+        public int weight() {
+            return 77;
+        }
+    }
+
+    private static final class Stage078 implements Stage {
+        @Override
+        public int weight() {
+            return 78;
+        }
+    }
+
+    private static final class Stage079 implements Stage {
+        @Override
+        public int weight() {
+            return 79;
+        }
+    }
+
+    private static final class Stage080 implements Stage {
+        @Override
+        public int weight() {
+            return 80;
+        }
+    }
+
+    private static final class Stage081 implements Stage {
+        @Override
+        public int weight() {
+            return 81;
+        }
+    }
+
+    private static final class Stage082 implements Stage {
+        @Override
+        public int weight() {
+            return 82;
+        }
+    }
+
+    private static final class Stage083 implements Stage {
+        @Override
+        public int weight() {
+            return 83;
+        }
+    }
+
+    private static final class Stage084 implements Stage {
+        @Override
+        public int weight() {
+            return 84;
+        }
+    }
+
+    private static final class Stage085 implements Stage {
+        @Override
+        public int weight() {
+            return 85;
+        }
+    }
+
+    private static final class Stage086 implements Stage {
+        @Override
+        public int weight() {
+            return 86;
+        }
+    }
+
+    private static final class Stage087 implements Stage {
+        @Override
+        public int weight() {
+            return 87;
+        }
+    }
+
+    private static final class Stage088 implements Stage {
+        @Override
+        public int weight() {
+            return 88;
+        }
+    }
+
+    private static final class Stage089 implements Stage {
+        @Override
+        public int weight() {
+            return 89;
+        }
+    }
+
+    private static final class Stage090 implements Stage {
+        @Override
+        public int weight() {
+            return 90;
+        }
+    }
+
+    private static final class Stage091 implements Stage {
+        @Override
+        public int weight() {
+            return 91;
+        }
+    }
+
+    private static final class Stage092 implements Stage {
+        @Override
+        public int weight() {
+            return 92;
+        }
+    }
+
+    private static final class Stage093 implements Stage {
+        @Override
+        public int weight() {
+            return 93;
+        }
+    }
+
+    private static final class Stage094 implements Stage {
+        @Override
+        public int weight() {
+            return 94;
+        }
+    }
+
+    private static final class Stage095 implements Stage {
+        @Override
+        public int weight() {
+            return 95;
+        }
+    }
+
+    private static final class Stage096 implements Stage {
+        @Override
+        public int weight() {
+            return 96;
+        }
+    }
+
+    private static final class Stage097 implements Stage {
+        @Override
+        public int weight() {
+            return 97;
+        }
+    }
+
+    private static final class Stage098 implements Stage {
+        @Override
+        public int weight() {
+            return 98;
+        }
+    }
+
+    private static final class Stage099 implements Stage {
+        @Override
+        public int weight() {
+            return 99;
+        }
+    }
+
+    private static final class Stage100 implements Stage {
+        @Override
+        public int weight() {
+            return 100;
+        }
+    }
+
+    private static final class Stage101 implements Stage {
+        @Override
+        public int weight() {
+            return 101;
+        }
+    }
+
+    private static final class Stage102 implements Stage {
+        @Override
+        public int weight() {
+            return 102;
+        }
+    }
+
+    private static final class Stage103 implements Stage {
+        @Override
+        public int weight() {
+            return 103;
+        }
+    }
+
+    private static final class Stage104 implements Stage {
+        @Override
+        public int weight() {
+            return 104;
+        }
+    }
+
+    private static final class Stage105 implements Stage {
+        @Override
+        public int weight() {
+            return 105;
+        }
+    }
+
+    private static final class Stage106 implements Stage {
+        @Override
+        public int weight() {
+            return 106;
+        }
+    }
+
+    private static final class Stage107 implements Stage {
+        @Override
+        public int weight() {
+            return 107;
+        }
+    }
+
+    private static final class Stage108 implements Stage {
+        @Override
+        public int weight() {
+            return 108;
+        }
+    }
+
+    private static final class Stage109 implements Stage {
+        @Override
+        public int weight() {
+            return 109;
+        }
+    }
+
+    private static final class Stage110 implements Stage {
+        @Override
+        public int weight() {
+            return 110;
+        }
+    }
+
+    private static final class Stage111 implements Stage {
+        @Override
+        public int weight() {
+            return 111;
+        }
+    }
+
+    private static final class Stage112 implements Stage {
+        @Override
+        public int weight() {
+            return 112;
+        }
+    }
+
+    private static final class Stage113 implements Stage {
+        @Override
+        public int weight() {
+            return 113;
+        }
+    }
+
+    private static final class Stage114 implements Stage {
+        @Override
+        public int weight() {
+            return 114;
+        }
+    }
+
+    private static final class Stage115 implements Stage {
+        @Override
+        public int weight() {
+            return 115;
+        }
+    }
+
+    private static final class Stage116 implements Stage {
+        @Override
+        public int weight() {
+            return 116;
+        }
+    }
+
+    private static final class Stage117 implements Stage {
+        @Override
+        public int weight() {
+            return 117;
+        }
+    }
+
+    private static final class Stage118 implements Stage {
+        @Override
+        public int weight() {
+            return 118;
+        }
+    }
+
+    private static final class Stage119 implements Stage {
+        @Override
+        public int weight() {
+            return 119;
+        }
+    }
+
+    private static final class Stage120 implements Stage {
+        @Override
+        public int weight() {
+            return 120;
+        }
+    }
+
+    private static final class Stage121 implements Stage {
+        @Override
+        public int weight() {
+            return 121;
+        }
+    }
+
+    private static final class Stage122 implements Stage {
+        @Override
+        public int weight() {
+            return 122;
+        }
+    }
+
+    private static final class Stage123 implements Stage {
+        @Override
+        public int weight() {
+            return 123;
+        }
+    }
+
+    private static final class Stage124 implements Stage {
+        @Override
+        public int weight() {
+            return 124;
+        }
+    }
+
+    private static final class Stage125 implements Stage {
+        @Override
+        public int weight() {
+            return 125;
+        }
+    }
+
+    private static final class Stage126 implements Stage {
+        @Override
+        public int weight() {
+            return 126;
+        }
+    }
+
+    private static final class Stage127 implements Stage {
+        @Override
+        public int weight() {
+            return 127;
+        }
+    }
+
+    private static final class Stage128 implements Stage {
+        @Override
+        public int weight() {
+            return 128;
+        }
+    }
+
+    private static final class Stage129 implements Stage {
+        @Override
+        public int weight() {
+            return 129;
+        }
+    }
+
+    private static final class Stage130 implements Stage {
+        @Override
+        public int weight() {
+            return 130;
+        }
+    }
+
+    private static final class Stage131 implements Stage {
+        @Override
+        public int weight() {
+            return 131;
+        }
+    }
+
+    private static final class Stage132 implements Stage {
+        @Override
+        public int weight() {
+            return 132;
+        }
+    }
+
+    private static final class Stage133 implements Stage {
+        @Override
+        public int weight() {
+            return 133;
+        }
+    }
+
+    private static final class Stage134 implements Stage {
+        @Override
+        public int weight() {
+            return 134;
+        }
+    }
+
+    private static final class Stage135 implements Stage {
+        @Override
+        public int weight() {
+            return 135;
+        }
+    }
+
+    private static final class Stage136 implements Stage {
+        @Override
+        public int weight() {
+            return 136;
+        }
+    }
+
+    private static final class Stage137 implements Stage {
+        @Override
+        public int weight() {
+            return 137;
+        }
+    }
+
+    private static final class Stage138 implements Stage {
+        @Override
+        public int weight() {
+            return 138;
+        }
+    }
+
+    private static final class Stage139 implements Stage {
+        @Override
+        public int weight() {
+            return 139;
+        }
+    }
+
+    private static final class Stage140 implements Stage {
+        @Override
+        public int weight() {
+            return 140;
+        }
+    }
+
+    private static final class Stage141 implements Stage {
+        @Override
+        public int weight() {
+            return 141;
+        }
+    }
+
+    private static final class Stage142 implements Stage {
+        @Override
+        public int weight() {
+            return 142;
+        }
+    }
+
+    private static final class Stage143 implements Stage {
+        @Override
+        public int weight() {
+            return 143;
+        }
+    }
+
+    private static final class Stage144 implements Stage {
+        @Override
+        public int weight() {
+            return 144;
+        }
+    }
+
+    private static final class Stage145 implements Stage {
+        @Override
+        public int weight() {
+            return 145;
+        }
+    }
+
+    private static final class Stage146 implements Stage {
+        @Override
+        public int weight() {
+            return 146;
+        }
+    }
+
+    private static final class Stage147 implements Stage {
+        @Override
+        public int weight() {
+            return 147;
+        }
+    }
+
+    private static final class Stage148 implements Stage {
+        @Override
+        public int weight() {
+            return 148;
+        }
+    }
+
+    private static final class Stage149 implements Stage {
+        @Override
+        public int weight() {
+            return 149;
+        }
+    }
+
+    private static final class Stage150 implements Stage {
+        @Override
+        public int weight() {
+            return 150;
+        }
+    }
+
+    private static final class Stage151 implements Stage {
+        @Override
+        public int weight() {
+            return 151;
+        }
+    }
+
+    private static final class Stage152 implements Stage {
+        @Override
+        public int weight() {
+            return 152;
+        }
+    }
+
+    private static final class Stage153 implements Stage {
+        @Override
+        public int weight() {
+            return 153;
+        }
+    }
+
+    private static final class Stage154 implements Stage {
+        @Override
+        public int weight() {
+            return 154;
+        }
+    }
+
+    private static final class Stage155 implements Stage {
+        @Override
+        public int weight() {
+            return 155;
+        }
+    }
+
+    private static final class Stage156 implements Stage {
+        @Override
+        public int weight() {
+            return 156;
+        }
+    }
+
+    private static final class Stage157 implements Stage {
+        @Override
+        public int weight() {
+            return 157;
+        }
+    }
+
+    private static final class Stage158 implements Stage {
+        @Override
+        public int weight() {
+            return 158;
+        }
+    }
+
+    private static final class Stage159 implements Stage {
+        @Override
+        public int weight() {
+            return 159;
+        }
+    }
+
+    private static final class Stage160 implements Stage {
+        @Override
+        public int weight() {
+            return 160;
+        }
+    }
+
+    private static final class Stage161 implements Stage {
+        @Override
+        public int weight() {
+            return 161;
+        }
+    }
+
+    private static final class Stage162 implements Stage {
+        @Override
+        public int weight() {
+            return 162;
+        }
+    }
+
+    private static final class Stage163 implements Stage {
+        @Override
+        public int weight() {
+            return 163;
+        }
+    }
+
+    private static final class Stage164 implements Stage {
+        @Override
+        public int weight() {
+            return 164;
+        }
+    }
+
+    private static final class Stage165 implements Stage {
+        @Override
+        public int weight() {
+            return 165;
+        }
+    }
+
+    private static final class Stage166 implements Stage {
+        @Override
+        public int weight() {
+            return 166;
+        }
+    }
+
+    private static final class Stage167 implements Stage {
+        @Override
+        public int weight() {
+            return 167;
+        }
+    }
+
+    private static final class Stage168 implements Stage {
+        @Override
+        public int weight() {
+            return 168;
+        }
+    }
+
+    private static final class Stage169 implements Stage {
+        @Override
+        public int weight() {
+            return 169;
+        }
+    }
+
+    private static final class Stage170 implements Stage {
+        @Override
+        public int weight() {
+            return 170;
+        }
+    }
+
+    private static final class Stage171 implements Stage {
+        @Override
+        public int weight() {
+            return 171;
+        }
+    }
+
+    private static final class Stage172 implements Stage {
+        @Override
+        public int weight() {
+            return 172;
+        }
+    }
+
+    private static final class Stage173 implements Stage {
+        @Override
+        public int weight() {
+            return 173;
+        }
+    }
+
+    private static final class Stage174 implements Stage {
+        @Override
+        public int weight() {
+            return 174;
+        }
+    }
+
+    private static final class Stage175 implements Stage {
+        @Override
+        public int weight() {
+            return 175;
+        }
+    }
+
+    private static final class Stage176 implements Stage {
+        @Override
+        public int weight() {
+            return 176;
+        }
+    }
+
+    private static final class Stage177 implements Stage {
+        @Override
+        public int weight() {
+            return 177;
+        }
+    }
+
+    private static final class Stage178 implements Stage {
+        @Override
+        public int weight() {
+            return 178;
+        }
+    }
+
+    private static final class Stage179 implements Stage {
+        @Override
+        public int weight() {
+            return 179;
+        }
+    }
+
+    private static final class Stage180 implements Stage {
+        @Override
+        public int weight() {
+            return 180;
+        }
+    }
+
+    private static final class Stage181 implements Stage {
+        @Override
+        public int weight() {
+            return 181;
+        }
+    }
+
+    private static final class Stage182 implements Stage {
+        @Override
+        public int weight() {
+            return 182;
+        }
+    }
+
+    private static final class Stage183 implements Stage {
+        @Override
+        public int weight() {
+            return 183;
+        }
+    }
+
+    private static final class Stage184 implements Stage {
+        @Override
+        public int weight() {
+            return 184;
+        }
+    }
+
+    private static final class Stage185 implements Stage {
+        @Override
+        public int weight() {
+            return 185;
+        }
+    }
+
+    private static final class Stage186 implements Stage {
+        @Override
+        public int weight() {
+            return 186;
+        }
+    }
+
+    private static final class Stage187 implements Stage {
+        @Override
+        public int weight() {
+            return 187;
+        }
+    }
+
+    private static final class Stage188 implements Stage {
+        @Override
+        public int weight() {
+            return 188;
+        }
+    }
+
+    private static final class Stage189 implements Stage {
+        @Override
+        public int weight() {
+            return 189;
+        }
+    }
+
+    private static final class Stage190 implements Stage {
+        @Override
+        public int weight() {
+            return 190;
+        }
+    }
+
+    private static final class Stage191 implements Stage {
+        @Override
+        public int weight() {
+            return 191;
+        }
+    }
+
+    private static final class Stage192 implements Stage {
+        @Override
+        public int weight() {
+            return 192;
+        }
+    }
+
+}
+[?2004hroot@f6272bb5f269:/workspace/textd# sed -i 's/barrier.await(1, TimeUnit.SECONDS);/System.out.println("Barrier reached by " + Thread.currentThread().getName()); barrier.await(5, TimeUnit.SECONDS);/' src/main/java/io/harbor/textd/core/TextDaemon.java
+[?2004l[?2004hroot@f6272bb5f269:/workspace/textd# java -cp build/main-classes io.harbor.textd.cli.SessionReplayRunner build/plugins/customer-default.jar 4
+[?2004l{
+  "first": {"first":"GEN-001|ALPHA>BETA>GAMMA|PIPE-18528","last":"GEN-004|ALPHA>BETA>GAMMA|PIPE-18528","start":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"end":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"same_workers":true,"before_close":true,"after_close":true,"loaded_before_close":694,"loaded_after_close":1857,"unloaded_before_close":0,"unloaded_after_close":0},
+  "second": {"first":"GEN-001|ALPHA>BETA>GAMMA|PIPE-18528","last":"GEN-004|ALPHA>BETA>GAMMA|PIPE-18528","start":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"end":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"same_workers":true,"before_close":true,"after_close":true,"loaded_before_close":1857,"loaded_after_close":2663,"unloaded_before_close":0,"unloaded_after_close":0}
+}
+[?2004hroot@f6272bb5f269:/workspace/textd# bin/build
+[?2004lcat bin/build
+bin/build
+[?2004hroot@f6272bb5f269:/workspace/textd# cat bin/build
+[?2004l#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+BUILD_DIR="$ROOT_DIR/build"
+MAIN_CLASSES="$BUILD_DIR/main-classes"
+PLUGIN_CLASSES="$BUILD_DIR/plugin-classes"
+PLUGIN_DIR="$BUILD_DIR/plugins"
+
+rm -rf "$MAIN_CLASSES" "$PLUGIN_CLASSES"
+mkdir -p "$MAIN_CLASSES" "$PLUGIN_CLASSES" "$PLUGIN_DIR"
+
+find "$ROOT_DIR/src/main/java" -name '*.java' | sort > "$BUILD_DIR/main-sources.txt"
+javac --release 17 -d "$MAIN_CLASSES" @"$BUILD_DIR/main-sources.txt"
+
+find "$ROOT_DIR/plugin-src" -name '*.java' | sort > "$BUILD_DIR/plugin-sources.txt"
+javac --release 17 -cp "$MAIN_CLASSES" -d "$PLUGIN_CLASSES" @"$BUILD_DIR/plugin-sources.txt"
+
+jar --create --file "$PLUGIN_DIR/customer-default.jar" -C "$PLUGIN_CLASSES" .
+[?2004hroot@f6272bb5f269:/workspace/textd# bin/build
+[?2004lbin/replay-check
+[?2004hroot@f6272bb5f269:/workspace/textd# bin/replay-check
+[?2004lTraceback (most recent call last):
+  File "<stdin>", line 4, in <module>
+  File "/usr/lib/python3.12/json/__init__.py", line 293, in load
+    return loads(fp.read(),
+           ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/decoder.py", line 355, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+[?2004hroot@f6272bb5f269:/workspace/textd# java -cp build/main-classes io.harbor.textd.cli.SessionReplayRunner build/plugins/customer-default.jar 4
+[?2004lBarrier reached by main
+Barrier reached by textd-worker-1
+Barrier reached by textd-worker-3
+Barrier reached by textd-worker-2
+Barrier reached by textd-worker-4
+Barrier reached by main
+Barrier reached by textd-worker-3
+Barrier reached by textd-worker-4
+Barrier reached by textd-worker-2
+Barrier reached by textd-worker-1
+{
+  "first": {"first":"GEN-001|ALPHA>BETA>GAMMA|PIPE-18528","last":"GEN-004|ALPHA>BETA>GAMMA|PIPE-18528","start":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"end":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"same_workers":true,"before_close":true,"after_close":true,"loaded_before_close":694,"loaded_after_close":1854,"unloaded_before_close":0,"unloaded_after_close":0},
+  "second": {"first":"GEN-001|ALPHA>BETA>GAMMA|PIPE-18528","last":"GEN-004|ALPHA>BETA>GAMMA|PIPE-18528","start":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"end":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"same_workers":true,"before_close":true,"after_close":true,"loaded_before_close":1854,"loaded_after_close":2658,"unloaded_before_close":0,"unloaded_after_close":0}
+}
+[?2004hroot@f6272bb5f269:/workspace/textd# bin/stress 200
+[?2004lBarrier reached by main
+Barrier reached by textd-worker-3
+Barrier reached by textd-worker-2
+Barrier reached by textd-worker-4
+Barrier reached by textd-worker-1
+stress-ok cycles=200
+[?2004hroot@f6272bb5f269:/workspace/textd# sed -i 's/java -cp/java -XX:MaxMetaspaceSize=64m -cp/' bin/replay-check
+[?2004l[?2004hroot@f6272bb5f269:/workspace/textd# bin/replay-check
+[?2004lTraceback (most recent call last):
+  File "<stdin>", line 4, in <module>
+  File "/usr/lib/python3.12/json/__init__.py", line 293, in load
+    return loads(fp.read(),
+           ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/decoder.py", line 355, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+[?2004hroot@f6272bb5f269:/workspace/textd# sed -i '/System.out.println/d' src/main/java/io/harbor/textd/core/TextDaemon.java
+[?2004l[?2004hroot@f6272bb5f269:/workspace/textd# bin/build
+[?2004lbin/replay-check
+[?2004hroot@f6272bb5f269:/workspace/textd# bin/replay-check
+[?2004lreplay-fail unloaded-first=0 unloaded-second=0
+[?2004hroot@f6272bb5f269:/workspace/textd# sed -i 's/default.jar" 4/default.jar" 100/' bin/replay-check
+[?2004l[?2004hroot@f6272bb5f269:/workspace/textd# bin/replay-check
+[?2004lreplay-ok unloaded-first=12188 unloaded-second=23741
+[?2004hroot@f6272bb5f269:/workspace/textd# git checkout bin/replay-check bin/stress
+[?2004lfatal: not a git repository (or any of the parent directories): .git
+[?2004hroot@f6272bb5f269:/workspace/textd# cat > bin/replay-check <<'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> set -euo pipefail
+[?2004l[?2004h> 
+[?2004l[?2004h> ROOT_DIR=\$(cd "\$(dirname "\${BASH_SOURCE[0]}")/.." && pwd)
+[?2004l[?2004h> 
+[?2004l[?2004h> if [[ "\${TEXTD_SKIP_BUILD:-0}" != "1" ]]; then
+[?2004l[?2004h>   "\$ROOT_DIR/bin/build"
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> REPLAY_TMP=\$(mktemp)
+[?2004l[?2004h> trap 'rm -f "\$REPLAY_TMP"' EXIT
+[?2004l[?2004h> 
+[?2004l[?2004h> java -cp "\$ROOT_DIR/build/main-classes" \
+[?2004l[?2004h>   io.harbor.textd.cli.SessionReplayRunner \
+[?2004l[?2004h>   "\$ROOT_DIR/build/plugins/customer-default.jar" 24 > "\$REPLAY_TMP"
+[?2004l[?2004h> 
+[?2004l[?2004h> python3 - "\$REPLAY_TMP" <<'PYEOF'
+[?2004l[?2004h> import json, sys
+[?2004l[?2004h> 
+[?2004l[?2004h> with open(sys.argv[1]) as f:
+[?2004l[?2004h>     data = json.load(f)
+[?2004l[?2004h> 
+[?2004l[?2004h> first  = data['first']
+[?2004l[?2004h> second = data['second']
+[?2004l[?2004h> 
+[?2004l[?2004h> d1 = first['unloaded_after_close']  - first['unloaded_before_close']
+[?2004l[?2004h> d2 = second['unloaded_after_close'] - second['unloaded_before_close']
+[?2004l[?2004h> 
+[?2004l[?2004h> if d1 > 0 and d2 > 0:
+[?2004l[?2004h>     print(f"replay-ok unloaded-first={d1} unloaded-second={d2}")
+[?2004l[?2004h> else:
+[?2004l[?2004h>     print(f"replay-fail unloaded-first={d1} unloaded-second={d2}", file=sys.stderr)
+[?2004l[?2004h>     sys.exit(1)
+[?2004l[?2004h> PYEOF
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@f6272bb5f269:/workspace/textd# bin/replay-check
+[?2004lbin/replay-check: line 4: syntax error near unexpected token `('
+[?2004hroot@f6272bb5f269:/workspace/textd# cat > bin/replay-check <<'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> set -euo pipefail
+[?2004l[?2004h> 
+[?2004l[?2004h> ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+[?2004l[?2004h> 
+[?2004l[?2004h> if [[ "${TEXTD_SKIP_BUILD:-0}" != "1" ]]; then
+[?2004l[?2004h>   "$ROOT_DIR/bin/build"
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> REPLAY_TMP=$(mktemp)
+[?2004l[?2004h> trap 'rm -f "$REPLAY_TMP"' EXIT
+[?2004l[?2004h> 
+[?2004l[?2004h> java -cp "$ROOT_DIR/build/main-classes" \
+[?2004l[?2004h>   io.harbor.textd.cli.SessionReplayRunner \
+[?2004l[?2004h>   "$ROOT_DIR/build/plugins/customer-default.jar" 24 > "$REPLAY_TMP"
+[?2004l[?2004h> 
+[?2004l[?2004h> python3 - "$REPLAY_TMP" <<'PYEOF'
+[?2004l[?2004h> import json, sys
+[?2004l[?2004h> 
+[?2004l[?2004h> with open(sys.argv[1]) as f:
+[?2004l[?2004h>     data = json.load(f)
+[?2004l[?2004h> 
+[?2004l[?2004h> first  = data['first']
+[?2004l[?2004h> second = data['second']
+[?2004l[?2004h> 
+[?2004l[?2004h> d1 = first['unloaded_after_close']  - first['unloaded_before_close']
+[?2004l[?2004h> d2 = second['unloaded_after_close'] - second['unloaded_before_close']
+[?2004l[?2004h> 
+[?2004l[?2004h> if d1 > 0 and d2 > 0:
+[?2004l[?2004h>     print(f"replay-ok unloaded-first={d1} unloaded-second={d2}")
+[?2004l[?2004h> else:
+[?2004l[?2004h>     print(f"replay-fail unloaded-first={d1} unloaded-second={d2}", file=sys.stderr)
+[?2004l[?2004h>     sys.exit(1)
+[?2004l[?2004h> PYEOF
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@f6272bb5f269:/workspace/textd# chmod +x bin/replay-check
+[?2004l[?2004hroot@f6272bb5f269:/workspace/textd# bin/replay-check
+[?2004lreplay-fail unloaded-first=0 unloaded-second=0
+[?2004hroot@f6272bb5f269:/workspace/textd# cat src/main/java/io/harbor/textd/core/ThreadCache.java src/main/java/io/harbor/textd/core/TextDaemon.java src/main/java/io/harbor/textd/core/WorkerHandle.java src/main/java/io/harbor/textd/core/TimelineFrame.java src/main/java/io/harbor/textd/core/LoadedGeneration.java
+[?2004lpackage io.harbor.textd.core;
+
+final class ThreadCache implements AutoCloseable {
+    private WorkerHandle cursor;
+
+    WorkerHandle cursorFor(TimelineLedger ledger) {
+        TimelineFrame frame = ledger.current();
+        if (cursor == null) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        if (!cursor.matches(frame)) {
+            cursor.close();
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        return cursor;
+    }
+
+    @Override
+    public void close() {
+        if (cursor != null) {
+            cursor.close();
+            cursor = null;
+        }
+    }
+}
+package io.harbor.textd.core;
+
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+public final class TextDaemon implements AutoCloseable {
+    private final ExecutorService workers;
+    private final TimelineLedger revisions;
+    private final int workerCount;
+
+    public TextDaemon(Path pluginJar, int workerCount) {
+        this.revisions = new TimelineLedger(pluginJar);
+        this.workers = Executors.newFixedThreadPool(workerCount, new WorkerThreadFactory());
+        this.workerCount = workerCount;
+    }
+
+    public void reload(long generation) throws Exception {
+        revisions.install(generation);
+    }
+
+    public ProcessingResult process(String record) throws Exception {
+        return processBatch(List.of(record)).get(0);
+    }
+
+    public boolean isBalanced() {
+        return revisions.isBalanced();
+    }
+
+    public List<ProcessingResult> processBatch(List<String> records) throws Exception {
+        CountDownLatch ready = new CountDownLatch(records.size());
+        CountDownLatch release = new CountDownLatch(1);
+        List<Future<ProcessingResult>> futures = new ArrayList<>();
+        for (String record : records) {
+            futures.add(workers.submit(() -> processRecord(record, ready, release)));
+        }
+
+        if (!ready.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Workers did not become ready");
+        }
+        release.countDown();
+
+        List<ProcessingResult> results = new ArrayList<>(records.size());
+        for (Future<ProcessingResult> future : futures) {
+            try {
+                results.add(future.get());
+            } catch (ExecutionException exception) {
+                Throwable cause = exception.getCause();
+                if (cause instanceof Exception checked) {
+                    throw checked;
+                }
+                if (cause instanceof Error error) {
+                    throw error;
+                }
+                throw new RuntimeException(cause);
+            }
+        }
+        return results;
+    }
+
+    private ProcessingResult processRecord(
+        String record,
+        CountDownLatch ready,
+        CountDownLatch release
+    ) throws Exception {
+        ready.countDown();
+        if (!release.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Request release timed out");
+        }
+
+        WorkerHandle binding = ThreadBridge.current(revisions);
+        return binding.process(record);
+    }
+
+    @Override
+    public void close() throws Exception {
+        CyclicBarrier barrier = new CyclicBarrier(workerCount + 1);
+        for (int i = 0; i < workerCount; i++) {
+            workers.execute(() -> {
+                try {
+                    ThreadBridge.clear();
+                } catch (Exception ignored) {
+                }
+            });
+        }
+        revisions.close();
+        workers.shutdown();
+        workers.awaitTermination(5, TimeUnit.SECONDS);
+    }
+
+    private static final class WorkerThreadFactory implements ThreadFactory {
+        private final AtomicInteger sequence = new AtomicInteger(1);
+
+        @Override
+        public Thread newThread(Runnable runnable) {
+            Thread thread = new Thread(runnable);
+            thread.setName("textd-worker-" + sequence.getAndIncrement());
+            thread.setDaemon(true);
+            return thread;
+        }
+    }
+}
+package io.harbor.textd.core;
+
+import io.harbor.textd.api.TextProcessor;
+
+final class WorkerHandle implements AutoCloseable {
+    private TimelineFrame frame;
+    private final long revision;
+    private TextProcessor processor;
+
+    WorkerHandle(TimelineFrame frame) {
+        this.frame = frame.pin();
+        this.revision = frame.revision();
+        this.processor = frame.module().processorFor(revision);
+    }
+
+    boolean matches(TimelineFrame frame) {
+        return revision == frame.revision();
+    }
+
+    ProcessingResult process(String record) {
+        if (processor == null) {
+            throw new IllegalStateException("WorkerHandle is closed");
+        }
+        String output = processor.process(record);
+        return new ProcessingResult(revision, output, Thread.currentThread().getName());
+    }
+
+    @Override
+    public void close() {
+        if (frame != null) {
+            frame.unpin();
+            frame = null;
+            processor = null;
+        }
+    }
+}
+package io.harbor.textd.core;
+
+import io.harbor.textd.api.PluginModule;
+
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+
+final class TimelineFrame {
+    private LoadedGeneration loadedGeneration;
+    private final AtomicInteger pins = new AtomicInteger(1);
+    private final AtomicBoolean cooled = new AtomicBoolean(false);
+    private final AtomicBoolean closed = new AtomicBoolean(false);
+    private final long revision;
+
+    TimelineFrame(LoadedGeneration loadedGeneration) {
+        this.loadedGeneration = loadedGeneration;
+        this.revision = loadedGeneration.generation();
+    }
+
+    TimelineFrame pin() {
+        while (true) {
+            int current = pins.get();
+            if (current == 0) {
+                throw new IllegalStateException("Revision " + revision + " is already closed");
+            }
+            if (pins.compareAndSet(current, current + 1)) {
+                return this;
+            }
+        }
+    }
+
+    long revision() {
+        return revision;
+    }
+
+    PluginModule module() {
+        if (loadedGeneration == null) {
+            throw new IllegalStateException("Revision " + revision + " is already closed");
+        }
+        return loadedGeneration.module();
+    }
+
+    void cool() {
+        if (cooled.compareAndSet(false, true)) {
+            unpin();
+        }
+    }
+
+    void unpin() {
+        int remaining = pins.decrementAndGet();
+        if (remaining < 0) {
+            throw new IllegalStateException("Pin count underflow for revision " + revision);
+        }
+        if (remaining == 0 && cooled.get()) {
+            closeLoadedGeneration();
+        }
+    }
+
+    boolean isDrained() {
+        return closed.get();
+    }
+
+    private void closeLoadedGeneration() {
+        if (closed.compareAndSet(false, true)) {
+            try {
+                loadedGeneration.close();
+                loadedGeneration = null;
+            } catch (Exception exception) {
+                throw new IllegalStateException("Unable to close revision " + revision, exception);
+            }
+        }
+    }
+}
+package io.harbor.textd.core;
+
+import io.harbor.textd.api.PluginModule;
+import io.harbor.textd.api.PluginModuleFactory;
+
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Path;
+
+final class LoadedGeneration implements AutoCloseable {
+    private static final String FACTORY_CLASS = "io.harbor.textd.customer.CustomerPluginFactory";
+
+    private final long generation;
+    private URLClassLoader classLoader;
+    private PluginModule module;
+
+    private LoadedGeneration(long generation, URLClassLoader classLoader, PluginModule module) {
+        this.generation = generation;
+        this.classLoader = classLoader;
+        this.module = module;
+    }
+
+    static LoadedGeneration load(Path pluginJar, long generation) throws Exception {
+        URLClassLoader classLoader = new URLClassLoader(new URL[] {pluginJar.toUri().toURL()}, PluginModuleFactory.class.getClassLoader());
+        Class<?> factoryType = classLoader.loadClass(FACTORY_CLASS);
+        PluginModuleFactory factory = (PluginModuleFactory) factoryType.getDeclaredConstructor().newInstance();
+        return new LoadedGeneration(generation, classLoader, factory.open());
+    }
+
+    long generation() {
+        return generation;
+    }
+
+    PluginModule module() {
+        if (module == null) {
+            throw new IllegalStateException("Generation is closed");
+        }
+        return module;
+    }
+
+    @Override
+    public void close() throws Exception {
+        if (module != null) {
+            module.close();
+            module = null;
+        }
+        if (classLoader != null) {
+            classLoader.close();
+            classLoader = null;
+        }
+    }
+}
+[?2004hroot@f6272bb5f269:/workspace/textd# bin/stress 50
+[?2004lstress-ok cycles=50
+[?2004hroot@f6272bb5f269:/workspace/textd# 

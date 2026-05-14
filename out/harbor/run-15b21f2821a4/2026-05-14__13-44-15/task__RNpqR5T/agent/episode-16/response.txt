@@ -1,0 +1,6 @@
+{
+  "analysis": "The resource leak was identified in `ThreadCache.java`, where a new `WorkerHandle` was replacing the old one without closing it. This prevented the `TimelineFrame` from being unpinned, which in turn prevented the `LoadedGeneration` (and its `URLClassLoader`) from being closed and reclaimed. I have fixed this by adding `cursor.close()` before creating a new `WorkerHandle`. The fix has been verified with both the stress test and the full suite, both of which passed.",
+  "plan": "I have already applied and verified the fix. I am now marking the task as complete.",
+  "commands": [],
+  "task_complete": true
+}

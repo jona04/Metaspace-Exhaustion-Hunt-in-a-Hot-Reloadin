@@ -1,0 +1,10 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with a 64MB Metaspace limit. This is a strong hint that the issue is a Metaspace leak, likely caused by old class loaders (from old plugin generations) not being garbage collected. The `bin/build` script compiles the core and a plugin into a JAR.",
+  "plan": "I will run the stress test to confirm the failure. I'll use the default 50 iterations, or maybe more if needed. Since the task mentions a 'long refresh run', I'll try to see it fail.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 100\n",
+      "duration": 10.0
+    }
+  ]
+}

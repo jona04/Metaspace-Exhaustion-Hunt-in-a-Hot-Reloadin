@@ -1,0 +1,10 @@
+{
+  "analysis": "The `replay-check` failed with `unloaded-first=0 unloaded-second=0`. This means no classes were unloaded, which confirms that old plugin generations are not being reclaimed even after the daemon is closed. This is because the worker threads in the pool still hold a reference to the `WorkerHandle` (and thus the class loader) in their `ThreadLocal`.",
+  "plan": "I need to make sure that when `TextDaemon` is closed, the `ThreadLocal` in each worker thread is cleared. I can do this by submitting a task to each worker thread to call `ThreadBridge.clear()` before shutting down the pool.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.1
+    }
+  ]
+}

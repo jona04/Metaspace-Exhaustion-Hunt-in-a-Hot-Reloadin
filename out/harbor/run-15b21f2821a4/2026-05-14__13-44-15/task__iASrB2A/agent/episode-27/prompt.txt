@@ -1,0 +1,41 @@
+Current Terminal Screen:
+
+    long revision() {
+        return loadedGeneration.generation();
+    }
+
+    PluginModule module() {
+        return loadedGeneration.module();
+    }
+
+    void cool() {
+        if (cooled.compareAndSet(false, true)) {
+            unpin();
+        }
+    }
+
+    void unpin() {
+        int remaining = pins.decrementAndGet();
+        if (remaining < 0) {
+            throw new IllegalStateException("Pin count underflow for revision " + revision());
+        }
+        if (remaining == 0 && cooled.get()) {
+            System.out.println("Closing generation " + revision()); closeLoadedGeneration();
+        }
+    }
+
+    boolean isDrained() {
+        return closed.get();
+    }
+
+    private void closeLoadedGeneration() {
+        if (closed.compareAndSet(false, true)) {
+            try {
+                loadedGeneration.close();
+            } catch (Exception exception) {
+                throw new IllegalStateException("Unable to close revision " + revision(), exception);
+            }
+        }
+    }
+}
+root@40d355b495df:/workspace/textd#

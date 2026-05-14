@@ -1,0 +1,14 @@
+{
+  "analysis": "I found the leak. In `ThreadCache.cursorFor`, when the current frame doesn't match the cursor's frame, a new `WorkerHandle` is created and assigned to `cursor`. However, the old `cursor` is never closed! `WorkerHandle.close()` is what calls `frame.unpin()`. If `unpin()` is not called, the `pins` count never reaches 0, and `closeLoadedGeneration()` is never called, meaning the `URLClassLoader` is never closed and the classes are never eligible for reclamation from Metaspace.",
+  "plan": "I need to fix `ThreadCache.cursorFor` to close the old cursor before replacing it with a new one. I'll also check if there are any other places where `WorkerHandle` might be leaked.",
+  "commands": [
+    {
+      "keystrokes": "sed -i '/if (!cursor.matches(frame)) {/i \\        if (cursor != null && !cursor.matches(frame)) {\\n            cursor.close();\\n        }' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ]
+}

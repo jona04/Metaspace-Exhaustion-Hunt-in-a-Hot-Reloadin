@@ -1,0 +1,81 @@
+New Terminal Output:
+
+root@40d355b495df:/workspace/textd# cat src/main/java/io/harbor/textd/core/ThreadBridge.java
+package io.harbor.textd.core;
+
+final class ThreadBridge {
+    private static final ThreadLocal<ThreadCache> ROUTES = ThreadLocal.withInitial(ThreadCache::new);
+
+    private ThreadBridge() {
+    }
+
+    static WorkerHandle current(TimelineLedger ledger) {
+        return ROUTES.get().cursorFor(ledger);
+    }
+
+    static void clear() {
+        ThreadCache routeState = ROUTES.get();
+        routeState.close();
+        ROUTES.remove();
+    }
+}
+root@40d355b495df:/workspace/textd# cat src/main/java/io/harbor/textd/core/ThreadCache.java
+package io.harbor.textd.core;
+
+final class ThreadCache implements AutoCloseable {
+    private WorkerHandle cursor;
+
+    WorkerHandle cursorFor(TimelineLedger ledger) {
+        TimelineFrame frame = ledger.current();
+        if (cursor == null) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        if (!cursor.matches(frame)) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        return cursor;
+    }
+
+    @Override
+    public void close() {
+        if (cursor != null) {
+            cursor.close();
+            cursor = null;
+        }
+    }
+}
+root@40d355b495df:/workspace/textd# cat src/main/java/io/harbor/textd/core/WorkerHandle.java
+package io.harbor.textd.core;
+
+import io.harbor.textd.api.TextProcessor;
+
+final class WorkerHandle implements AutoCloseable {
+    private final TimelineFrame frame;
+    private final long revision;
+    private final TextProcessor processor;
+
+    WorkerHandle(TimelineFrame frame) {
+        this.frame = frame.pin();
+        this.revision = frame.revision();
+        this.processor = frame.module().processorFor(revision);
+    }
+
+    boolean matches(TimelineFrame frame) {
+        return revision == frame.revision();
+    }
+
+    ProcessingResult process(String record) {
+        String output = processor.process(record);
+        return new ProcessingResult(revision, output, Thread.currentThread().getName());
+    }
+
+    @Override
+    public void close() {
+        frame.unpin();
+    }
+}
+root@40d355b495df:/workspace/textd#

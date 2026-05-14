@@ -1,0 +1,15 @@
+{
+  "analysis": "I have already implemented several fixes: clearing the `ThreadLocal` in worker threads, ensuring all worker threads are cleared using a `CyclicBarrier`, and clearing references in `WorkerHandle` and `LoadedGeneration`. However, the `replay-check` still fails to see class unloading. I suspect there might still be some references held in the `shadow` queue of `TimelineLedger`, or the JVM is not unloading classes as quickly as the test expects. I will now modify `TimelineLedger.java` to be even more aggressive in clearing its `shadow` queue during `close()`.",
+  "plan": "I will modify `TimelineLedger.java` to explicitly clear the `shadow` queue and ensure all frames are cooled during `close()`. I will also use a more robust `pruneShadow` implementation.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/TimelineLedger.java\npackage io.harbor.textd.core;\n\nimport java.nio.file.Path;\nimport java.util.Queue;\nimport java.util.concurrent.ConcurrentLinkedQueue;\nimport java.util.concurrent.atomic.AtomicReference;\nimport java.util.Iterator;\n\nfinal class TimelineLedger {\n    private final Path pluginJar;\n    private final AtomicReference<TimelineFrame> current = new AtomicReference<>();\n    private final Queue<TimelineFrame> shadow = new ConcurrentLinkedQueue<>();\n\n    TimelineLedger(Path pluginJar) {\n        this.pluginJar = pluginJar;\n    }\n\n    void install(long revision) throws Exception {\n        TimelineFrame next = new TimelineFrame(LoadedGeneration.load(pluginJar, revision));\n        TimelineFrame previous = current.getAndSet(next);\n        if (previous != null) {\n            shadow.add(previous);\n            previous.cool();\n            pruneShadow();\n        }\n    }\n\n    TimelineFrame current() {\n        TimelineFrame frame = current.get();\n        if (frame == null) {\n            throw new IllegalStateException(\"No plugin generation is loaded\");\n        }\n        return frame;\n    }\n\n    boolean isBalanced() {\n        pruneShadow();\n        return shadow.isEmpty();\n    }\n\n    void close() {\n        TimelineFrame frame = current.getAndSet(null);\n        if (frame != null) {\n            frame.cool();\n        }\n        pruneShadow();\n        shadow.clear();\n    }\n\n    private void pruneShadow() {\n        Iterator<TimelineFrame> it = shadow.iterator();\n        while (it.hasNext()) {\n            if (it.next().isDrained()) {\n                it.remove();\n            }\n        }\n    }\n}\nEOF\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/replay-check\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

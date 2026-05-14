@@ -1,0 +1,14 @@
+{
+  "analysis": "The previous `sed` command placed `cursor.close()` in the wrong location, which would cause the `WorkerHandle` to be closed prematurely even when the generation hasn't changed. I need to fix `src/main/java/io/harbor/textd/core/ThreadCache.java` so that `cursor.close()` is only called when the frame has changed.",
+  "plan": "Overwrite `src/main/java/io/harbor/textd/core/ThreadCache.java` with the correct implementation using a heredoc.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.2
+    }
+  ]
+}

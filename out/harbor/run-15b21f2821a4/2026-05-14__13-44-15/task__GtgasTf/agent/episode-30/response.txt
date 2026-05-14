@@ -1,0 +1,10 @@
+{
+  "analysis": "Nothing suspicious in `PipelineStages.java` either. It just has a lot of classes, which explains why Metaspace was filling up. \n\nLet's reconsider why `replay-check` reports 0 unloaded classes. Classes are unloaded only during a full GC, and only if their class loader is unreachable. My `drainGc()` in `SessionReplayRunner` does:\n```java\n    private static void drainGc() throws InterruptedException {\n        for (int i = 0; i < 3; i++) {\n            System.gc();\n            Thread.sleep(50);\n        }\n    }\n```\nThis should be enough to trigger class unloading if the class loader is unreachable.\n\nWait! I see a potential problem in `ThreadCache.java`:\n```java\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n```\nAnd in `ThreadBridge.java`:\n```java\n    static void clear() {\n        ThreadCache routeState = ROUTES.get();\n        routeState.close();\n        ROUTES.remove();\n    }\n```\nThis looks correct. It closes the cursor (which unpins the frame) and removes the `ThreadCache` from the `ThreadLocal`.\n\nWait, let me check `TimelineFrame.java`'s `unpin` and `closeLoadedGeneration` again.",
+  "plan": "Check `TimelineFrame.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    }
+  ]
+}

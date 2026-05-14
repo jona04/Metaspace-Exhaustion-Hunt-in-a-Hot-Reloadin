@@ -1,0 +1,10 @@
+{
+  "analysis": "I've reverted `TimelineFrame.java` to its original state (but keeping my understanding of it). The real issue must be the one I fixed in `ThreadCache.java` (closing the old cursor) and `TextDaemon.java` (cleaning up workers). \n\nWait! I just had a thought. What if `replay-check` is failing because of something else entirely? \nWait, look at the output of `SessionReplayRunner` again:\n`\"loaded_before_close\":694,\"loaded_after_close\":1872` (diff = 1178)\n`\"unloaded_before_close\":0,\"unloaded_after_close\":0` (diff = 0)\n\nIt seems NO classes are being unloaded. \nBut in `stress` test, they MUST be unloaded or Metaspace would fill up. \n\nWait! I found it! I found the bug! In `bin/stress`, the Metaspace is limited to 64MB. In `replay-check`, it is NOT. If Metaspace is not limited, the JVM might not unload classes even if `System.gc()` is called, because it doesn't feel any pressure! \n\nBut wait, I should still be able to pass `replay-check`. \n\nWait! I just noticed something in `SessionReplayRunner.java`. It uses `ManagementFactory.getClassLoadingMXBean().getUnloadedClassCount()`. \n\nIf I can't get `replay-check` to pass by fixing leaks, maybe I should check if there's any other way classes are being held. \n\nWait! I found it! I found the bug! It's in `ThreadBridge.java`! \n```java\n    private static final ThreadLocal<ThreadCache> ROUTES = ThreadLocal.withInitial(ThreadCache::new);\n```\nI am calling `ROUTES.remove()` in `ThreadBridge.clear()`. This is good. \n\nWait! I've got it! I'm going to try to run `replay-check` with Metaspace limit, just to see if it makes a difference.",
+  "plan": "Run `SessionReplayRunner` with Metaspace limit.",
+  "commands": [
+    {
+      "keystrokes": "java -XX:MaxMetaspaceSize=64m -cp build/main-classes io.harbor.textd.cli.SessionReplayRunner build/plugins/customer-default.jar 4\n",
+      "duration": 5.0
+    }
+  ]
+}

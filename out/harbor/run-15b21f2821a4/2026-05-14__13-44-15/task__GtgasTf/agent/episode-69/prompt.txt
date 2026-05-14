@@ -1,0 +1,41 @@
+Current Terminal Screen:
+        String record,
+        CountDownLatch ready,
+        CountDownLatch release
+    ) throws Exception {
+        ready.countDown();
+        if (!release.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Request release timed out");
+        }
+
+        WorkerHandle binding = ThreadBridge.current(revisions);
+        return binding.process(record);
+    }
+
+    @Override
+    public void close() throws Exception {
+        List<Future<?>> cleanups = new ArrayList<>();
+        for (int i = 0; i < workerCount; i++) {
+            cleanups.add(workers.submit(ThreadBridge::clear));
+        }
+        for (Future<?> cleanup : cleanups) {
+            cleanup.get(5, TimeUnit.SECONDS);
+        }
+        revisions.close();
+        workers.shutdownNow();
+        workers.awaitTermination(5, TimeUnit.SECONDS);
+    }
+
+    private static final class WorkerThreadFactory implements ThreadFactory {
+        private final AtomicInteger sequence = new AtomicInteger(1);
+
+        @Override
+        public Thread newThread(Runnable runnable) {
+            Thread thread = new Thread(runnable);
+            thread.setName("textd-worker-" + sequence.getAndIncrement());
+            thread.setDaemon(true);
+            return thread;
+        }
+    }
+}
+root@cd0f3c6ff864:/workspace/textd#

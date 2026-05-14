@@ -1,0 +1,94 @@
+{
+  "analysis": "I've identified a potential leak in `ThreadCache.java`. \n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n\nWhen `!cursor.matches(frame)` is true, a new `WorkerHandle` is created and assigned to `cursor`, but the old `cursor` is never closed. Since `WorkerHandle.close()` is responsible for calling `frame.unpin()`, the old frame remains pinned forever. This prevents the old generation from being closed and reclaimed by the GC.\n\nTo fix this, I should call `cursor.close()` before assigning the new `WorkerHandle` to `cursor`.",
+  "plan": "Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old cursor before creating a new one.",
+  "commands": [
+    {
+      "keystrokes": "sed -i '12i \\            cursor.close();' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.2
+    }
+  ]
+}
+@77cc050585e7:/workspace/textd# sed -i '12i \            cursor.close();' src/main/java/io/harbor/textd/core/ThreadCache.java
+root@77cc050585e7:/workspace/textd# cat src/main/java/io/harbor/textd/core/ThreadCache.java
+package io.harbor.textd.core;
+
+final class ThreadCache implements AutoCloseable {
+    private WorkerHandle cursor;
+
+    WorkerHandle cursorFor(TimelineLedger ledger) {
+        TimelineFrame frame = ledger.current();
+        if (cursor == null) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        if (!cursor.matches(frame)) {
+            cursor.close();
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        return cursor;
+    }
+
+    @Override
+    public void close() {
+        if (cursor != null) {
+            cursor.close();
+            cursor = null;
+        }
+    }
+}
+root@77cc050585e7:/workspace/textd#
+```java
+package io.harbor.textd.core;
+
+final class ThreadCache implements AutoCloseable {
+    private WorkerHandle cursor;
+
+    WorkerHandle cursorFor(TimelineLedger ledger) {
+        TimelineFrame frame = ledger.current();
+        if (cursor == null) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        if (!cursor.matches(frame)) {
+            cursor.close();
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        return cursor;
+    }
+
+    @Override
+    public void close() {
+        if (cursor != null) {
+            cursor.close();
+            cursor = null;
+        }
+    }
+}
+```
+The change looks correct. Now I need to rebuild and run the stress test again to verify the fix.
+```json
+{
+  "analysis": "I have identified a leak in `ThreadCache.java` where the previous `WorkerHandle` was not closed when a new generation was loaded. I've applied a fix to close the old cursor.",
+  "plan": "Rebuild the project and run the stress test with 200 cycles again to verify that the Metaspace OOM is resolved.",
+  "commands": [
+    {
+      "keystrokes": "./bin/build\n",
+      "duration": 5.0
+    },
+    {
+      "keystrokes": "./bin/stress 200\n",
+      "duration": 20.0
+    }
+  ]
+}
+```

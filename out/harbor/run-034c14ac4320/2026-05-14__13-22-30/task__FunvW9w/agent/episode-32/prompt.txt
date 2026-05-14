@@ -1,0 +1,95 @@
+New Terminal Output:
+
+root@f6272bb5f269:/workspace/textd# cat > src/main/java/io/harbor/textd/core/WorkerHandle.java <<EOF
+> package io.harbor.textd.core;
+>
+> import io.harbor.textd.api.TextProcessor;
+>
+> final class WorkerHandle implements AutoCloseable {
+>     private TimelineFrame frame;
+>     private final long revision;
+>     private TextProcessor processor;
+>
+>     WorkerHandle(TimelineFrame frame) {
+>         this.frame = frame.pin();
+>         this.revision = frame.revision();
+>         this.processor = frame.module().processorFor(revision);
+>     }
+>
+>     boolean matches(TimelineFrame frame) {
+>         return revision == frame.revision();
+>     }
+>
+>     ProcessingResult process(String record) {
+>         if (processor == null) {
+>             throw new IllegalStateException("WorkerHandle is closed");
+>         }
+>         String output = processor.process(record);
+>         return new ProcessingResult(revision, output, Thread.currentThread().getName());
+>     }
+>
+>     @Override
+>     public void close() {
+>         if (frame != null) {
+>             frame.unpin();
+>             frame = null;
+>             processor = null;
+>         }
+>     }
+> }
+> EOF
+root@f6272bb5f269:/workspace/textd# cat > src/main/java/io/harbor/textd/core/LoadedGeneration.java <<EOF
+> package io.harbor.textd.core;
+>
+> import io.harbor.textd.api.PluginModule;
+> import io.harbor.textd.api.PluginModuleFactory;
+>
+> import java.net.URL;
+> import java.net.URLClassLoader;
+> import java.nio.file.Path;
+>
+> final class LoadedGeneration implements AutoCloseable {
+>     private static final String FACTORY_CLASS = "io.harbor.textd.customer.CustomerPluginFactory";
+>
+>     private final long generation;
+>     private URLClassLoader classLoader;
+>     private PluginModule module;
+>
+>     private LoadedGeneration(long generation, URLClassLoader classLoader, PluginModule module) {
+>         this.generation = generation;
+>         this.classLoader = classLoader;
+>         this.module = module;
+>     }
+>
+>     static LoadedGeneration load(Path pluginJar, long generation) throws Exception {
+>         URLClassLoader classLoader = new URLClassLoader(new URL[] {pluginJar.toUri().toURL()}, PluginModuleFactory.class.getClassLoader());
+>         Class<?> factoryType = classLoader.loadClass(FACTORY_CLASS);
+>         PluginModuleFactory factory = (PluginModuleFactory) factoryType.getDeclaredConstructor().newInstance();
+>         return new LoadedGeneration(generation, classLoader, factory.open());
+>     }
+>
+>     long generation() {
+>         return generation;
+>     }
+>
+>     PluginModule module() {
+>         if (module == null) {
+>             throw new IllegalStateException("Generation is closed");
+>         }
+>         return module;
+>     }
+>
+>     @Override
+>     public void close() throws Exception {
+>         if (module != null) {
+>             module.close();
+>             module = null;
+>         }
+>         if (classLoader != null) {
+>             classLoader.close();
+>             classLoader = null;
+>         }
+>     }
+> }
+> EOF
+root@f6272bb5f269:/workspace/textd#

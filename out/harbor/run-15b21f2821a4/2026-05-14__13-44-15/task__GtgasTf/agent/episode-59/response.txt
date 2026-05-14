@@ -1,0 +1,10 @@
+{
+  "analysis": "Still 0 unloaded. I'm going to try one last thing. In `LoadedGeneration.java`, I'll use `this.getClass().getClassLoader()` as the parent class loader for the `URLClassLoader`, instead of `PluginModuleFactory.class.getClassLoader()`. Actually, they should be the same, but it's worth a try.",
+  "plan": "Modify `LoadedGeneration.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/LoadedGeneration.java\npackage io.harbor.textd.core;\n\nimport io.harbor.textd.api.PluginModule;\nimport io.harbor.textd.api.PluginModuleFactory;\n\nimport java.net.URL;\nimport java.net.URLClassLoader;\nimport java.nio.file.Path;\n\nfinal class LoadedGeneration implements AutoCloseable {\n    private static final String FACTORY_CLASS = \"io.harbor.textd.customer.CustomerPluginFactory\";\n\n    private final long generation;\n    private final URLClassLoader classLoader;\n    private final PluginModule module;\n\n    private LoadedGeneration(long generation, URLClassLoader classLoader, PluginModule module) {\n        this.generation = generation;\n        this.classLoader = classLoader;\n        this.module = module;\n    }\n\n    static LoadedGeneration load(Path pluginJar, long generation) throws Exception {\n        URLClassLoader classLoader = new URLClassLoader(new URL[] {pluginJar.toUri().toURL()}, LoadedGeneration.class.getClassLoader());\n        Class<?> factoryType = classLoader.loadClass(FACTORY_CLASS);\n        PluginModuleFactory factory = (PluginModuleFactory) factoryType.getDeclaredConstructor().newInstance();\n        return new LoadedGeneration(generation, classLoader, factory.open());\n    }\n\n    long generation() {\n        return generation;\n    }\n\n    PluginModule module() {\n        return module;\n    }\n\n    @Override\n    public void close() throws Exception {\n        module.close();\n        classLoader.close();\n    }\n}\nEOF\n",
+      "duration": 0.1
+    }
+  ]
+}

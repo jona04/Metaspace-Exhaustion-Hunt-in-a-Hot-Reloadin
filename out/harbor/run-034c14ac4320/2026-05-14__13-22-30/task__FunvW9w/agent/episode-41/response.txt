@@ -1,0 +1,10 @@
+{
+  "analysis": "Wait! I don't see any \"Barrier reached by\" messages! \nThis means the `workers.execute()` tasks are not being executed, or at least they are not printing to stdout.\n\nAh! I know why. `SessionReplayRunner` might be capturing stdout or I might be looking at the wrong place. But I saw the JSON output.\n\nWait! If the barrier is not being reached, then `barrier.await()` in the main thread should time out and throw an exception. But it didn't! \n\nWait... I know why! `sed` replaced BOTH occurrences of `barrier.await`. \n\n```java\n        for (int i = 0; i < workerCount; i++) {\n            workers.execute(() -> {\n                try {\n                    ThreadBridge.clear();\n                    System.out.println(\"Barrier reached by \" + Thread.currentThread().getName()); barrier.await(5, TimeUnit.SECONDS);\n                } catch (Exception ignored) {\n                }\n            });\n        }\n        System.out.println(\"Barrier reached by \" + Thread.currentThread().getName()); barrier.await(5, TimeUnit.SECONDS);\n```\n\nWait, if I don't see any output, it means `System.out.println` is not working or not being called. \n\nActually, I see what's happening. I'm running `java -cp build/main-classes ...`. The classes in `build/main-classes` are the OLD ones because I haven't recompiled them! I need to run `bin/build` or just use the compiled classes if they are being updated.\n\nBut wait, I've been using `cat > ...` to update the source files. I must compile them!",
+  "plan": "Run `bin/build` to compile the changes.",
+  "commands": [
+    {
+      "keystrokes": "bin/build\n",
+      "duration": 5.0
+    }
+  ]
+}

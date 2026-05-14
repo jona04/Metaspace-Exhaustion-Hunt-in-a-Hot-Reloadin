@@ -1,0 +1,28 @@
+New Terminal Output:
+
+root@40d355b495df:/workspace/textd# cat bin/stress
+#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+if [[ "${TEXTD_SKIP_BUILD:-0}" != "1" ]]; then
+  "$ROOT_DIR/bin/build"
+fi
+
+java -XX:MaxMetaspaceSize=64m -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.HotReloadStressRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" \
+  "${1:-50}"
+root@40d355b495df:/workspace/textd# ls -l src/main/java/io/harbor/textd/core/
+total 36
+-rw-r--r-- 1 root root 1415 May 14 01:46 LoadedGeneration.java
+-rw-r--r-- 1 root root  652 May  8 22:17 OutputFormat.java
+-rw-r--r-- 1 root root  119 May  8 22:17 ProcessingResult.java
+-rw-r--r-- 1 root root 3433 May 13 21:33 TextDaemon.java
+-rw-r--r-- 1 root root  442 May 12 04:01 ThreadBridge.java
+-rw-r--r-- 1 root root  625 May 12 04:01 ThreadCache.java
+-rw-r--r-- 1 root root 1864 May 12 04:01 TimelineFrame.java
+-rw-r--r-- 1 root root 1437 May 12 04:01 TimelineLedger.java
+-rw-r--r-- 1 root root  788 May 12 04:01 WorkerHandle.java
+root@40d355b495df:/workspace/textd#

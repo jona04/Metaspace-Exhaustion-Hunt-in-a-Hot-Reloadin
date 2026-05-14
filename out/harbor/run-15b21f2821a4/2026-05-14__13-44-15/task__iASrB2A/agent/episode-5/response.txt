@@ -1,0 +1,14 @@
+{
+  "analysis": "I found the leak! \n\nIn `ThreadCache.java`:\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\nWhen `!cursor.matches(frame)` is true, a new `WorkerHandle` is created and assigned to `cursor`. However, the old `cursor` is never closed! Since `WorkerHandle` pins the `TimelineFrame` in its constructor, the old `TimelineFrame` will remain pinned forever (or until the thread dies), preventing the class loader from being garbage collected.\n\nI should call `cursor.close()` before overwriting it.",
+  "plan": "I will fix `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old cursor when it doesn't match the current frame.",
+  "commands": [
+    {
+      "keystrokes": "sed -i '13i\\            cursor.close();' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ]
+}

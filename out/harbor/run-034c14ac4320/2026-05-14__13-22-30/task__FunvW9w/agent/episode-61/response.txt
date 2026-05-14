@@ -1,0 +1,6 @@
+{
+  "analysis": "I have thoroughly investigated the memory leak in the `textd` service. The root cause was twofold: first, the `WorkerHandle` objects, which pin plugin generations, were not being closed when replaced in the `ThreadCache`; second, the `ThreadLocal` storage in worker threads was not being cleared upon daemon shutdown, keeping the last used generation pinned indefinitely. \n\nI have implemented the following fixes:\n1.  Modified `ThreadCache.java` to explicitly close the old `WorkerHandle` before replacing it.\n2.  Updated `TextDaemon.java`'s `close()` method to ensure all worker threads clear their `ThreadLocal` state using a `CyclicBarrier` to coordinate the cleanup across the thread pool.\n3.  Added defensive nulling of references in `WorkerHandle.java`, `TimelineFrame.java`, and `LoadedGeneration.java` to ensure that once a generation is closed, no references to its `ClassLoader` or plugin instances remain.\n\nI have verified these changes with the provided stress test, which now successfully completes 200 cycles under a 64MB Metaspace constraint (whereas it would have previously failed due to OOM). I also verified that class unloading occurs correctly when sufficient revisions are processed.",
+  "plan": "The task is complete, and the daemon now correctly reclaims old plugin generations.",
+  "commands": [],
+  "task_complete": true
+}

@@ -1,0 +1,10 @@
+{
+  "analysis": "`ThreadBridge.clear()` is never used. This might be another leak if the daemon is repeatedly created and destroyed, although the current issue was about plugin reloading within a single daemon instance. However, the task says 'Old plugin generations must be fully reclaimed by the runtime once sessions close.' If 'sessions' correspond to threads or something else, we might need to call `clear()`.",
+  "plan": "I'll look at the CLI runners to see how they use `TextDaemon`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.1
+    }
+  ]
+}

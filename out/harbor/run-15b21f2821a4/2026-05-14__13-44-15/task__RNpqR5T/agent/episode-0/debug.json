@@ -1,0 +1,104 @@
+{
+    "litellm_trace_id": "7bb55c2b-2762-44bc-b246-e6309d643b66",
+    "litellm_call_id": "f59e5e17-218d-47c1-803c-ed53fe6d530b",
+    "input": [
+        {
+            "role": "user",
+            "content": "You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.\n\nFormat your response as JSON with the following structure:\n\n{\n  \"analysis\": \"Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?\",\n  \"plan\": \"Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.\",\n  \"commands\": [\n    {\n      \"keystrokes\": \"ls -la\\n\",\n      \"duration\": 0.1\n    },\n    {\n      \"keystrokes\": \"cd project\\n\",\n      \"duration\": 0.1\n    }\n  ],\n  \"task_complete\": true\n}\n\nRequired fields:\n- \"analysis\": Your analysis of the current situation\n- \"plan\": Your plan for the next steps\n- \"commands\": Array of command objects to execute\n\nOptional fields:\n- \"task_complete\": Boolean indicating if the task is complete (defaults to false if not present)\n\nCommand object structure:\n- \"keystrokes\": String containing the exact keystrokes to send to the terminal (required)\n- \"duration\": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)\n\nIMPORTANT: The text inside \"keystrokes\" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:\n- You must end every command with a newline (\\n) or it will not execute.\n- For special key sequences, use tmux-style escape sequences:\n  - C-c for Ctrl+C\n  - C-d for Ctrl+D\n\nThe \"duration\" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.\n\nIt is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {\"keystrokes\": \"\", \"duration\": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.\n\nImportant notes:\n- Each command's keystrokes are sent exactly as written to the terminal\n- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command\n- Extra text before or after the JSON will generate warnings but be tolerated\n- The JSON must be valid - use proper escaping for quotes and special characters within strings\n- Commands array can be empty if you want to wait without taking action\n\nTask Description:\nOur `textd` service still falls over during a long refresh run in the constrained CI profile. Short checks on a fresh start look normal, but the full validation does not survive repeated processor swaps.\n\nGet the daemon through the long run without changing the deterministic text-processing results from the shipped revisions. Old plugin generations must be fully reclaimed by the runtime once sessions close.\n\n\nCurrent terminal state:\nCurrent Terminal Screen:\nroot@7c6870e4830b:/workspace/textd#\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+        }
+    ],
+    "litellm_params": {
+        "acompletion": true,
+        "api_key": "sk-iMXL8pailRFmZSXVgZmQCQ",
+        "force_timeout": 600,
+        "verbose": false,
+        "custom_llm_provider": "litellm_proxy",
+        "api_base": "https://litellm.vetto-labs.dev",
+        "litellm_call_id": "f59e5e17-218d-47c1-803c-ed53fe6d530b",
+        "model_alias_map": {},
+        "completion_call_id": "None",
+        "aembedding": "None",
+        "metadata": "None",
+        "model_info": "None",
+        "proxy_server_request": "None",
+        "preset_cache_key": "None",
+        "no-log": "None",
+        "stream_response": {},
+        "input_cost_per_token": "None",
+        "input_cost_per_second": "None",
+        "output_cost_per_token": "None",
+        "output_cost_per_second": "None",
+        "cost_per_query": "None",
+        "cooldown_time": "None",
+        "text_completion": "None",
+        "azure_ad_token_provider": "None",
+        "user_continue_message": "None",
+        "base_model": "None",
+        "litellm_trace_id": "None",
+        "litellm_session_id": "None",
+        "hf_model_name": "None",
+        "custom_prompt_dict": {},
+        "litellm_metadata": "None",
+        "disable_add_transform_inline_image_block": "None",
+        "drop_params": true,
+        "prompt_id": "None",
+        "prompt_variables": "None",
+        "async_call": "None",
+        "ssl_verify": "None",
+        "merge_reasoning_content_in_choices": "None",
+        "api_version": "None",
+        "max_retries": "None",
+        "use_litellm_proxy": false,
+        "litellm_request_debug": false,
+        "azure_ad_token": "None",
+        "azure_password": "None",
+        "client_id": "None",
+        "tenant_id": "None",
+        "tpm": "None",
+        "azure_scope": "None",
+        "rpm": "None",
+        "timeout": 600.0,
+        "client_secret": "None",
+        "azure_username": "None"
+    },
+    "applied_guardrails": [],
+    "model": "vertex_ai/gemini-3-flash-preview",
+    "messages": [
+        {
+            "role": "user",
+            "content": "You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.\n\nFormat your response as JSON with the following structure:\n\n{\n  \"analysis\": \"Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?\",\n  \"plan\": \"Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.\",\n  \"commands\": [\n    {\n      \"keystrokes\": \"ls -la\\n\",\n      \"duration\": 0.1\n    },\n    {\n      \"keystrokes\": \"cd project\\n\",\n      \"duration\": 0.1\n    }\n  ],\n  \"task_complete\": true\n}\n\nRequired fields:\n- \"analysis\": Your analysis of the current situation\n- \"plan\": Your plan for the next steps\n- \"commands\": Array of command objects to execute\n\nOptional fields:\n- \"task_complete\": Boolean indicating if the task is complete (defaults to false if not present)\n\nCommand object structure:\n- \"keystrokes\": String containing the exact keystrokes to send to the terminal (required)\n- \"duration\": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)\n\nIMPORTANT: The text inside \"keystrokes\" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:\n- You must end every command with a newline (\\n) or it will not execute.\n- For special key sequences, use tmux-style escape sequences:\n  - C-c for Ctrl+C\n  - C-d for Ctrl+D\n\nThe \"duration\" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.\n\nIt is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {\"keystrokes\": \"\", \"duration\": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.\n\nImportant notes:\n- Each command's keystrokes are sent exactly as written to the terminal\n- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command\n- Extra text before or after the JSON will generate warnings but be tolerated\n- The JSON must be valid - use proper escaping for quotes and special characters within strings\n- Commands array can be empty if you want to wait without taking action\n\nTask Description:\nOur `textd` service still falls over during a long refresh run in the constrained CI profile. Short checks on a fresh start look normal, but the full validation does not survive repeated processor swaps.\n\nGet the daemon through the long run without changing the deterministic text-processing results from the shipped revisions. Old plugin generations must be fully reclaimed by the runtime once sessions close.\n\n\nCurrent terminal state:\nCurrent Terminal Screen:\nroot@7c6870e4830b:/workspace/textd#\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+        }
+    ],
+    "optional_params": {
+        "temperature": 0.7,
+        "extra_body": {}
+    },
+    "start_time": "2026-05-14 13:44:40.832225",
+    "stream": false,
+    "user": "None",
+    "call_type": "acompletion",
+    "completion_start_time": "None",
+    "standard_callback_dynamic_params": {},
+    "stream_options": "None",
+    "temperature": 0.7,
+    "extra_body": {},
+    "custom_llm_provider": "litellm_proxy",
+    "additional_args": {
+        "complete_input_dict": {
+            "model": "vertex_ai/gemini-3-flash-preview",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.\n\nFormat your response as JSON with the following structure:\n\n{\n  \"analysis\": \"Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?\",\n  \"plan\": \"Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.\",\n  \"commands\": [\n    {\n      \"keystrokes\": \"ls -la\\n\",\n      \"duration\": 0.1\n    },\n    {\n      \"keystrokes\": \"cd project\\n\",\n      \"duration\": 0.1\n    }\n  ],\n  \"task_complete\": true\n}\n\nRequired fields:\n- \"analysis\": Your analysis of the current situation\n- \"plan\": Your plan for the next steps\n- \"commands\": Array of command objects to execute\n\nOptional fields:\n- \"task_complete\": Boolean indicating if the task is complete (defaults to false if not present)\n\nCommand object structure:\n- \"keystrokes\": String containing the exact keystrokes to send to the terminal (required)\n- \"duration\": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)\n\nIMPORTANT: The text inside \"keystrokes\" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:\n- You must end every command with a newline (\\n) or it will not execute.\n- For special key sequences, use tmux-style escape sequences:\n  - C-c for Ctrl+C\n  - C-d for Ctrl+D\n\nThe \"duration\" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.\n\nIt is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {\"keystrokes\": \"\", \"duration\": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.\n\nImportant notes:\n- Each command's keystrokes are sent exactly as written to the terminal\n- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command\n- Extra text before or after the JSON will generate warnings but be tolerated\n- The JSON must be valid - use proper escaping for quotes and special characters within strings\n- Commands array can be empty if you want to wait without taking action\n\nTask Description:\nOur `textd` service still falls over during a long refresh run in the constrained CI profile. Short checks on a fresh start look normal, but the full validation does not survive repeated processor swaps.\n\nGet the daemon through the long run without changing the deterministic text-processing results from the shipped revisions. Old plugin generations must be fully reclaimed by the runtime once sessions close.\n\n\nCurrent terminal state:\nCurrent Terminal Screen:\nroot@7c6870e4830b:/workspace/textd#\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+                }
+            ],
+            "temperature": 0.7,
+            "extra_body": {}
+        }
+    },
+    "log_event_type": "post_api_call",
+    "api_call_start_time": "2026-05-14 13:44:40.834438",
+    "llm_api_duration_ms": 1974.9399999999998,
+    "original_response": "{\"id\": \"yNEFatGNNu6Rz9MP1sKEqAY\", \"choices\": [{\"finish_reason\": \"stop\", \"index\": 0, \"logprobs\": null, \"message\": {\"content\": \"{\\n  \\\"analysis\\\": \\\"I am in the `/workspace/textd` directory. The task is to fix a resource leak (specifically old plugin generations not being reclaimed) in the `textd` service that causes it to fail during long runs in constrained environments. I need to investigate the codebase to understand how plugins are loaded and managed.\\\",\\n  \\\"plan\\\": \\\"I will start by listing the files in the current directory to get an overview of the project structure. Then I will look for source code related to plugin management and the main daemon loop.\\\",\\n  \\\"commands\\\": [\\n    {\\n      \\\"keystrokes\\\": \\\"ls -R\\\\n\\\",\\n      \\\"duration\\\": 0.5\\n    }\\n  ]\\n}\", \"refusal\": null, \"role\": \"assistant\", \"annotations\": null, \"audio\": null, \"function_call\": null, \"tool_calls\": null, \"images\": [], \"thinking_blocks\": [], \"provider_specific_fields\": {\"thought_signatures\": [\"AY89a19Jkhp9HE7gzVxDZjSoxB+AuuceLnfKB1cj3Kaeqs+/QGkPEVjjIVoK3IRbybYMrDpnt3KYy5cndAvuhFQn7XisM0VxzAkgbjmaKgmRyQ3YXxveoM2lz8rjeXrZ+7jx1CnEdxBvo/ratGbbtgTZk8nQns012I8Z1gJZtUj8oWi49Yb6Jx8WPXkdij6oEyyj6+8i2Wfcs70euyAXH7ZxBotsJP1yMHWvlb6mu5RIFvgptaZoIAgBtCs6Jk2uSGU+QAQiVkj41kXh5Q5OLFSxMF2mWfJT+jOJBew5S7wl2jFLWAmthJxtbBR4Xiv7cuJUAOGmDKcWEI8A4f61lWUsXlWhrUr0C4e1m2T9O0wX47dFvEcMPoVSiQRXw9WyzmmGDh7FMghttKAN9Di3a1pkBG4Z8ZN90epRO15d6T7Cr1L5+anFaF0lEvgi2wfZ907CawLDPoQ6m+kp+JixI3twpdM01k1PPWU8l6sKcMTqkLWFq0EMHqG2aeKppd9vnu/Gx5pOyo2IPirmkeiwAva27x+XZtavMGF89MEUl3MZDaTX+ozcbfiK6JCD1tS694jHcjyBRsVjGuoe9kjDQoGa+2yv1Wry5K2gOl2TpzwBnT8b+/umKgZ4Fa2KPJEQX1SYv37v3JOqyOIDyQemz1l2i+zuR/jgt7vJNNwhQH6cLwpvEiTgtSWHH1l/lqein4grZ4KD1Ni1/KW23dYs0lQOyq97Evxf9D9p4pK5bvKLWmlbjeSuDhfMgF0rsag=\"]}}}], \"created\": 1778766280, \"model\": \"vertex_ai/gemini-3-flash-preview\", \"object\": \"chat.completion\", \"service_tier\": null, \"system_fingerprint\": null, \"usage\": {\"completion_tokens\": 257, \"prompt_tokens\": 806, \"total_tokens\": 1063, \"completion_tokens_details\": {\"accepted_prediction_tokens\": null, \"audio_tokens\": null, \"reasoning_tokens\": 103, \"rejected_prediction_tokens\": null, \"text_tokens\": 154}, \"prompt_tokens_details\": {\"audio_tokens\": null, \"cached_tokens\": null, \"text_tokens\": 806}}, \"vertex_ai_grounding_metadata\": [], \"vertex_ai_url_context_metadata\": [], \"vertex_ai_safety_results\": [], \"vertex_ai_citation_metadata\": []}",
+    "api_key_sha256": "10332311db2e14996009238eb4d9d10cd2157d0930154af971c9d00ed0b0bf8d"
+}

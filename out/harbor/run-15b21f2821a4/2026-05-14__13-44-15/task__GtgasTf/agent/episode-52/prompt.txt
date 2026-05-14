@@ -1,0 +1,41 @@
+Current Terminal Screen:
+>
+>     void cool() {
+>         if (cooled.compareAndSet(false, true)) {
+>             unpin();
+>         }
+>     }
+>
+>     void unpin() {
+>         int remaining = pins.decrementAndGet();
+>         if (remaining == 0 && cooled.get()) {
+>             closeLoadedGeneration();
+>         }
+>     }
+>
+>     boolean isDrained() {
+>         return closed.get();
+>     }
+>
+>     private void closeLoadedGeneration() {
+>         if (closed.compareAndSet(false, true)) {
+>             try {
+>                 loadedGeneration.close();
+>             } catch (Exception exception) {
+>                 throw new IllegalStateException("Unable to close revision " + revision(), exception);
+>             }
+>         }
+>     }
+> }
+> EOF
+root@cd0f3c6ff864:/workspace/textd# java -XX:MaxMetaspaceSize=64m -cp build/main-classes io.harbor.textd.cli.SessionReplayRunner build/plugins/customer-default.
+jar 4
+{
+  "first": {"first":"GEN-001|ALPHA>BETA>GAMMA|PIPE-18528","last":"GEN-004|ALPHA>BETA>GAMMA|PIPE-18528","start":["textd-worker-1", "textd-worker-2", "textd-worke
+r-3", "textd-worker-4"],"end":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"same_workers":true,"before_close":true,"after_close":fal
+se,"loaded_before_close":694,"loaded_after_close":1867,"unloaded_before_close":0,"unloaded_after_close":0},
+  "second": {"first":"GEN-001|ALPHA>BETA>GAMMA|PIPE-18528","last":"GEN-004|ALPHA>BETA>GAMMA|PIPE-18528","start":["textd-worker-1", "textd-worker-2", "textd-work
+er-3", "textd-worker-4"],"end":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"same_workers":true,"before_close":true,"after_close":fa
+lse,"loaded_before_close":1867,"loaded_after_close":2675,"unloaded_before_close":0,"unloaded_after_close":0}
+}
+root@cd0f3c6ff864:/workspace/textd#

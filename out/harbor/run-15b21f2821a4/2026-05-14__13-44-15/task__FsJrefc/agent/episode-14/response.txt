@@ -1,0 +1,10 @@
+{
+  "analysis": "I have successfully identified and fixed a Metaspace leak in the `textd` service. The issue was in `ThreadCache.java`, where a `WorkerHandle` was being replaced without being closed, causing `TimelineFrame` pins to leak and preventing the reclamation of old plugin generations. I have verified the fix by running the stress test (which previously failed with OOM) and the full integration suite.",
+  "plan": "I will perform a final check of the codebase to ensure no other occurrences of `new WorkerHandle` are missing a corresponding `close()` call. Then I will submit the task.",
+  "commands": [
+    {
+      "keystrokes": "grep -r \"new WorkerHandle\" src\n",
+      "duration": 0.5
+    }
+  ]
+}

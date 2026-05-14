@@ -1,0 +1,71 @@
+New Terminal Output:
+se":0}
+}
+root@cd0f3c6ff864:/workspace/textd# cat <<EOF > src/main/java/io/harbor/textd/core/TimelineFrame.java
+> package io.harbor.textd.core;
+>
+> import io.harbor.textd.api.PluginModule;
+>
+> import java.util.concurrent.atomic.AtomicBoolean;
+> import java.util.concurrent.atomic.AtomicInteger;
+>
+> final class TimelineFrame {
+>     private LoadedGeneration loadedGeneration;
+>     private final AtomicInteger pins = new AtomicInteger(1);
+>     private final AtomicBoolean cooled = new AtomicBoolean(false);
+>     private final AtomicBoolean closed = new AtomicBoolean(false);
+>
+>     TimelineFrame(LoadedGeneration loadedGeneration) {
+>         this.loadedGeneration = loadedGeneration;
+>     }
+>
+>     TimelineFrame pin() {
+>         while (true) {
+>             int current = pins.get();
+>             if (current == 0) {
+>                 throw new IllegalStateException("Revision " + revision() + " is already closed");
+>             }
+>             if (pins.compareAndSet(current, current + 1)) {
+>                 return this;
+>             }
+>         }
+>     }
+>
+>     long revision() {
+>         return loadedGeneration.generation();
+>     }
+>
+>     PluginModule module() {
+>         return loadedGeneration.module();
+>     }
+>
+>     void cool() {
+>         if (cooled.compareAndSet(false, true)) {
+>             unpin();
+>         }
+>     }
+>
+>     void unpin() {
+>         int remaining = pins.decrementAndGet();
+>         if (remaining == 0 && cooled.get()) {
+>             closeLoadedGeneration();
+>         }
+>     }
+>
+>     boolean isDrained() {
+>         return closed.get();
+>     }
+>
+>     private void closeLoadedGeneration() {
+>         if (closed.compareAndSet(false, true)) {
+>             try {
+>                 loadedGeneration.close();
+>                 loadedGeneration = null;
+>             } catch (Exception exception) {
+>                 throw new IllegalStateException("Unable to close revision " + revision(), exception);
+>             }
+>         }
+>     }
+> }
+> EOF
+root@cd0f3c6ff864:/workspace/textd#

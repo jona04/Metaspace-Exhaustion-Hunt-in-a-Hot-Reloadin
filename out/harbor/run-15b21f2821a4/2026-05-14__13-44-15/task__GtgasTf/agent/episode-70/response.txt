@@ -1,0 +1,6 @@
+{
+  "analysis": "I have successfully identified and fixed the Metaspace leak in the `textd` service. The primary cause was twofold: first, `ThreadCache` was not closing old `WorkerHandle` instances when a new plugin generation was loaded, which prevented the associated `TimelineFrame` from being unpinned. Second, worker threads in the daemon's thread pool were not clearing their `ThreadLocal` storage upon daemon closure, causing the last-used plugin generation to remain pinned and its class loader to stay alive. I fixed these issues by ensuring `WorkerHandle.close()` is called whenever a cursor is replaced or cleared, and by implementing a cleanup routine in `TextDaemon.close()` that clears the `ThreadLocal` on all worker threads. I verified the fix with a long-running stress test (1000 cycles) under constrained Metaspace (32MB), which previously failed but now passes successfully. The deterministic results of the text processing were maintained throughout.",
+  "plan": "The task is complete. I have verified the fix with both the stress test and the integration suite.",
+  "commands": [],
+  "task_complete": true
+}
