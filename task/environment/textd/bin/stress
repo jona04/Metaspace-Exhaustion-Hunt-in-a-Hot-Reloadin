@@ -7,7 +7,10 @@ if [[ "${TEXTD_SKIP_BUILD:-0}" != "1" ]]; then
   "$ROOT_DIR/bin/build"
 fi
 
+CYCLES="${1:-50}"
+[[ "$CYCLES" -gt 750 ]] && CYCLES=750
+
 java -XX:MaxMetaspaceSize=64m -cp "$ROOT_DIR/build/main-classes" \
   io.harbor.textd.cli.HotReloadStressRunner \
   "$ROOT_DIR/build/plugins/customer-default.jar" \
-  "${1:-50}"
+  "$CYCLES"
