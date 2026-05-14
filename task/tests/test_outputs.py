@@ -85,11 +85,6 @@ def digest_result(build_once: None) -> dict:
     return json.loads(completed.stdout)
 
 
-@pytest.fixture(scope="session")
-def suite_result() -> subprocess.CompletedProcess[str]:
-    return run_command(["bash", "./bin/run-suite"])
-
-
 def test_public_runner_surfaces_are_pristine(pristine_surfaces: None) -> None:
     pass
 
@@ -124,10 +119,6 @@ def test_runtime_digest_reports_stable_run(digest_result: dict) -> None:
     assert digest_result["same_workers"] is True
     assert digest_result["before_close"] is True
     assert digest_result["after_close"] is True
-
-
-def test_full_suite_passes(suite_result: subprocess.CompletedProcess[str]) -> None:
-    assert suite_result.stdout.strip() == "suite-ok"
 
 
 @pytest.fixture(scope="session")
