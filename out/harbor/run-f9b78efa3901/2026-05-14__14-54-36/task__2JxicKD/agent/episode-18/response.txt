@@ -1,0 +1,6 @@
+{
+  "analysis": "I have identified the cause of the Metaspace leak in the `textd` service. The `ThreadCache.cursorFor` method was creating new `WorkerHandle` instances when a plugin reload occurred but was failing to close the previous `WorkerHandle`. Since each `WorkerHandle` pins a `TimelineFrame`, which in turn prevents the associated `LoadedGeneration` and its `URLClassLoader` from being closed and garbage collected, this led to an accumulation of class loaders in Metaspace.\n\nI fixed this by ensuring that the old `cursor` is closed before a new one is assigned in `ThreadCache.java`. I verified the fix by running the stress test with 500 and 1000 cycles, both of which passed within the constrained Metaspace limit, whereas 500 cycles previously failed. I also ran the full integration suite to ensure no regressions were introduced.",
+  "plan": "The task is complete. I have verified the fix with both stress tests and the full suite.",
+  "commands": [],
+  "task_complete": true
+}

@@ -1,0 +1,14 @@
+{
+  "analysis": "I see a potential issue with `ThreadLocal` in `ThreadBridge`. It stores a `ThreadCache`, which likely holds onto `WorkerHandle` objects. If these are not cleared, they will hold onto `TimelineFrame` objects, which in turn hold onto `LoadedGeneration` (and thus the `ClassLoader`).\n\n`ThreadBridge.current(ledger)` calls `ROUTES.get().cursorFor(ledger)`. \n`ThreadDaemon.processRecord` calls `ThreadBridge.current(revisions)`.\n\nLet's look at `ThreadCache.java` and `TimelineFrame.java`.",
+  "plan": "Examine `ThreadCache.java` and `TimelineFrame.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    }
+  ]
+}

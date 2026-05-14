@@ -1,0 +1,11 @@
+{
+  "analysis": "Everything looks good. The stress test passes, and the session tests show that the daemon is balanced after closing, which means all plugin generations have been released.",
+  "plan": "Final check of the changes made:\n1. `ThreadCache.java`: Added `cursor.close()` when replacing the cursor.\n2. `TextDaemon.java`: Added cleanup logic in `close()` to call `ThreadBridge.clear()` on all worker threads.\n3. `WorkerHandle.java`: Changed `matches` to use identity comparison of `frame`.\n\nAll these changes contribute to ensuring that plugin generations are properly unpinned and thus can be reclaimed.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}

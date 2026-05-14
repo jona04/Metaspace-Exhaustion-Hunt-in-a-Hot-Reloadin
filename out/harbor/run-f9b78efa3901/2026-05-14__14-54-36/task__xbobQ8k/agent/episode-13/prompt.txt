@@ -1,0 +1,29 @@
+New Terminal Output:
+
+root@722b3f608e8b:/workspace/textd# cat <<EOF > src/main/java/io/harbor/textd/cli/BalanceCheck.java
+> package io.harbor.textd.cli;
+>
+> import io.harbor.textd.core.TextDaemon;
+> import java.nio.file.Path;
+> import java.util.List;
+>
+> public class BalanceCheck {
+>     public static void main(String[] args) throws Exception {
+>         Path pluginJar = Path.of(args[0]);
+>         try (TextDaemon daemon = new TextDaemon(pluginJar, 4)) {
+>             for (int i = 1; i <= 10; i++) {
+>                 daemon.reload(i);
+>                 daemon.processBatch(List.of("a", "b", "c", "d"));
+>                 if (!daemon.isBalanced()) {
+>                     throw new IllegalStateException("Daemon is not balanced after generation " + i);
+>                 }
+>             }
+>         }
+>         System.out.println("balance-ok");
+>     }
+> }
+> EOF
+root@722b3f608e8b:/workspace/textd# ./bin/build
+java -cp build/main-classes io.harbor.textd.cli.BalanceCheck build/plugins/customer-default.jar
+root@722b3f608e8b:/workspace/textd# java -cp build/main-classes io.harbor.textd.cli.BalanceCheck build/plugins/customer-default.jar
+

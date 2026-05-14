@@ -1,0 +1,14 @@
+{
+  "analysis": "The stress test failed with `java.lang.OutOfMemoryError: Metaspace`. This confirms that old plugin generations (and their class loaders) are not being garbage collected. Metaspace is where class metadata is stored. If each reload creates a new class loader and those class loaders are not reclaimed, Metaspace will eventually fill up.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/TextDaemon.java` to see how it manages generations and if it has any logic to discard old ones.\n2. Examine `src/main/java/io/harbor/textd/core/TimelineLedger.java` and `LoadedGeneration.java` as they seem relevant to generation tracking.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    }
+  ]
+}

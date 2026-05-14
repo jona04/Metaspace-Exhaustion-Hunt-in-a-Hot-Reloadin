@@ -1,0 +1,26 @@
+{
+  "analysis": "Wait, I made a mistake in the `sed` command. It replaced both occurrences, including the one where `cursor` is `null`. \n\n```java\n        if (cursor == null) {\n            cursor.close(); cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\nThis will cause a `NullPointerException`.",
+  "plan": "I need to fix `ThreadCache.java` to only call `cursor.close()` if `cursor` is not null.",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.1
+    }
+  ]
+}...
+```json
+{
+  "analysis": "I identified a resource leak in `ThreadCache.java` where old `WorkerHandle` instances were not being closed when a new plugin generation was loaded. This prevented the corresponding `TimelineFrame` from being unpinned, which in turn kept the plugin's `ClassLoader` and its classes in memory. I initially tried to fix it with a `sed` command but accidentally introduced a potential `NullPointerException`. Now I am correctly rewriting `ThreadCache.java` to close the old `cursor` only when it's being replaced.",
+  "plan": "After fixing `ThreadCache.java`, I will run the `bin/replay-check` again to see if it passes. If it does, I'll then run the full `bin/run-suite` to ensure everything is correct.",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/replay-check\n",
+      "duration": 5.0
+    }
+  ]
+}
+```

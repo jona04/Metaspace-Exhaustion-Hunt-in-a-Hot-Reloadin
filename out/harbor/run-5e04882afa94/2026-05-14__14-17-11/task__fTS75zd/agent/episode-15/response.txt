@@ -1,0 +1,10 @@
+{
+  "analysis": "`ThreadBridge.clear()` is never called. This means the `ThreadLocal` in each worker thread is never cleared, even when the `TextDaemon` is closed. Although the worker threads are part of a thread pool that is shut down, if the threads are not actually terminated or if the `ThreadLocal` persists for some reason, the `ThreadCache` and its `WorkerHandle` (and thus the `TimelineFrame` and `LoadedGeneration`) will stay in memory.\n\nWait, if `workers.shutdownNow()` is called, the threads should be interrupted and eventually die. When a thread dies, its `ThreadLocal` map is eligible for GC. However, there might be a delay or some other reference.\n\nLet's look at `TextDaemon.close()`:\n```java\n    @Override\n    public void close() throws Exception {\n        revisions.close();\n        workers.shutdownNow();\n        workers.awaitTermination(5, TimeUnit.SECONDS);\n    }\n```\n\nAnd `TimelineLedger.close()`:\n```java\n    void close() {\n        TimelineFrame frame = current.getAndSet(null);\n        if (frame != null) {\n            shadow.add(frame);\n            frame.cool();\n        }\n        pruneShadow();\n    }\n```\n\nWait, I see another potential issue. The `ThreadLocal` is in the worker threads. The `ThreadCache` holds the *last* `WorkerHandle` it used. Even if I fixed `ThreadCache.cursorFor` to close the *previous* `WorkerHandle` when the revision changes, the *current* `WorkerHandle` for the last revision remains in the `ThreadCache` until `ThreadCache.close()` is called or the thread dies.\n\nWhen `TextDaemon.close()` is called, `workers.shutdownNow()` is called. If the worker threads actually die, the `ThreadLocal` should be cleared. \n\nLet's check `HotReloadStressRunner.java` and `SessionReplayRunner.java` to see if they might be doing something that keeps threads alive or if they have their own `ThreadLocal` usage.",
+  "plan": "Check `src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java` and re-examine `SessionReplayRunner.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.1
+    }
+  ]
+}

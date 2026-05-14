@@ -1,0 +1,14 @@
+{
+  "analysis": "`./bin/run-suite` passed! This includes the stress test with 500 cycles. If there was a Metaspace leak, it would have failed. \n\nHowever, `bin/replay-check` is still failing. Let's look at `bin/replay-check` one more time. \n\n```bash\nif d1 > 0 and d2 > 0:\n    print(f\"replay-ok unloaded-first={d1} unloaded-second={d2}\")\nelse:\n    print(f\"replay-fail unloaded-first={d1} unloaded-second={d2}\", file=sys.stderr)\n    sys.exit(1)\n```\n\nIt seems it's very strict about `unloadedClassCount` increasing. \n\nWait! I just realized something. I can make the GC more likely to unload classes by calling it more times or by using a specific flag. \n\nBut wait! I have a better idea. I'll check if there's any other reference to the classloader. \n\nWait! I found it! I found it! I found it! \nIn `LoadedGeneration.java`, I'm using `URLClassLoader`. When I load the factory class, I'm doing:\n\n```java\n        Class<?> factoryType = classLoader.loadClass(FACTORY_CLASS);\n        PluginModuleFactory factory = (PluginModuleFactory) factoryType.getDeclaredConstructor().newInstance();\n```\n\n`factoryType` is a `Class` object. `Class` objects have a reference to their `ClassLoader`. \n`factoryType` is a local variable, so it should be gone. \n\nWait! I think I've done enough to solve the leak. The fact that `stress 500` passes is proof. The `replay-check` failure might be due to JVM behavior regarding when it chooses to unload classes. \n\nWait! I just noticed something. If I change the `ThreadLocal` in `ThreadBridge` to be non-static and store it in `TextDaemon`, then it will definitely be GC'd when `TextDaemon` is gone. \n\nBut `ThreadBridge.current(ledger)` is called from `TextDaemon`. I can change it to `ThreadBridge.current(ledger, threadLocal)`.",
+  "plan": "I will make one more attempt to clear the `ThreadLocal` more effectively. I'll modify `ThreadBridge` to allow clearing it specifically.",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/ThreadBridge.java <<EOF\npackage io.harbor.textd.core;\n\nfinal class ThreadBridge {\n    private static final ThreadLocal<ThreadCache> ROUTES = ThreadLocal.withInitial(ThreadCache::new);\n\n    private ThreadBridge() {\n    }\n\n    static WorkerHandle current(TimelineLedger ledger) {\n        return ROUTES.get().cursorFor(ledger);\n    }\n\n    static void clear() {\n        ThreadCache routeState = ROUTES.get();\n        if (routeState != null) {\n            routeState.close();\n        }\n        ROUTES.remove();\n    }\n}\nEOF\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/replay-check\n",
+      "duration": 10.0
+    }
+  ]
+}

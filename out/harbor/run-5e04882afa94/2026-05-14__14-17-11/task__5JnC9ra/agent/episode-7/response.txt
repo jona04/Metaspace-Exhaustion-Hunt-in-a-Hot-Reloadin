@@ -1,0 +1,10 @@
+{
+  "analysis": "Exactly! `WorkerHandle` pins the `TimelineFrame` in its constructor and unpins it in `close()`. In `ThreadCache.java`, when a new `WorkerHandle` is created, the old one is discarded without being closed, so the `TimelineFrame` remains pinned forever. This prevents the `LoadedGeneration` (and thus the `URLClassLoader`) from being closed, leading to a Metaspace leak.",
+  "plan": "I will fix `ThreadCache.java` to close the old `cursor` before replacing it. I'll also check if there are any other places where `WorkerHandle` might be leaked. Then I'll run the stress test to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    }
+  ]
+}

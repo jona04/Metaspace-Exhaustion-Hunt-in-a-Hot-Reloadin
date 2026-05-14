@@ -1,0 +1,10 @@
+{
+  "analysis": "In `TextDaemon.close()`:\n1. `revisions.close()` is called.\n2. `workers.shutdownNow()` is called.\n\nIn `TimelineLedger.close()`:\n1. `current` is set to `null`, and the last frame is moved to `shadow` and cooled.\n2. `pruneShadow()` is called.\n\nHowever, the worker threads still have their `ThreadLocal<ThreadCache>` which holds a `WorkerHandle` that pins the frame. Even if the workers are shut down, the `Thread` objects might still exist for a while, and if they were created by a `ThreadFactory` that keeps them around, the `ThreadLocal` remains. Actually, `TextDaemon` uses a `FixedThreadPool`. When `shutdownNow()` is called, the threads are interrupted. But they might not die immediately.\n\nMore importantly, `ThreadBridge.clear()` is never called in `TextDaemon`. `ThreadBridge` holds the `ThreadLocal`. If we don't clear the `ThreadLocal` on each worker thread, they will keep pinning the last `TimelineFrame` they used.\n\nBut wait, `SessionReplayRunner` shows `after_close` is `false`. This means `isBalanced()` returned `false` after `daemon.close()`. This is because the worker threads still have the `WorkerHandle` in their `ThreadLocal`, pinning the frames.\n\nWait, if I shut down the workers, the threads should eventually die, and the `ThreadLocal` should be cleared. But `workers.awaitTermination(5, TimeUnit.SECONDS)` is called. If the threads are still alive after that, they still hold the pins.\n\nActually, the problem is that even if the threads are still alive, we want them to release their pins when the daemon is closed.",
+  "plan": "1. `ThreadBridge.clear()` should be called by each worker thread when it's done or when the daemon is closing. But `ThreadBridge.ROUTES` is a `ThreadLocal` inside `ThreadBridge`. Each worker thread has its own.\n2. In `TextDaemon.close()`, we should probably make sure all worker threads clear their `ThreadLocal`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    }
+  ]
+}

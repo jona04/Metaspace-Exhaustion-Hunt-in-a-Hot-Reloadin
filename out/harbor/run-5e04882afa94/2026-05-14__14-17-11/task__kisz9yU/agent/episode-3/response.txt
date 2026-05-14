@@ -1,0 +1,14 @@
+{
+  "analysis": "In `ThreadCache.java`, when `cursorFor` is called, it checks if the current `cursor` matches the current `frame` from `ledger`. If it doesn't match, it creates a new `WorkerHandle`. However, it doesn't call `close()` on the old `cursor` before replacing it. This might be leaking resources associated with the old `WorkerHandle`.",
+  "plan": "1. Examine `WorkerHandle.java` to see what resources it holds and what `close()` does.\n2. Examine `TimelineFrame.java` to see how it tracks usage and how `isDrained()` is determined.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    }
+  ]
+}

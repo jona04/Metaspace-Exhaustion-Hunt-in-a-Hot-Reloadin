@@ -1,0 +1,10 @@
+{
+  "analysis": "The `TimelineLedger` looks correct. It uses `shadow.removeIf(TimelineFrame::isDrained)` which is called in `install`, `isBalanced`, and `close`. `TimelineFrame.isDrained()` returns true when the `LoadedGeneration` is closed, which happens when the pin count reaches 0 after `cool()` is called. My fix in `ThreadCache` ensured that the pin count eventually reaches 0 by closing the old `WorkerHandle`.",
+  "plan": "I am confident in the solution. I'll perform one last check on `ThreadBridge` to see if there are any other `ThreadLocal` related issues.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "analysis": "I've identified the issue in `ThreadCache.java`. \n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n\nWhen `cursor` is replaced because it doesn't match the new `frame`, the old `cursor` is never closed. \n\nLet's check `WorkerHandle.java` to see what `close()` does and how it's initialized.",
+  "plan": "I will examine `src/main/java/io/harbor/textd/core/WorkerHandle.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    }
+  ]
+}

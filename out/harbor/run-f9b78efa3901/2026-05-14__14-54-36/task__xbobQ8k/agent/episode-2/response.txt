@@ -1,0 +1,10 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with `-XX:MaxMetaspaceSize=64m`. This is a very tight constraint for loading many plugin generations, especially if they are not being unloaded. If each reload creates a new ClassLoader and those ClassLoaders are not GCed, Metaspace will eventually fill up and cause an OutOfMemoryError.\n\nThe `HotReloadStressRunner` calls `daemon.reload(generation)` and then processes some samples. It does this for a specified number of cycles (default 50 in `bin/stress`, but the Java code says 500 if not provided; `bin/stress` passes `${1:-50}`).",
+  "plan": "1. Try to run the stress test to confirm it fails.\n2. Examine `TextDaemon.java` to see how `reload` and `process` are implemented.\n3. Examine `LoadedGeneration.java` to see how plugin instances and classloaders are handled.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 100\n",
+      "duration": 5.0
+    }
+  ]
+}

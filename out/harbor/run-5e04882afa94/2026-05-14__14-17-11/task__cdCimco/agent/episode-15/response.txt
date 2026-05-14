@@ -1,0 +1,6 @@
+{
+  "analysis": "I have identified and fixed a Metaspace leak in the `textd` service. The issue was caused by `ThreadCache` not closing old `WorkerHandle` instances when a new plugin generation was loaded. Since `WorkerHandle` pins the `TimelineFrame`, and `TimelineFrame` only releases its `ClassLoader` when the pin count reaches zero, this prevented old generations from being reclaimed. I modified `ThreadCache.java` to explicitly close the old `cursor` and updated `WorkerHandle.java` to use more robust frame matching. The fix has been verified with both the stress test and the integration suite.",
+  "plan": "I have already implemented and verified the fix. No further actions are needed.",
+  "commands": [],
+  "task_complete": true
+}

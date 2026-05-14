@@ -1,0 +1,10 @@
+{
+  "analysis": "The `TimelineFrame` uses a pinning mechanism to track active users. `WorkerHandle` pins the frame upon creation and unpins it upon `close()`. In `ThreadCache.java`, when a new `WorkerHandle` is created because the generation changed, the old `WorkerHandle` is replaced without being closed. This means the old `TimelineFrame` remains pinned indefinitely (or at least until the thread dies and `ThreadBridge.clear()` is called, but `ThreadBridge.clear()` doesn't seem to be called frequently).",
+  "plan": "1. Verify this hypothesis by running the stress test and checking if the memory usage grows or if the service fails.\n2. Fix `ThreadCache.java` to call `cursor.close()` before replacing it.\n3. Also check if there are other places where `WorkerHandle` or `TimelineFrame` might be leaked.",
+  "commands": [
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.5
+    }
+  ]
+}

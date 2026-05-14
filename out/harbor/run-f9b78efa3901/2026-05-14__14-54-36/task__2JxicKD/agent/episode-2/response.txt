@@ -1,0 +1,10 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with a limited Metaspace size (`-XX:MaxMetaspaceSize=64m`). This confirms that the issue is likely a memory leak related to class loading (plugin generations). `HotReloadStressRunner` reloads the plugin in a loop and processes some text. If old generations are not reclaimed, the Metaspace will eventually fill up, leading to an `OutOfMemoryError`.",
+  "plan": "1. Run the stress test and see if it fails.\n2. Examine `src/main/java/io/harbor/textd/core/TextDaemon.java` and `src/main/java/io/harbor/textd/core/LoadedGeneration.java` to see how reloads are handled and if resources are being properly released.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 100\n",
+      "duration": 5.0
+    }
+  ]
+}

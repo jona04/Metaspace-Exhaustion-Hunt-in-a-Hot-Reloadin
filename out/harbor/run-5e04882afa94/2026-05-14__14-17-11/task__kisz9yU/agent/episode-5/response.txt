@@ -1,0 +1,10 @@
+{
+  "analysis": "The stress test runs with a limited Metaspace size (`-XX:MaxMetaspaceSize=64m`). Since each reload creates a new `URLClassLoader` and loads classes, failing to reclaim old ClassLoaders will quickly lead to `OutOfMemoryError: Metaspace`. This confirms that the failure to unpin and close old generations is the likely cause.",
+  "plan": "1. Run the stress test to see it fail.\n2. Apply the fix to `ThreadCache.java`.\n3. Run the stress test again to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 20\n",
+      "duration": 10.0
+    }
+  ]
+}

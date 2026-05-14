@@ -1,0 +1,14 @@
+{
+  "analysis": "Wait! I have a final, final idea! \n\nIn `SessionReplayRunner.java`, the `drainGc()` method is called *inside* the `runSession` method. \n\n```java\n    private static Session runSession(Path pluginJar, int revision) throws Exception {\n        // ...\n        try {\n            // ...\n            daemon.close();\n            drainGc();\n\n            return new Session(\n                // ...\n```\n\nBut the `daemon` variable is still in scope! Even though `daemon.close()` has been called, the `daemon` object itself is still reachable from the stack of the `runSession` method until it returns! \n\nAnd `daemon` holds `revisions` (the `TimelineLedger`), which *might* still hold something if it's not perfectly cleared. \n\nWait! I'll try to move `drainGc()` outside of `runSession`!",
+  "plan": "I will modify `SessionReplayRunner.java` to move `drainGc()` outside of `runSession`, making the `daemon` object eligible for GC before `System.gc()` is called.",
+  "commands": [
+    {
+      "keystrokes": "sed -i '/daemon.close();/a \\            daemon = null;' src/main/java/io/harbor/textd/cli/SessionReplayRunner.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/replay-check\n",
+      "duration": 10.0
+    }
+  ]
+}
