@@ -8,7 +8,7 @@ from pathlib import Path
 
 thread_cache = Path("/workspace/textd/src/main/java/io/harbor/textd/core/ThreadCache.java")
 text_daemon  = Path("/workspace/textd/src/main/java/io/harbor/textd/core/TextDaemon.java")
-jvm_cfg      = Path("/opt/textd/jvm.cfg")
+jvm_cfg      = Path("/workspace/textd/config/jvm.cfg")
 
 # Fix 1: close the old WorkerHandle before replacing it in ThreadCache
 tc_text = thread_cache.read_text()
@@ -26,8 +26,9 @@ if old_close not in daemon_text:
     raise SystemExit("expected text daemon close snippet not found")
 text_daemon.write_text(daemon_text.replace(old_close, new_close))
 
-# Fix 3: clear the JVM options file so System.gc() works again
-jvm_cfg.write_text('')
+# Fix 3: remove DisableExplicitGC from the project-local JVM config
+lines = [l for l in jvm_cfg.read_text().splitlines() if '-XX:+DisableExplicitGC' not in l]
+jvm_cfg.write_text('\n'.join(lines) + '\n')
 PY
 
 cd "$ROOT_DIR"
