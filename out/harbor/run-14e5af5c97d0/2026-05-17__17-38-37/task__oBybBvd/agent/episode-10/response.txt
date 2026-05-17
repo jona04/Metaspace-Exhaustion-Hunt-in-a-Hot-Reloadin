@@ -1,0 +1,18 @@
+{
+  "analysis": "The suite failed with `replay-fail unloaded-first=0 unloaded-second=0` when `-XX:+DisableExplicitGC` was present. This confirms that the test suite depends on `System.gc()` to trigger the unloading of class loaders for its validation check. Since the task is to get the daemon through the long run and ensure old plugin generations are reclaimed, and the provided hint pointed towards reviewing `jvm.cfg` if GC is not behaving as expected, removing this flag is a necessary part of the fix.",
+  "plan": "1. Remove the `-XX:+DisableExplicitGC` flag again.\n2. Verify the suite passes one last time.\n3. Clean up the `ThreadCache.java` code to be a bit cleaner than the `sed` result.",
+  "commands": [
+    {
+      "keystrokes": "echo \"\" > /opt/textd/jvm.cfg\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "bin/run-suite\n",
+      "duration": 30.0
+    }
+  ]
+}

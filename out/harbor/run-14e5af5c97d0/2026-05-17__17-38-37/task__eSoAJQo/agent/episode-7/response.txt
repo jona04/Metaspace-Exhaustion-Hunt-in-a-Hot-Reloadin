@@ -1,0 +1,14 @@
+{
+  "analysis": "Ah! `SessionReplayRunner.java` calls `System.gc()`. But `/opt/textd/jvm.cfg` has `-XX:+DisableExplicitGC`, which makes `System.gc()` a no-op. This is definitely part of the problem, as the runner probably expects `System.gc()` to help reclaim Metaspace after it thinks it has released everything.\n\nSo the plan is:\n1. Fix `ThreadCache.java` to close the old `cursor`.\n2. Remove `-XX:+DisableExplicitGC` from `/opt/textd/jvm.cfg`.",
+  "plan": "1. Edit `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor`.\n2. Edit `/opt/textd/jvm.cfg` to remove `-XX:+DisableExplicitGC`.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/cursor.close(); cursor = new WorkerHandle(frame);/2' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ]
+}

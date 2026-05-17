@@ -1,0 +1,22 @@
+{
+  "analysis": "I have identified a resource leak in `ThreadCache.java` where old `WorkerHandle` instances are not closed when a new generation is loaded. This prevents the associated `TimelineFrame` from being unpinned and thus prevents the `URLClassLoader` from being closed and reclaimed. Additionally, the task mentions that old generations must be fully reclaimed once sessions close, and suggests reviewing `/opt/textd/jvm.cfg` which currently disables explicit GC. Metaspace OOM is a strong sign that ClassLoaders are not being collected.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to properly close the old `WorkerHandle` when the revision changes.\n2. Modify `/opt/textd/jvm.cfg` to remove `-XX:+DisableExplicitGC` to allow the JVM to perform explicit garbage collection if needed.\n3. Add a `System.gc()` call in `TimelineLedger.java` when a generation is pruned to encourage the JVM to reclaim Metaspace.\n4. I will also examine the plugin source to ensure no other references are held.",
+  "commands": [
+    {
+      "keystrokes": "cat plugin-src/io/harbor/textd/customer/CustomerPluginFactory.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat plugin-src/io/harbor/textd/customer/CustomerPluginModule.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat plugin-src/io/harbor/textd/customer/PipelineProcessor.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat plugin-src/io/harbor/textd/customer/PipelineStages.java\n",
+      "duration": 0.1
+    }
+  ]
+}

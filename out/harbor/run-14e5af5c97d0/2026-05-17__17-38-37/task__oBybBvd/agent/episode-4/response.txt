@@ -1,0 +1,18 @@
+{
+  "analysis": "I've removed the `-XX:+DisableExplicitGC` flag. Now I'm looking at `ThreadBridge` and `TimelineLedger`.\n\n`ThreadBridge` uses a `ThreadLocal<ThreadCache>`. `ThreadLocal` variables can cause memory leaks if the threads in a thread pool are not cleaned up or if the `ThreadLocal` itself is not cleared. However, `TextDaemon` uses a fixed thread pool, and `ThreadBridge.current()` is called in `processRecord`.\n\n`TimelineLedger` manages `TimelineFrame` objects. When a new revision is installed, the previous one is moved to a `shadow` queue and `cool()` is called. `pruneShadow()` removes frames that are `isDrained()`.\n\nI need to check `ThreadCache.java` and `TimelineFrame.java` to see how they handle references and when they are considered 'drained'.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/ThreadCache.java`.\n2. Examine `src/main/java/io/harbor/textd/core/TimelineFrame.java`.\n3. Run `bin/run-suite` again to see if removing the JVM flag fixed it (though it's unlikely to be the only issue).",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "bin/run-suite\n",
+      "duration": 30.0
+    }
+  ]
+}

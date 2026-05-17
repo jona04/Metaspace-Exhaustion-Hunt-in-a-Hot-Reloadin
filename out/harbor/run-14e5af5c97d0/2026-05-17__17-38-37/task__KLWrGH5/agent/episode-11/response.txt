@@ -1,0 +1,6 @@
+{
+  "analysis": "The task was to fix a Metaspace OutOfMemoryError in the `textd` service during long runs. I identified a leak in `ThreadCache.java` where old `WorkerHandle` instances were not being closed when a new plugin generation was loaded. This prevented the corresponding `TimelineFrame` from being unpinned, which in turn prevented the `URLClassLoader` in `LoadedGeneration` from being closed and reclaimed. I also removed the `-XX:+DisableExplicitGC` flag from `/opt/textd/jvm.cfg` to ensure garbage collection behaves as expected for class unloading. The fix was validated by running `bin/run-suite`, which completed successfully.",
+  "plan": "The task is complete. I have fixed the resource leak and verified it with the provided validation suite.",
+  "commands": [],
+  "task_complete": true
+}

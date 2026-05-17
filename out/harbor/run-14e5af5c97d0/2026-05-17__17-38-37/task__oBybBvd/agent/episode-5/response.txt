@@ -1,0 +1,10 @@
+{
+  "analysis": "The OOM Metaspace persists even after removing the JVM flag. This indicates a leak where old class loaders are not being garbage collected.\n\nLooking at `ThreadCache.java`:\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\nWhen `cursor` is replaced by a new `WorkerHandle`, the old `cursor` is not closed. I should check `WorkerHandle.java` to see what `close()` does and if it's important.\n\nLooking at `TimelineFrame.java`:\nIt uses a reference counting mechanism (`pins`). `TimelineFrame` starts with `pins = 1`. `cool()` decrements it. `WorkerHandle` probably pins/unpins it.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java`.\n2. In `ThreadCache.java`, the old `cursor` should be closed before being replaced.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    }
+  ]
+}

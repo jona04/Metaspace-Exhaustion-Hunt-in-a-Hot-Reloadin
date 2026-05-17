@@ -1,0 +1,18 @@
+{
+  "analysis": "The `PipelineStages` class loads many small classes, which explains why Metaspace fills up quickly if ClassLoaders are leaked. The main issue is that `ThreadCache.java` doesn't close the old `WorkerHandle` when it switches to a new one, keeping the old `TimelineFrame` pinned and its `ClassLoader` alive. Additionally, the `-XX:+DisableExplicitGC` flag in `/opt/textd/jvm.cfg` might be preventing the JVM from reclaiming Metaspace even when ClassLoaders are eligible for collection.",
+  "plan": "1. Fix `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before replacing it.\n2. Update `/opt/textd/jvm.cfg` to allow explicit GC.\n3. Add `System.gc()` in `TimelineLedger.pruneShadow()` after a frame is removed, to encourage Metaspace reclamation.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat <<EOF > /opt/textd/jvm.cfg\n-XX:+ExplicitGCInvokesConcurrent\nEOF\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "sed -i '/shadow.removeIf(TimelineFrame::isDrained);/a \\        System.gc();' src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    }
+  ]
+}

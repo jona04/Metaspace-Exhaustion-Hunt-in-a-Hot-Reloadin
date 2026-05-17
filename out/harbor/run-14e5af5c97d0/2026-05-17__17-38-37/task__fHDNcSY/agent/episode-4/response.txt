@@ -1,0 +1,14 @@
+{
+  "analysis": "I've identified the leak. In `ThreadCache.java`:\n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n\nWhen `!cursor.matches(frame)`, a new `WorkerHandle` is created and assigned to `cursor`. However, the old `WorkerHandle` is never closed. \n\n`WorkerHandle.close()` calls `frame.unpin()`. \n`TimelineFrame` tracks pins. When it's \"cooled\" (no longer the current generation) and its pin count reaches 0, it closes the `LoadedGeneration`, which in turn closes the `URLClassLoader`. \n\nBecause the old `WorkerHandle` is not closed, the `TimelineFrame`'s pin count never reaches 0, so the class loader is never closed, leading to the Metaspace OOM.\n\nAlso, I should check if there's any other place where `WorkerHandle` might be leaked. `ThreadBridge` has a `clear()` method that closes the `ThreadCache`, but it doesn't seem to be called anywhere in `TextDaemon` or during normal operation. However, the primary issue is the replacement of `cursor` without closing the old one.\n\nWait, I should also look at `/opt/textd/jvm.cfg` again. It has `-XX:+DisableExplicitGC`. While not directly the cause of the leak, it's something to keep in mind if we were relying on `System.gc()` to clean up things (which we shouldn't).",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before replacing it.\n2. Run the suite again to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/run-suite\n",
+      "duration": 20.0
+    }
+  ]
+}

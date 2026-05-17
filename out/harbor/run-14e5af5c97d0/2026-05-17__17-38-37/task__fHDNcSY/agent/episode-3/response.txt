@@ -1,0 +1,22 @@
+{
+  "analysis": "The error is `java.lang.OutOfMemoryError: Metaspace`. This indicates that the class loaders for old plugin generations are not being garbage collected, leading to a build-up of class metadata in Metaspace. \n\nLooking at `LoadedGeneration.java`, it uses a `URLClassLoader`. When a new generation is loaded, the old one should be closed and its classes should be eligible for GC. \n\n`TextDaemon` uses `ThreadBridge.current(revisions)` which likely uses a `ThreadLocal` to store `ThreadCache`. \n\n`ThreadCache` holds a `WorkerHandle cursor`. If `cursor` is replaced, it's not explicitly closed if it's not the current frame.\n\nWait, `ThreadCache`'s `cursorFor` method:\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\nIf `cursor.matches(frame)` is false, a new `WorkerHandle` is created and assigned to `cursor`, but the old `cursor` is never closed. \n\nLet's look at `WorkerHandle.java` and `TimelineFrame.java` and `ThreadBridge.java`.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java`, `src/main/java/io/harbor/textd/core/TimelineFrame.java`, and `src/main/java/io/harbor/textd/core/ThreadBridge.java`.\n2. Also check `TimelineLedger.java` to see how it manages `TimelineFrame`s and their reference counts.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    }
+  ]
+}

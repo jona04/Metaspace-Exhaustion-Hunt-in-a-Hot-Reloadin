@@ -1,0 +1,18 @@
+{
+  "analysis": "Yes, `WorkerHandle` pins the `TimelineFrame` in its constructor and unpins it in `close()`. \n\nIn `ThreadCache.java`, when `cursor` is replaced, the old one is NOT closed:\n```java\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\nThis means the `TimelineFrame` (and thus the `LoadedGeneration` and its `URLClassLoader`) will never have its pin count drop to zero, so it will never be closed and never be eligible for GC.\n\nI should fix `ThreadCache.java` to close the old cursor.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old cursor before creating a new one.\n2. Also, check if there are other places where `WorkerHandle` or `TimelineFrame` might be leaked.\n3. Run the validation suite again.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/if (cursor != null) cursor.close(); cursor = new WorkerHandle(frame);/g' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "bin/run-suite\n",
+      "duration": 30.0
+    }
+  ]
+}

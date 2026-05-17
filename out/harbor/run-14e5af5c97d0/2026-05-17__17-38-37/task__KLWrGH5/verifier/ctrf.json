@@ -1,0 +1,128 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 11,
+            "passed": 8,
+            "failed": 3,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1779039679.4182382,
+            "stop": 1779039710.2967916
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_public_runner_surfaces_are_pristine",
+                "status": "passed",
+                "duration": 0.0012161100166849792,
+                "start": 1779039679.454558,
+                "stop": 1779039679.45609,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_stress_runner_completes",
+                "status": "passed",
+                "duration": 21.800118793005822,
+                "start": 1779039679.4563656,
+                "stop": 1779039701.2567768,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_stress_runner_has_no_metaspace_oom",
+                "status": "passed",
+                "duration": 0.00046917998406570405,
+                "start": 1779039701.2571409,
+                "stop": 1779039701.2577665,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_generation_one_output",
+                "status": "passed",
+                "duration": 2.013985478988616,
+                "start": 1779039701.2580273,
+                "stop": 1779039703.272369,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_current_output",
+                "status": "passed",
+                "duration": 0.001034850996802561,
+                "start": 1779039703.2729223,
+                "stop": 1779039703.2741778,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_runtime_digest_reports_stable_run",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 1.919585490002646,
+                "start": 1779039703.274455,
+                "stop": 1779039705.212078,
+                "retries": 0,
+                "file_path": "test_outputs.py",
+                "trace": "digest_result = {'after_close': False, 'before_close': True, 'end': ['textd-worker-1', 'textd-worker-2', 'textd-worker-3', 'textd-worker-4'], 'first': 'GEN-001|ALPHA>BETA>GAMMA|PIPE-18528', ...}\n\n    def test_runtime_digest_reports_stable_run(digest_result: dict) -> None:\n        assert digest_result[\"sample\"] == SAMPLE\n        assert digest_result[\"first\"] == expected_output(1)\n        assert digest_result[\"rev\"] == LATEST_GENERATION\n        assert digest_result[\"last\"] == expected_output(LATEST_GENERATION)\n        assert digest_result[\"start\"] == [\"textd-worker-1\", \"textd-worker-2\", \"textd-worker-3\", \"textd-worker-4\"]\n        assert digest_result[\"end\"] == [\"textd-worker-1\", \"textd-worker-2\", \"textd-worker-3\", \"textd-worker-4\"]\n        assert digest_result[\"same_workers\"] is True\n        assert digest_result[\"before_close\"] is True\n>       assert digest_result[\"after_close\"] is True\nE       assert False is True\n\n/tests/test_outputs.py:127: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_outputs.py::test_replay_check_reports_unloading",
+                "status": "passed",
+                "duration": 1.3647425759991165,
+                "start": 1779039705.2123573,
+                "stop": 1779039706.5774548,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_first_replay_session_stays_clean",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 3.6992802519962424,
+                "start": 1779039706.5779245,
+                "stop": 1779039710.2855327,
+                "retries": 0,
+                "file_path": "test_outputs.py",
+                "trace": "replay_result = {'first': {'after_close': False, 'before_close': True, 'end': ['textd-worker-1', 'textd-worker-2', 'textd-worker-3', '...worker-1', 'textd-worker-2', 'textd-worker-3', 'textd-worker-4'], 'first': 'GEN-001|ALPHA>BETA>GAMMA|PIPE-18528', ...}}\n\n    def test_first_replay_session_stays_clean(replay_result: dict) -> None:\n        first = replay_result[\"first\"]\n        assert first[\"first\"] == expected_output(1)\n        assert first[\"last\"] == expected_output(LATEST_GENERATION)\n        assert first[\"start\"] == [\"textd-worker-1\", \"textd-worker-2\", \"textd-worker-3\", \"textd-worker-4\"]\n        assert first[\"end\"] == [\"textd-worker-1\", \"textd-worker-2\", \"textd-worker-3\", \"textd-worker-4\"]\n        assert first[\"same_workers\"] is True\n        assert first[\"before_close\"] is True\n>       assert first[\"after_close\"] is True\nE       assert False is True\n\n/tests/test_outputs.py:158: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_outputs.py::test_second_replay_session_stays_clean",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.001189839982544072,
+                "start": 1779039710.2859597,
+                "stop": 1779039710.294421,
+                "retries": 0,
+                "file_path": "test_outputs.py",
+                "trace": "replay_result = {'first': {'after_close': False, 'before_close': True, 'end': ['textd-worker-1', 'textd-worker-2', 'textd-worker-3', '...worker-1', 'textd-worker-2', 'textd-worker-3', 'textd-worker-4'], 'first': 'GEN-001|ALPHA>BETA>GAMMA|PIPE-18528', ...}}\n\n    def test_second_replay_session_stays_clean(replay_result: dict) -> None:\n        second = replay_result[\"second\"]\n        assert second[\"first\"] == expected_output(1)\n        assert second[\"last\"] == expected_output(LATEST_GENERATION)\n        assert second[\"start\"] == [\"textd-worker-1\", \"textd-worker-2\", \"textd-worker-3\", \"textd-worker-4\"]\n        assert second[\"end\"] == [\"textd-worker-1\", \"textd-worker-2\", \"textd-worker-3\", \"textd-worker-4\"]\n        assert second[\"same_workers\"] is True\n        assert second[\"before_close\"] is True\n>       assert second[\"after_close\"] is True\nE       assert False is True\n\n/tests/test_outputs.py:169: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_outputs.py::test_replay_sessions_unload_classes",
+                "status": "passed",
+                "duration": 0.0006134900031611323,
+                "start": 1779039710.2947643,
+                "stop": 1779039710.2955844,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_replay_sessions_do_not_regress_unloading",
+                "status": "passed",
+                "duration": 0.0006274199986364692,
+                "start": 1779039710.2958155,
+                "stop": 1779039710.2965877,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            }
+        ]
+    }
+}

@@ -1,0 +1,14 @@
+{
+  "analysis": "I've analyzed the code. Here's what I found:\n\n1. `ThreadBridge` uses a `ThreadLocal<ThreadCache>`. \n2. `ThreadCache` holds a `WorkerHandle` which points to a `TimelineFrame`.\n3. `TimelineLedger` manages `TimelineFrame`s. When a new generation is installed, the old one is moved to a `shadow` queue and cooled.\n4. `TimelineFrame.isDrained()` is used in `TimelineLedger.pruneShadow()` to decide if a frame can be removed.\n5. `ThreadCache.cursorFor` updates the `cursor` if it doesn't match the current frame. However, it doesn't seem to close the old `WorkerHandle` when it replaces it.\n6. Even if the `WorkerHandle` is replaced, the old `WorkerHandle` (and thus the old `TimelineFrame`) might still be referenced by the `ThreadLocal` if it wasn't replaced yet on all threads.\n\nWait, `ThreadCache.cursorFor`:\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\nWhen `cursor` is replaced, the old `WorkerHandle` is just dropped. Does `WorkerHandle` have a `close()` method that should be called? `ThreadCache.close()` calls `cursor.close()`.\n\nLet's check `WorkerHandle.java` and `TimelineFrame.java`.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java`.\n2. Examine `src/main/java/io/harbor/textd/core/TimelineFrame.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    }
+  ]
+}
