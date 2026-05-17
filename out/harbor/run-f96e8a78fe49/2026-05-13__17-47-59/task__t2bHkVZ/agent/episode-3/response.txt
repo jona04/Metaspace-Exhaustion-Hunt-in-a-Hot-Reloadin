@@ -1,0 +1,15 @@
+{
+  "analysis": "The `TextDaemon` uses an `ExecutorService` for workers and a `TimelineLedger` for revisions. In `processRecord`, it calls `ThreadBridge.current(revisions)` to get a `WorkerHandle`. This looks like where the thread-local state or connection to the current generation is managed.",
+  "plan": "1. Examine `TimelineLedger.java` to see how generations are installed and managed.\n2. Examine `ThreadBridge.java` to see how `WorkerHandle` is retrieved and if it's being cached or leaked.\n3. Examine `LoadedGeneration.java` to see if it holds resources that need to be closed.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

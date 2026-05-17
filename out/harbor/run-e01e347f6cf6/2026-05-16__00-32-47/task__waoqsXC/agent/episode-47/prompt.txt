@@ -1,0 +1,45 @@
+Current terminal state:
+Current Terminal Screen:
+>         }
+>
+>         try {
+>             WorkerHandle binding = ThreadBridge.current(revisions);
+>             return binding.process(record);
+>         } finally {
+>             ThreadBridge.clear();
+>         }
+>     }
+>
+>     @Override
+>     public void close() throws Exception {
+>         revisions.close();
+>         workers.shutdownNow();
+>         workers.awaitTermination(5, TimeUnit.SECONDS);
+>     }
+>
+>     private static final class WorkerThreadFactory implements ThreadFactory {
+>         private final AtomicInteger sequence = new AtomicInteger(1);
+>
+>         @Override
+>         public Thread newThread(Runnable runnable) {
+>             Thread thread = new Thread(() -> {
+>                 try {
+>                     runnable.run();
+>                 } finally {
+>                     ThreadBridge.clear();
+>                 }
+>             });
+>             thread.setName("textd-worker-" + sequence.getAndIncrement());
+>             thread.setDaemon(true);
+>             return thread;
+>         }
+>     }
+> }
+> EOF
+root@4d312fc19747:/workspace/textd# ./bin/build
+./bin/run-suite
+root@4d312fc19747:/workspace/textd# ./bin/run-suite
+
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

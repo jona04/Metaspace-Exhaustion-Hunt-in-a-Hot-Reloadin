@@ -1,0 +1,15 @@
+{
+  "analysis": "The project is a Java-based daemon called `textd`. Based on the file structure and the task description, it seems to involve 'processor swaps' and 'hot reloading', as indicated by `HotReloadStressRunner.java` and `HotReloadIntegrationRunner.java`. The issue is a failure during long runs, which often points to a resource leak (memory or file descriptors) during these swaps. The `bin/stress` and `bin/run-suite` scripts likely trigger the problematic behavior.",
+  "plan": "1. Examine the `bin/stress` script to see how the long run is executed.\n2. Examine `src/main/java/io/harbor/textd/core/TextDaemon.java` and `ThreadCache.java` as they seem central to the daemon's lifecycle and resource management.\n3. Check `HotReloadStressRunner.java` to understand how processors are swapped.",
+  "commands": [
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

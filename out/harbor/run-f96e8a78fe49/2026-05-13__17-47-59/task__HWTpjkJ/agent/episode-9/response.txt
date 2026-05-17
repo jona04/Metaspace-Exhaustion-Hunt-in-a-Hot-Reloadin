@@ -1,0 +1,15 @@
+{
+  "analysis": "The stress test failed with `java.lang.OutOfMemoryError: Metaspace`. This confirms a leak of class loaders. \n\nLooking at `ThreadCache.java`:\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\nWhen `!cursor.matches(frame)`, a new `WorkerHandle` is created and assigned to `cursor`, but the old `cursor` is never closed! `WorkerHandle.close()` calls `frame.unpin()`. If `unpin()` is not called, the `TimelineFrame` (and thus the class loader) will never be considered 'drained' and will stay in the `shadow` queue of `TimelineLedger`, preventing the class loader from being garbage collected.\n\nAlso, `TimelineFrame.java` and `LoadedGeneration.java` should be checked to see how they handle pinning and class loading.",
+  "plan": "1. Check `src/main/java/io/harbor/textd/core/TimelineFrame.java` and `src/main/java/io/harbor/textd/core/LoadedGeneration.java`.\n2. Fix the leak in `ThreadCache.java` by closing the old `cursor` before creating a new one.\n3. Verify if there are other places where `WorkerHandle` or `TimelineFrame` are not properly closed/unpinned.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

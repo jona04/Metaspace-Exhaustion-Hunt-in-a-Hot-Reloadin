@@ -1,0 +1,10 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with a constrained `-XX:MaxMetaspaceSize=64m`. This is a strong hint that the 'processor swaps' (hot reloading) are causing Metaspace exhaustion, likely because ClassLoaders or classes are not being garbage collected after a reload.",
+  "plan": "1. Run `bin/stress` to reproduce the failure.\n2. Examine `src/main/java/io/harbor/textd/core/TextDaemon.java` and `io.harbor.textd.cli.HotReloadStressRunner` to see how plugins are loaded and swapped.\n3. Investigate `ThreadCache.java` and `ThreadBridge.java` for potential leaks (e.g., `ThreadLocal` holding onto classes or ClassLoaders).",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 100\n",
+      "duration": 5.0
+    }
+  ]
+}

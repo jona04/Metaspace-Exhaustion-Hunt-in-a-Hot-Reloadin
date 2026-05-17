@@ -1,0 +1,10 @@
+{
+  "analysis": "Still failing! I'm going to try one more thing. I'll make the `ThreadLocal` in `ThreadBridge` non-static. If it's static, it might be shared in ways I don't intend, especially if there are multiple `TextDaemon` instances (which there are in `SessionReplayRunner`). Actually, even if it's shared, `remove()` should clear it for the current thread. But let's see.",
+  "plan": "Make `ThreadLocal` in `ThreadBridge` non-static and pass it through `TextDaemon`.",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/ThreadBridge.java <<EOF\npackage io.harbor.textd.core;\n\nfinal class ThreadBridge {\n    private final ThreadLocal<ThreadCache> routes = ThreadLocal.withInitial(ThreadCache::new);\n\n    ThreadBridge() {\n    }\n\n    WorkerHandle current(TimelineLedger ledger) {\n        return routes.get().cursorFor(ledger);\n    }\n\n    void clear() {\n        ThreadCache routeState = routes.get();\n        routeState.close();\n        routes.remove();\n    }\n}\nEOF\n",
+      "duration": 0.1
+    }
+  ]
+}

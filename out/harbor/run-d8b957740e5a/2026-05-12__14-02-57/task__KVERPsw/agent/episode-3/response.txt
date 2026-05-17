@@ -1,0 +1,23 @@
+{
+  "analysis": "The `Metaspace` OOM is confirmed. `TextDaemon` uses an `ExecutorService` with fixed threads. `processRecord` calls `ThreadBridge.current(revisions)`, which returns a `WorkerHandle`. \n\nLooking at `TextDaemon.java`, the `workers` are created once. If `ThreadBridge.current(revisions)` or the `WorkerHandle` it returns is caching something per-thread without ever clearing it when a reload happens, that's likely the leak. Since the Metaspace is filling up, it means `ClassLoader` instances (which are created per-generation in `TimelineLedger`) are being held. If a thread in the `workers` pool holds a reference to a class loaded by a previous generation's ClassLoader, that ClassLoader cannot be GC'd.",
+  "plan": "1. Examine `ThreadBridge.java` and `ThreadCache.java` to see how they store state.\n2. Examine `TimelineLedger.java` and `LoadedGeneration.java` to see how reloads are handled.\n3. Identify where the reference to old generations is being leaked in the worker threads.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

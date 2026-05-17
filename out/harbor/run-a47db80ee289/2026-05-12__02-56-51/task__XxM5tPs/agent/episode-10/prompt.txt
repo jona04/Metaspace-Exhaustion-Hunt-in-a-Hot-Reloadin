@@ -1,0 +1,105 @@
+New Terminal Output:
+
+root@1d381b4ca4f2:/workspace/textd# cat src/main/java/io/harbor/textd/cli/HotReloadLifecycleProbe.java
+package io.harbor.textd.cli;
+
+import io.harbor.textd.core.OutputFormat;
+import io.harbor.textd.core.ProcessingResult;
+import io.harbor.textd.core.TextDaemon;
+
+import java.nio.file.Path;
+import java.util.List;
+import java.util.stream.Collectors;
+
+public final class HotReloadLifecycleProbe {
+    private static final String SAMPLE = "alpha beta gamma";
+
+    private HotReloadLifecycleProbe() {
+    }
+
+    public static void main(String[] args) throws Exception {
+        Path pluginJar = Path.of(args[0]);
+        int latestGeneration = args.length > 1 ? Integer.parseInt(args[1]) : 12;
+
+        TextDaemon daemon = new TextDaemon(pluginJar, 2);
+        try {
+            daemon.reload(1);
+            List<ProcessingResult> generationOne = daemon.processBatch(List.of(SAMPLE, SAMPLE));
+            assertOutputs(1, generationOne);
+
+            List<String> generationOneThreads = generationOne.stream()
+                .map(ProcessingResult::workerThread)
+                .sorted()
+                .collect(Collectors.toList());
+
+            List<ProcessingResult> latestResults = generationOne;
+            for (int generation = 2; generation <= latestGeneration; generation++) {
+                daemon.reload(generation);
+                latestResults = daemon.processBatch(List.of(SAMPLE, SAMPLE));
+                assertOutputs(generation, latestResults);
+            }
+
+            List<String> latestThreads = latestResults.stream()
+                .map(ProcessingResult::workerThread)
+                .sorted()
+                .collect(Collectors.toList());
+
+            int pendingBeforeShutdown = daemon.pendingRetirements();
+            String generationOneOutput = generationOne.get(0).output();
+            String latestOutput = latestResults.get(0).output();
+            boolean sameThreadsReused = generationOneThreads.equals(latestThreads);
+
+            daemon.close();
+            int pendingAfterShutdown = daemon.pendingRetirements();
+
+            System.out.println("{");
+            System.out.println("  \"sample\": \"" + SAMPLE + "\",");
+            System.out.println("  \"generation1_output\": \"" + generationOneOutput + "\",");
+            System.out.println("  \"latest_generation\": " + latestGeneration + ",");
+            System.out.println("  \"latest_output\": \"" + latestOutput + "\",");
+            System.out.println("  \"generation1_threads\": " + toJsonArray(generationOneThreads) + ",");
+            System.out.println("  \"latest_threads\": " + toJsonArray(latestThreads) + ",");
+            System.out.println("  \"same_threads_reused\": " + sameThreadsReused + ",");
+            System.out.println("  \"pending_retirements_before_shutdown\": " + pendingBeforeShutdown + ",");
+            System.out.println("  \"pending_retirements_after_shutdown\": " + pendingAfterShutdown);
+            System.out.println("}");
+        } catch (Exception exception) {
+            try {
+                daemon.close();
+            } catch (Exception closeException) {
+                exception.addSuppressed(closeException);
+            }
+            throw exception;
+        }
+    }
+
+    private static void assertOutputs(long generation, List<ProcessingResult> results) {
+        String expected = OutputFormat.expectedFor(generation, SAMPLE);
+        for (ProcessingResult result : results) {
+            if (!expected.equals(result.output())) {
+                throw new IllegalStateException("Unexpected output at generation " + generation + ": " + result.output());
+            }
+        }
+    }
+
+    private static String toJsonArray(List<String> values) {
+        return values.stream()
+            .map(value -> "\"" + value + "\"")
+            .collect(Collectors.joining(", ", "[", "]"));
+    }
+}
+root@1d381b4ca4f2:/workspace/textd# cat bin/integration
+#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+if [[ "${TEXTD_SKIP_BUILD:-0}" != "1" ]]; then
+  "$ROOT_DIR/bin/build"
+fi
+
+java -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.HotReloadIntegrationRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" \
+  "${1:-12}"
+root@1d381b4ca4f2:/workspace/textd#

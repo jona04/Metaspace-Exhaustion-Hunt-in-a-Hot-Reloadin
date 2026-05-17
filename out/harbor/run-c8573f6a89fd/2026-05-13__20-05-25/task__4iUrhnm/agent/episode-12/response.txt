@@ -1,0 +1,14 @@
+{
+  "analysis": "I've identified the leak! \n\nIn `ThreadCache.cursorFor(TimelineLedger ledger)`:\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\nWhen the `cursor` is replaced because the generation has changed, the old `cursor` (which is a `WorkerHandle`) is never closed. \n\n`WorkerHandle.close()` calls `frame.unpin()`. \n`TimelineFrame` tracks pins. When it's 'cooled' (no longer the current generation) AND its pin count reaches 0, it closes the `LoadedGeneration`, which closes the `URLClassLoader`. \n\nBecause the old `WorkerHandle` is never closed, the pin count never reaches 0, the `LoadedGeneration` is never closed, and the `URLClassLoader` remains alive, leaking Metaspace.\n\nTo fix this, I need to close the old `cursor` in `ThreadCache.cursorFor` before creating a new one.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before creating a new one.\n2. Rebuild and run the stress test to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/stress 1000\n",
+      "duration": 30.0
+    }
+  ]
+}

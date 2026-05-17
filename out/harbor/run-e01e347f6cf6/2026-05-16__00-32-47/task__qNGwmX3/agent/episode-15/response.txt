@@ -1,0 +1,10 @@
+{
+  "analysis": "The `ThreadBridge.clear()` method exists but it is never called. This method should be called by each worker thread before it exits to clean up its `ThreadLocal` and close its `ThreadCache`. In `TextDaemon.java`, the workers are managed by an `ExecutorService` created with `Executors.newFixedThreadPool`. When `workers.shutdownNow()` is called, the threads will exit, but they don't have a chance to call `ThreadBridge.clear()`.",
+  "plan": "1. Modify `TextDaemon.java` to ensure that worker threads call `ThreadBridge.clear()` when they are interrupted or finished. However, since they are managed by `ThreadPoolExecutor`, I can't easily inject code at the end of the thread's life without a custom executor or wrapping the tasks.\n2. Actually, the issue might be simpler: the `ThreadLocal` in `ThreadBridge` is holding onto `ThreadCache` objects for each thread. When the thread dies, the entry in `ThreadLocalMap` should eventually be collected, but it might take a while or require GC. But here the threads are being shut down. \n3. Wait, I see `processRecord` in `TextDaemon.java` calls `ThreadBridge.current(revisions)`. It doesn't call `clear()`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.1
+    }
+  ]
+}

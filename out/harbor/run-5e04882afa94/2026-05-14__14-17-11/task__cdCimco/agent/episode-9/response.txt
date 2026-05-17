@@ -1,0 +1,10 @@
+{
+  "analysis": "`TimelineLedger.java` looks correct. It uses a `ConcurrentLinkedQueue` for `shadow` and `removeIf(TimelineFrame::isDrained)` which is called in `install`, `isBalanced`, and `close`. Since `ThreadCache` now correctly releases the pins on `TimelineFrame`, `isDrained` will eventually become true when all threads have moved to a newer generation or have been closed, allowing `pruneShadow` to remove them and thus allowing the `LoadedGeneration` (and its `ClassLoader`) to be reclaimed.\n\nWait, I should check if `ThreadBridge.clear()` is called anywhere. If a worker thread is terminated but its `ThreadLocal` is not cleared, it might still hold a `ThreadCache` which holds a `WorkerHandle` which holds a pin on a `TimelineFrame`.",
+  "plan": "I will search for usages of `ThreadBridge.clear()` in the codebase.",
+  "commands": [
+    {
+      "keystrokes": "grep -r \"ThreadBridge.clear\" src\n",
+      "duration": 0.5
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "analysis": "The task was to resolve a service crash during long refresh runs in a memory-constrained environment. Investigation revealed a classloader leak in the `textd` service. Specifically, `ThreadCache` was creating new `WorkerHandle` instances during hot reloads without closing the previous ones. Since `WorkerHandle` pins a `TimelineFrame`, and the frame only releases its `LoadedGeneration` (and associated `URLClassLoader`) when all pins are released, the old classloaders were never being garbage collected, eventually leading to a `java.lang.OutOfMemoryError: Metaspace`.\n\nI have modified `src/main/java/io/harbor/textd/core/ThreadCache.java` to ensure that any existing `WorkerHandle` is closed before being replaced. This correctly unpins the old `TimelineFrame`, allowing the system to unload old plugin generations. Verification with a 500-cycle stress test confirmed the fix.",
+  "plan": "The fix has been verified and the code cleaned up. No further actions are required.",
+  "commands": [],
+  "task_complete": true
+}

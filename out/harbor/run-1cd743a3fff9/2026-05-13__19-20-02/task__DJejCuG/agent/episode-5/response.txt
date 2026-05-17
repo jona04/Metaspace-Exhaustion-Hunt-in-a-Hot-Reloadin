@@ -1,0 +1,19 @@
+{
+  "analysis": "The `TextDaemon` uses a `TimelineLedger` to manage revisions and a `ThreadBridge` to manage worker bindings. The `reload` method calls `revisions.install(generation)` and then primes the reload binding. The `processRecord` method gets a `WorkerHandle` from `ThreadBridge.current(revisions)`. Given the `MaxMetaspaceSize` constraint, the issue is likely that old generations (and their class loaders) are not being cleaned up properly.",
+  "plan": "1. Examine `TimelineLedger.java` and `ThreadBridge.java` to see how generations are managed and if they are ever removed.\n2. Examine `ThreadCache.java` (mentioned in the file list) as it likely holds references to worker bindings.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

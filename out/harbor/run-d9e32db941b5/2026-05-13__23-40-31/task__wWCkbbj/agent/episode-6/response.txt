@@ -1,0 +1,18 @@
+{
+  "analysis": "The `TextDaemon` uses a `TimelineLedger` to manage revisions and an `ExecutorService` for workers. In `processRecord`, it calls `ThreadBridge.current(revisions)` to get a `WorkerHandle`. I suspect the leak is in how `TimelineLedger`, `ThreadBridge`, or `WorkerHandle` handle the loaded classes/plugins.",
+  "plan": "I will examine `src/main/java/io/harbor/textd/core/TimelineLedger.java`, `src/main/java/io/harbor/textd/core/ThreadBridge.java`, and `src/main/java/io/harbor/textd/core/ThreadCache.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "analysis": "I've analyzed the `bin/stress` script and `TextDaemon.java`. \n\nObservations:\n1. `bin/stress` sets `-XX:MaxMetaspaceSize=64m`. This is quite small and suggests that the issue might be related to Metaspace exhaustion, likely caused by repeated class loading during 'processor swaps' (hot reloading).\n2. `TextDaemon.java` uses a `TimelineLedger` to manage revisions and `ThreadBridge.current(revisions)` to get a `WorkerHandle` for processing.\n3. The `reload` method calls `revisions.install(generation)`.\n4. If `TimelineLedger` loads new classes (via a new ClassLoader) for each revision and doesn't properly clean up old ones, the Metaspace will eventually fill up, especially with a 64MB limit.",
+  "plan": "1. Examine `TimelineLedger.java` and `ThreadBridge.java` to see how ClassLoaders and 'generations' are handled.\n2. Examine `ThreadCache.java` as it might be holding onto old ClassLoaders.\n3. Run `bin/stress` to confirm it fails and see the error message.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/stress 50\n",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}

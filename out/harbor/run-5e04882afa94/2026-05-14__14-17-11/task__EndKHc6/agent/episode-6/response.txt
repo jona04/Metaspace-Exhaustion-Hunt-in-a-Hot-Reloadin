@@ -1,0 +1,10 @@
+{
+  "analysis": "I've identified a likely leak in `ThreadCache.java`. When `cursorFor` creates a new `WorkerHandle`, it doesn't close the previous one. Each `WorkerHandle` pins a `TimelineFrame`. If a `WorkerHandle` is not closed, the `TimelineFrame`'s pin count will never reach zero, and thus the `LoadedGeneration` (and its `URLClassLoader`) will never be closed.\n\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\n\nShould be:\n\n```java\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\n\nWait, I should also check if there are any other places where `WorkerHandle` is used and not closed.",
+  "plan": "I will first confirm the issue by running the stress test and observing it fail. Then I will apply the fix to `ThreadCache.java`.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 100\n",
+      "duration": 5.0
+    }
+  ]
+}

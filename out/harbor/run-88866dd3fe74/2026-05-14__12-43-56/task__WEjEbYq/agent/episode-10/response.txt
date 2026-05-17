@@ -1,0 +1,10 @@
+{
+  "analysis": "The `bin/stress` script sets `-XX:MaxMetaspaceSize=64m`. This is likely why it fails in CI if there's a leak of class loaders. Each plugin reload creates a new `URLClassLoader`, and if they aren't reclaimed, Metaspace will fill up. It currently runs for 50 cycles by default. I should try running it for more cycles to see it fail.",
+  "plan": "Run `bin/stress 500` to see if it fails with an `OutOfMemoryError: Metaspace`.",
+  "commands": [
+    {
+      "keystrokes": "bin/stress 500\n",
+      "duration": 20.0
+    }
+  ]
+}

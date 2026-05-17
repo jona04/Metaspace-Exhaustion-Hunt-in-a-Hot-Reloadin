@@ -1,0 +1,80 @@
+{
+  "analysis": "The `sed` command worked but made the code a bit messy (the `if (cursor != null)` check inside `if (cursor == null)` is redundant but harmless). More importantly, the `HotReloadStressRunner` does exactly what I thought: it reloads the plugin many times and processes records. The OOM happens because of the leaked `WorkerHandle`s. Now that I've applied the fix (even if messy), let's see if it passes the stress test.",
+  "plan": "I'll run the stress test again with 500 cycles to see if the fix works.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 20.0
+    }
+  ]
+} Berlian: Wait, I should probably clean up `ThreadCache.java` first to be sure it's correct.
+
+Revised plan: Clean up `ThreadCache.java` and then run the stress test.
+
+```java
+package io.harbor.textd.core;
+
+final class ThreadCache implements AutoCloseable {
+    private WorkerHandle cursor;
+
+    WorkerHandle cursorFor(TimelineLedger ledger) {
+        TimelineFrame frame = ledger.current();
+        if (cursor != null && !cursor.matches(frame)) {
+            cursor.close();
+            cursor = null;
+        }
+
+        if (cursor == null) {
+            cursor = new WorkerHandle(frame);
+        }
+
+        return cursor;
+    }
+
+    @Override
+    public void close() {
+        if (cursor != null) {
+            cursor.close();
+            cursor = null;
+        }
+    }
+}
+```
+
+Actually, let's just run the stress test first. If it passes, I'll clean up.
+
+Wait, I just noticed that in the previous output, the `sed` command was:
+`sed -i 's/cursor = new WorkerHandle(frame);/if (cursor != null) cursor.close(); cursor = new WorkerHandle(frame);/g' src/main/java/io/harbor/textd/core/ThreadCache.java`
+And the result was:
+```java
+    WorkerHandle cursorFor(TimelineLedger ledger) {
+        TimelineFrame frame = ledger.current();
+        if (cursor == null) {
+            if (cursor != null) cursor.close(); cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        if (!cursor.matches(frame)) {
+            if (cursor != null) cursor.close(); cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        return cursor;
+    }
+```
+This is correct. In the `if (cursor == null)` block, `cursor` is null, so `if (cursor != null)` is false, nothing happens, then `cursor = new WorkerHandle(frame)` is executed. In the `if (!cursor.matches(frame))` block, `cursor` is not null, so `if (cursor != null)` is true, `cursor.close()` is called, then `cursor = new WorkerHandle(frame)` is executed. It works!
+
+Let's run the stress test.
+
+```json
+{
+  "analysis": "I have applied a fix to `ThreadCache.java` using `sed`. Although the resulting code is slightly redundant, it should correctly close old `WorkerHandle`s and prevent the Metaspace OOM.",
+  "plan": "I will run the stress test with 500 cycles to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 30.0
+    }
+  ]
+}
+```

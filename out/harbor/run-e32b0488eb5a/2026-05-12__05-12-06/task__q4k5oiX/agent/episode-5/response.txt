@@ -1,0 +1,15 @@
+{
+  "analysis": "I've identified the leak. In `ThreadCache.java`, when `cursorFor` detects a revision change, it creates a new `WorkerHandle` without closing the old one:\n\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\n\n`WorkerHandle.close()` calls `frame.unpin()`. `TimelineFrame` likely tracks the number of pins, and it's only 'drained' when the pin count reaches zero. Since `unpin()` is never called for old `WorkerHandle` instances, the `TimelineFrame` objects (and their associated `LoadedGeneration` / ClassLoaders) stay in the `shadow` queue of `TimelineLedger` forever, causing the Metaspace OOM.\n\nAlso, `TextDaemon.java` doesn't seem to call `ThreadBridge.clear()` anywhere, but that might be okay if `ThreadCache` correctly handles the transition between generations.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to call `cursor.close()` when the revision changes.\n2. Verify if `TimelineFrame.java` and `LoadedGeneration.java` need any changes (though the leak seems to be the missing `unpin`).\n3. Run the stress test again to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

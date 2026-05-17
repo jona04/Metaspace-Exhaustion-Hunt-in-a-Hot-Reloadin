@@ -1,0 +1,6 @@
+{
+  "analysis": "I have identified and fixed two separate resource leaks in the `textd` service. \n\nFirst, a leak occurred during the long-running hot-reload process because `ThreadCache` failed to close the old `WorkerHandle` when a new plugin generation was loaded. Since each `WorkerHandle` pins a `TimelineFrame`, which in turn holds a `URLClassLoader`, this led to a Metaspace exhaustion. I fixed this by ensuring the old `cursor` is closed before being replaced.\n\nSecond, the last plugin generation used by worker threads was not being released even after the daemon was closed, because the threads would terminate without calling `unpin()`. I fixed this by updating the `WorkerThreadFactory` in `TextDaemon` to ensure that `ThreadBridge.clear()` is called when a worker thread terminates, which correctly releases any remaining pins.\n\nI have verified these fixes by running the provided stress tests and the full integration suite, confirming that Metaspace is reclaimed and the service remains deterministic and balanced.",
+  "plan": "The task is complete. All tests passed, and the reclamation requirements are met.",
+  "commands": [],
+  "task_complete": true
+}

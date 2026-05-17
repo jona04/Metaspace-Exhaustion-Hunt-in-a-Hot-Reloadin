@@ -1,0 +1,18 @@
+{
+  "analysis": "The analysis was correct. `ThreadCache.java` replaces `cursor` without closing the old one. `WorkerHandle.close()` calls `frame.unpin()`, which is essential for `TimelineFrame` to eventually close the `LoadedGeneration` (and its class loader) when the pin count reaches zero. Since `ThreadCache` doesn't close the old `WorkerHandle`, the pin count never drops, the `LoadedGeneration` stays open, and the Metaspace fills up with classes from old revisions.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before creating a new one.\n2. Run the stress test again to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/build\n",
+      "duration": 2.0
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 10.0
+    }
+  ]
+}

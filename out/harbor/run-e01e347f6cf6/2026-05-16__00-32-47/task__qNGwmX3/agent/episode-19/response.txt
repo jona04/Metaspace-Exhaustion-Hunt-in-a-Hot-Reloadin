@@ -1,0 +1,18 @@
+{
+  "analysis": "Wait, I see something in `TimelineFrame.java`. The initial value of `pins` is 1. When `cool()` is called, it calls `unpin()`, which decrements `pins` to 0. If there are no active pins from workers, this will trigger `closeLoadedGeneration()`. This seems correct. \n\nIn `TextDaemon.close()`:\n1. `revisions.close()` is called.\n   - `TimelineLedger.close()` calls `current.getAndSet(null)` and then `frame.cool()` on the last frame.\n   - `cool()` calls `unpin()`, decrementing pins from 1 to 0 (if no pins).\n2. Worker cleanups call `ThreadBridge.clear()`.\n   - `ThreadBridge.clear()` calls `routeState.close()`.\n   - `ThreadCache.close()` calls `cursor.close()`.\n   - `WorkerHandle.close()` calls `frame.unpin()`.\n\nWait! If a worker has a pinned frame, the pin count was incremented in `WorkerHandle` constructor: `this.frame = frame.pin();`.\nSo if 1 worker is using the frame, `pins` is 2 (1 initial + 1 from worker). \n`revisions.close()` -> `frame.cool()` -> `pins` becomes 1.\n`worker.clear()` -> `cursor.close()` -> `frame.unpin()` -> `pins` becomes 0 -> `closeLoadedGeneration()`.\n\nThis seems correct. Why are classes not unloading? \nMaybe the `URLClassLoader` is not being collected because of some other reference? \nIn `LoadedGeneration.java`:\n```java\n    static LoadedGeneration load(Path pluginJar, long generation) throws Exception {\n        URLClassLoader classLoader = new URLClassLoader(new URL[] {pluginJar.toUri().toURL()}, PluginModuleFactory.class.getClassLoader());\n        Class<?> factoryType = classLoader.loadClass(FACTORY_CLASS);\n        PluginModuleFactory factory = (PluginModuleFactory) factoryType.getDeclaredConstructor().newInstance();\n        return new LoadedGeneration(generation, classLoader, factory.open());\n    }\n```\nThe `classLoader` is passed to the `LoadedGeneration` constructor and stored in a private final field. It is closed in `LoadedGeneration.close()`.\n\nWait, what about the `PluginModule`? `factory.open()` returns a `PluginModule`. Does it hold a reference to the class loader? Usually, yes, because its class was loaded by that class loader.\n\nLet's check `plugin-src/io/harbor/textd/customer/PipelineProcessor.java` and other plugin classes.",
+  "plan": "Examine plugin source code to see if it's doing anything that might keep the class loader alive.",
+  "commands": [
+    {
+      "keystrokes": "ls -R plugin-src\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat plugin-src/io/harbor/textd/customer/PipelineProcessor.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat plugin-src/io/harbor/textd/customer/PipelineStages.java\n",
+      "duration": 0.1
+    }
+  ]
+}

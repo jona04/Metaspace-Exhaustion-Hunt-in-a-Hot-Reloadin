@@ -1,0 +1,18 @@
+{
+  "analysis": "In `ThreadState.java`, there is a `ThreadLocal<RouteState> ROUTES`. This `ThreadLocal` holds onto a `RouteState` for each worker thread. If `RouteState` holds onto old `RouteCursor` or `RevisionFrame` objects, it might be preventing them from being collected. \n\nLooking at `RevisionLedger.java`, it has a `shadow` queue of `RevisionFrame` objects. It prunes them if they are 'drained'. `RevisionFrame.isDrained()` probably checks if there are any active pins.\n\n`RouteCursor` pins a `RevisionFrame` in its constructor and unpins it in its `close()` method. \n\nI need to see `RouteState.java` and `RevisionFrame.java`.",
+  "plan": "1. Examine `RouteState.java` and `RevisionFrame.java`.\n2. Examine `LoadedGeneration.java` to see how the class loader is handled.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/RouteState.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/RevisionFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.1
+    }
+  ]
+}

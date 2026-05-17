@@ -1,0 +1,6 @@
+{
+  "analysis": "I have identified and fixed several resource leaks in the `textd` service. \n1. In `ThreadCache`, old `WorkerHandle` objects were not being closed when a new plugin generation was loaded, causing old `TimelineFrame` pins to be held indefinitely.\n2. In `TextDaemon`, worker threads were not clearing their `ThreadLocal` storage upon shutdown, which meant the last generation's `WorkerHandle` (and thus its `TimelineFrame` pin) was never released.\n3. I implemented a global tracking mechanism in `ThreadBridge` to ensure all `ThreadCache` objects are closed when the daemon shuts down.\n4. I updated `WorkerHandle` and `TimelineFrame` to aggressively release references to the `TextProcessor` and `LoadedGeneration` (and thus the `ClassLoader`) once they are closed.\n\nThe service now successfully passes a 500-cycle stress test with a restricted 64MB Metaspace, confirming that old plugin generations are being correctly reclaimed by the runtime.",
+  "plan": "The task is complete. I have verified the fix with the stress test.",
+  "commands": [],
+  "task_complete": true
+}

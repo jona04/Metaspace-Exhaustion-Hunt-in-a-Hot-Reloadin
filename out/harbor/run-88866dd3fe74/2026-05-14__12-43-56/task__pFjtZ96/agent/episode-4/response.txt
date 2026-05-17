@@ -1,0 +1,10 @@
+{
+  "analysis": "I've found the bug in `ThreadCache.java`:\n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n\nWhen `cursor.matches(frame)` is false, a new `WorkerHandle` is created and assigned to `cursor`, but the old `cursor` is never closed! Since `WorkerHandle.close()` is responsible for unpinning the `TimelineFrame`, the old frame remains pinned forever, preventing it from being closed and its classloader from being garbage collected.\n\nTo fix this, I should call `cursor.close()` before assigning the new `WorkerHandle` to `cursor`.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` when a new one is created.\n2. Run the stress test to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/cursor.close(); cursor = new WorkerHandle(frame);/2' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.2
+    }
+  ]
+}

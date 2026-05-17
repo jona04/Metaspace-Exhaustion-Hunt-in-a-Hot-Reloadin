@@ -1,0 +1,19 @@
+{
+  "analysis": "The project is a Java-based daemon called `textd`. It appears to have a plugin system and supports hot-reloading, as indicated by `HotReloadStressRunner.java` and `HotReloadIntegrationRunner.java`. The task mentions failure during 'long refresh runs' and 'repeated processor swaps', which strongly suggests an issue (likely a memory leak or resource exhaustion) during the hot-reloading of plugins.\n\nKey files identified:\n- `bin/stress`: Likely the script to run the stress test.\n- `src/main/java/io/harbor/textd/core/TextDaemon.java`: The main daemon logic.\n- `src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java`: Likely the entry point for the failing test.\n- `src/main/java/io/harbor/textd/core/ThreadCache.java`: Potential source of leaks if not cleared.\n- `src/main/java/io/harbor/textd/core/LoadedGeneration.java`: Likely represents a version of the loaded plugins.",
+  "plan": "1. Examine the contents of `bin/` to see how to run the stress test.\n2. Attempt to run the stress test to reproduce the failure.\n3. Examine the source code, specifically focusing on how plugins are loaded and unloaded (hot-reloading logic).",
+  "commands": [
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/build\n",
+      "duration": 5.0
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

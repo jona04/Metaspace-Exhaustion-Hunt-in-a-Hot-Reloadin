@@ -1,0 +1,10 @@
+{
+  "analysis": "The `bin/stress` script runs `io.harbor.textd.cli.HotReloadStressRunner` with a limit on Metaspace size (`-XX:MaxMetaspaceSize=64m`). This confirms that the issue is likely a memory leak related to class loading (Metaspace), which happens when old plugin generations (and their class loaders) are not being garbage collected.",
+  "plan": "I'll examine `io.harbor.textd.cli.HotReloadStressRunner` and `io.harbor.textd.core.TextDaemon` to see how plugins are loaded and unloaded.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.5
+    }
+  ]
+}

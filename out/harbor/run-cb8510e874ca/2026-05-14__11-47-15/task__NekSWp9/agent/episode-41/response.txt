@@ -1,0 +1,10 @@
+{
+  "analysis": "Wait! I see another potential issue. `ThreadBridge.current(revisions)` is called inside `processRecord`, which is executed by the worker threads. But `TextDaemon.process(String)` calls `processBatch(List.of(record))`. Does `processBatch` itself use `ThreadBridge`? No, it submits tasks to workers. But wait, what if the main thread *did* call `ThreadBridge.current()` at some point? In `HotReloadStressRunner` and `SessionReplayRunner`, the main thread only calls `daemon.process()` and `daemon.processBatch()`, which both delegate to workers. So the main thread should not have anything in its `ThreadLocal`.",
+  "plan": "Let's check if there's any other way classes can be leaked. What about `LoadedGeneration`? It holds `classLoader` and `module`. `module` is a `CustomerPluginModule`. `CustomerPluginModule` doesn't seem to hold anything. `PipelineProcessor` is created for each request and held by `WorkerHandle`. `WorkerHandle` is held by `ThreadCache`. Everything seems to be covered. Wait! I just thought of something. The `TimelineFrame` itself! It's added to the `shadow` queue in `TimelineLedger`. And `pruneShadow()` is called. If `isBalanced()` is called, it calls `pruneShadow()`. Let's check `isBalanced()` in `TimelineLedger.java` again.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    }
+  ]
+}

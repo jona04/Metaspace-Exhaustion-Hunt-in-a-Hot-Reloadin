@@ -1,0 +1,19 @@
+{
+  "analysis": "The `ThreadCache` holds a reference to `WorkerHandle` in a `ThreadLocal` (via `ThreadBridge`). When `cursorFor` is called, if the current frame doesn't match the one in the `cursor`, it creates a new `WorkerHandle`. Crucially, it **does not call `close()` on the old `cursor`** before replacing it. \n\nLooking at `TimelineLedger.java`, it uses `TimelineFrame::isDrained` to decide when to prune old frames. I need to see `TimelineFrame.java` and `WorkerHandle.java` to understand how they track usage and if `WorkerHandle.close()` is important for 'draining' the frame.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/TimelineFrame.java`.\n2. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java`.\n3. Examine `src/main/java/io/harbor/textd/core/LoadedGeneration.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.2
+    }
+  ],
+  "task_complete": false
+}

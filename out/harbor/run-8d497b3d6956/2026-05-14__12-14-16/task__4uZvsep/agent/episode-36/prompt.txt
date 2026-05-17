@@ -1,0 +1,61 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected after JSON object
+
+New Terminal Output:
+se":0}
+}
+root@c432f645dca5:/workspace/textd# cat > src/main/java/io/harbor/textd/core/TimelineFrame.java <<EOF
+> package io.harbor.textd.core;
+>
+> import io.harbor.textd.api.PluginModule;
+> import java.util.concurrent.atomic.AtomicInteger;
+> import java.util.concurrent.atomic.AtomicBoolean;
+>
+> final class TimelineFrame implements AutoCloseable {
+>     private final LoadedGeneration loadedGeneration;
+>     private final AtomicInteger pins = new AtomicInteger(1);
+>     private final AtomicBoolean closed = new AtomicBoolean(false);
+>
+>     TimelineFrame(LoadedGeneration loadedGeneration) {
+>         this.loadedGeneration = loadedGeneration;
+>     }
+>
+>     TimelineFrame pin() {
+>         pins.incrementAndGet();
+>         return this;
+>     }
+>
+>     long revision() {
+>         return loadedGeneration.generation();
+>     }
+>
+>     PluginModule module() {
+>         return loadedGeneration.module();
+>     }
+>
+>     void cool() {
+>         close();
+>     }
+>
+>     void unpin() {
+>         close();
+>     }
+>
+>     @Override
+>     public void close() {
+>         if (pins.decrementAndGet() == 0) {
+>             if (closed.compareAndSet(false, true)) {
+>                 try {
+>                     loadedGeneration.close();
+>                 } catch (Exception ignored) {
+>                 }
+>             }
+>         }
+>     }
+>
+>     boolean isDrained() {
+>         return closed.get();
+>     }
+> }
+> EOF
+root@c432f645dca5:/workspace/textd#

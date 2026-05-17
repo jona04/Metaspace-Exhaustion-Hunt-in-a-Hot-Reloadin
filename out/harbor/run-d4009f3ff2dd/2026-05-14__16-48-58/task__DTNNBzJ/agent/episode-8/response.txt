@@ -1,0 +1,889 @@
+{
+  "analysis": "I've analyzed the code and found the leak. \n\nIn `ThreadCache.java`:\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\nWhen `cursor` is replaced because it doesn't match the new frame, the old `cursor` is NOT closed. `WorkerHandle.close()` calls `frame.unpin()`. Since it's not closed, the pin count of the old `TimelineFrame` never drops to zero, and thus `LoadedGeneration.close()` is never called, and the `URLClassLoader` is never closed or eligible for GC.\n\nAlso, in `TextDaemon.java`, the `ThreadBridge.clear()` is never called for worker threads. However, the immediate issue is that `cursor` in `ThreadCache` is replaced without being closed.",
+  "plan": "I will fix `ThreadCache.java` to close the old `cursor` before replacing it. I should also check if `ThreadBridge.clear()` should be called anywhere, but fixing `ThreadCache` seems like the primary fix for the leak within the worker threads' lifecycle.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/if (cursor != null) cursor.close(); cursor = new WorkerHandle(frame);/g' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ]
+} Berlian: Wait, I should double check the `sed` command or just rewrite the file to be safe. The first `if (cursor == null)` also sets `cursor`.
+
+Revised plan: Rewrite `ThreadCache.java` with the fix.
+
+```java
+package io.harbor.textd.core;
+
+final class ThreadCache implements AutoCloseable {
+    private WorkerHandle cursor;
+
+    WorkerHandle cursorFor(TimelineLedger ledger) {
+        TimelineFrame frame = ledger.current();
+        if (cursor != null && !cursor.matches(frame)) {
+            cursor.close();
+            cursor = null;
+        }
+
+        if (cursor == null) {
+            cursor = new WorkerHandle(frame);
+        }
+
+        return cursor;
+    }
+
+    @Override
+    public void close() {
+        if (cursor != null) {
+            cursor.close();
+            cursor = null;
+        }
+    }
+}
+```
+
+Wait, let's look at the original `ThreadCache.java` again.
+```java
+    WorkerHandle cursorFor(TimelineLedger ledger) {
+        TimelineFrame frame = ledger.current();
+        if (cursor == null) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        if (!cursor.matches(frame)) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        return cursor;
+    }
+```
+Yes, if `!cursor.matches(frame)`, it just overwrites `cursor` with a new `WorkerHandle`, leaking the old one.
+
+Actually, the `sed` I wrote might have worked but it's risky with multiple occurrences.
+`sed -i 's/cursor = new WorkerHandle(frame);/if (cursor != null) cursor.close(); cursor = new WorkerHandle(frame);/g' src/main/java/io/harbor/textd/core/ThreadCache.java`
+There are two occurrences of `cursor = new WorkerHandle(frame);`.
+The first one is inside `if (cursor == null)`, so `cursor` is already null.
+The second one is inside `if (!cursor.matches(frame))`, where `cursor` is NOT null.
+So the `if (cursor != null)` check in the replacement would handle both correctly.
+
+But let's do a cleaner rewrite.
+
+Wait, I also noticed that `TextDaemon` uses a fixed thread pool.
+```java
+        this.workers = Executors.newFixedThreadPool(workerCount, new WorkerThreadFactory());
+```
+The threads stay alive. `ThreadLocal` in `ThreadBridge` will keep the `ThreadCache` alive for each worker thread.
+When a new generation is installed, `TimelineLedger.install` is called.
+Worker threads, when processing the next record, call `ThreadBridge.current(revisions)`, which calls `cursorFor(revisions)`.
+`cursorFor` sees the revision mismatch and should close the old `WorkerHandle` (unpinning the old frame) and create a new one.
+
+Let's verify if there are any other leaks.
+`TimelineFrame` pins:
+- Initial pin: 1.
+- `WorkerHandle` constructor: pins.
+- `TimelineLedger.install`: calls `previous.cool()`.
+- `cool()` calls `unpin()`.
+- When `unpin()` brings pins to 0 AND `cooled` is true, it closes.
+
+So:
+1. Frame created: pins=1, cooled=false.
+2. `install` next frame: `previous.cool()` -> pins=0, cooled=true -> `closeLoadedGeneration()`.
+Wait! If a `WorkerHandle` was created before `cool()`, pins would be 2.
+Then `cool()` -> pins=1, cooled=true.
+Then when `WorkerHandle.close()` is called -> `unpin()` -> pins=0, cooled=true -> `closeLoadedGeneration()`.
+This seems correct.
+
+The problem is definitely that `WorkerHandle.close()` is never called when the `ThreadCache` switches to a new frame.
+
+Let's apply the fix to `ThreadCache.java`.
+
+Actually, wait. If I just change `ThreadCache.java`, will that be enough?
+The `ThreadLocal` is still there. But `ThreadCache` is reused.
+
+Let's check `src/main/java/io/harbor/textd/core/ThreadBridge.java` again.
+```java
+    static void clear() {
+        ThreadCache routeState = ROUTES.get();
+        routeState.close();
+        ROUTES.remove();
+    }
+```
+`clear()` is never called. But since the threads are reused in a fixed pool, we don't necessarily want to clear the `ThreadLocal` unless the daemon is closing. When the daemon is closing, `workers.shutdownNow()` is called, but that doesn't clean up `ThreadLocal`s in those threads. However, the daemon itself is being closed, so it might not matter unless the process stays alive.
+
+But the task says: "Old plugin generations must be fully reclaimed by the runtime once sessions close."
+And "the daemon through the long run without changing the deterministic text-processing results".
+
+If we have many reloads, we need to make sure old generations are closed. My fix for `ThreadCache` should handle that.
+
+Let's try to apply the fix and run the stress test again.
+
+Wait, I should also check if there's any other place where `WorkerHandle` is leaked.
+In `TextDaemon.processRecord`:
+```java
+    private ProcessingResult processRecord(
+        String record,
+        CountDownLatch ready,
+        CountDownLatch release
+    ) throws Exception {
+        ready.countDown();
+        if (!release.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Request release timed out");
+        }
+
+        WorkerHandle binding = ThreadBridge.current(revisions);
+        return binding.process(record);
+    }
+```
+It gets the `WorkerHandle` from `ThreadBridge.current(revisions)`. The `ThreadBridge` returns the cached handle. It does NOT close it here, which is correct because it's cached in the `ThreadLocal`.
+
+Wait! If `ThreadBridge.current(revisions)` returns the `WorkerHandle`, and we don't know if it's a new one or an old one...
+Actually, `ThreadCache` manages the lifecycle of the `WorkerHandle` it holds.
+
+Let's look at `ThreadCache.cursorFor` again.
+```java
+    WorkerHandle cursorFor(TimelineLedger ledger) {
+        TimelineFrame frame = ledger.current();
+        if (cursor == null) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        if (!cursor.matches(frame)) {
+            cursor = new WorkerHandle(frame); // <--- LEAK HERE
+            return cursor;
+        }
+
+        return cursor;
+    }
+```
+Yes, definitely a leak.
+
+Let's apply the fix.
+
+Wait, I'll check `src/main/java/io/harbor/textd/core/TimelineLedger.java` again.
+```java
+    void install(long revision) throws Exception {
+        TimelineFrame next = new TimelineFrame(LoadedGeneration.load(pluginJar, revision));
+        TimelineFrame previous = current.getAndSet(next);
+        if (previous != null) {
+            shadow.add(previous);
+            previous.cool();
+            pruneShadow();
+        }
+    }
+```
+And `pruneShadow`:
+```java
+    private void pruneShadow() {
+        shadow.removeIf(TimelineFrame::isDrained);
+    }
+```
+And `TimelineFrame.isDrained()`:
+```java
+    boolean isDrained() {
+        return closed.get();
+    }
+```
+And `closed` is set in `closeLoadedGeneration`, which is called when `pins` reaches 0 and `cooled` is true.
+
+Everything else seems to align.
+
+Wait, what about the `TextDaemon.close()`?
+```java
+    @Override
+    public void close() throws Exception {
+        revisions.close();
+        workers.shutdownNow();
+        workers.awaitTermination(5, TimeUnit.SECONDS);
+    }
+```
+When `revisions.close()` is called:
+```java
+    void close() {
+        TimelineFrame frame = current.getAndSet(null);
+        if (frame != null) {
+            shadow.add(frame);
+            frame.cool();
+        }
+        pruneShadow();
+    }
+```
+This will unpin the current frame. But the worker threads might still have it pinned in their `ThreadCache`.
+Since `workers.shutdownNow()` is called, the threads will eventually die. But the `ThreadLocal` won't be cleaned up unless the thread dies. Since they are daemon threads and the process might continue (though in the stress test it probably exits), it's okay. But for a long-running process, we might want to clean up. However, the task is about the long run of the daemon, which I assume is the same daemon instance undergoing many reloads.
+
+If the daemon instance stays alive and we do many `reload(generation)` calls, my fix in `ThreadCache` will allow old generations to be closed.
+
+Let's apply the fix to `ThreadCache.java`.
+
+```java
+cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java
+package io.harbor.textd.core;
+
+final class ThreadCache implements AutoCloseable {
+    private WorkerHandle cursor;
+
+    WorkerHandle cursorFor(TimelineLedger ledger) {
+        TimelineFrame frame = ledger.current();
+        if (cursor != null && !cursor.matches(frame)) {
+            cursor.close();
+            cursor = null;
+        }
+
+        if (cursor == null) {
+            cursor = new WorkerHandle(frame);
+        }
+
+        return cursor;
+    }
+
+    @Override
+    public void close() {
+        if (cursor != null) {
+            cursor.close();
+            cursor = null;
+        }
+    }
+}
+EOF
+```
+
+Wait, I should check if I need to import anything. No, it's in the same package.
+
+Wait, I'll use `sed` carefully instead of `cat` to avoid missing anything if I misread the file. But I've seen the whole file.
+
+Let's double check `ThreadCache.java` original content.
+```java
+package io.harbor.textd.core;
+
+final class ThreadCache implements AutoCloseable {
+    private WorkerHandle cursor;
+
+    WorkerHandle cursorFor(TimelineLedger ledger) {
+        TimelineFrame frame = ledger.current();
+        if (cursor == null) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        if (!cursor.matches(frame)) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        return cursor;
+    }
+
+    @Override
+    public void close() {
+        if (cursor != null) {
+            cursor.close();
+            cursor = null;
+        }
+    }
+}
+```
+Yes, my rewrite is equivalent but fixed.
+
+One more thing. `LoadedGeneration.load` uses `URLClassLoader`.
+```java
+    static LoadedGeneration load(Path pluginJar, long generation) throws Exception {
+        URLClassLoader classLoader = new URLClassLoader(new URL[] {pluginJar.toUri().toURL()}, PluginModuleFactory.class.getClassLoader());
+        Class<?> factoryType = classLoader.loadClass(FACTORY_CLASS);
+        PluginModuleFactory factory = (PluginModuleFactory) factoryType.getDeclaredConstructor().newInstance();
+        return new LoadedGeneration(generation, classLoader, factory.open());
+    }
+```
+The parent class loader is `PluginModuleFactory.class.getClassLoader()`. This is correct.
+
+Now, let's look at `TimelineFrame.unpin()` again.
+```java
+    void unpin() {
+        int remaining = pins.decrementAndGet();
+        if (remaining < 0) {
+            throw new IllegalStateException("Pin count underflow for revision " + revision());
+        }
+        if (remaining == 0 && cooled.get()) {
+            closeLoadedGeneration();
+        }
+    }
+```
+And `cool()`:
+```java
+    void cool() {
+        if (cooled.compareAndSet(false, true)) {
+            unpin();
+        }
+    }
+```
+Is there a race condition?
+Suppose `pins` is 1 and `cooled` is false.
+Thread A calls `unpin()` (from `WorkerHandle.close()`): `pins` becomes 0. `remaining == 0` is true, but `cooled.get()` is false. Nothing happens.
+Then Thread B calls `cool()`: `cooled` becomes true. Calls `unpin()`. `pins` becomes -1. EXCEPTION!
+
+Wait, let's re-examine this.
+The initial `pins` is 1. This represents the "current" reference in `TimelineLedger`.
+When `install` replaces it, it calls `previous.cool()`.
+`cool()` calls `unpin()`.
+
+If no `WorkerHandle` exists, `pins` is 1. `cool()` -> `unpin()` -> `pins` becomes 0. `remaining == 0 && cooled.get()` is true. `closeLoadedGeneration()` is called. Correct.
+
+If one `WorkerHandle` exists, `pins` is 2.
+- If `cool()` happens first: `pins` becomes 1. `cooled` is true. `remaining == 0` is false.
+- Then `WorkerHandle.close()` calls `unpin()`: `pins` becomes 0. `remaining == 0` is true. `cooled.get()` is true. `closeLoadedGeneration()` is called. Correct.
+
+- If `WorkerHandle.close()` happens first: `pins` becomes 1. `cooled` is false. `remaining == 0` is true. `cooled.get()` is false.
+- Then `cool()` calls `unpin()`: `pins` becomes 0. `remaining == 0` is true. `cooled.get()` is true. `closeLoadedGeneration()` is called. Correct.
+
+Wait, what if `unpin()` is called and `remaining` is 0 but `cooled` is false, and then `cool()` is called?
+In `unpin()`:
+```java
+        if (remaining == 0 && cooled.get()) {
+            closeLoadedGeneration();
+        }
+```
+If `remaining` is 0 and `cooled.get()` is false, `closeLoadedGeneration()` is NOT called.
+Then `cool()` is called:
+```java
+    void cool() {
+        if (cooled.compareAndSet(false, true)) {
+            unpin();
+        }
+    }
+```
+It calls `unpin()` again! And `pins.decrementAndGet()` will make `pins` -1.
+
+Yes, there is a bug in `TimelineFrame.java` too!
+
+Wait, let's re-read `TimelineFrame.unpin()`.
+```java
+    void unpin() {
+        int remaining = pins.decrementAndGet();
+        if (remaining < 0) {
+            throw new IllegalStateException("Pin count underflow for revision " + revision());
+        }
+        if (remaining == 0 && cooled.get()) {
+            closeLoadedGeneration();
+        }
+    }
+```
+If `pins` was 1 (only the ledger's reference), and `WorkerHandle` was already closed (or never created).
+1. `WorkerHandle.close()` (if it existed) calls `unpin()`. `pins` becomes 0. `remaining` is 0. `cooled` is false.
+2. `TimelineLedger` calls `cool()`. `cooled` becomes true. `cool()` calls `unpin()`.
+3. `unpin()` calls `pins.decrementAndGet()`. `pins` was 0, now it becomes -1. **BOOM**.
+
+So `unpin` should not be called in both places, or it should be handled differently.
+
+Actually, the initial pin of 1 is for the ledger. When the ledger is done with it, it calls `cool()`.
+If we want to use `unpin()` in both places, we need to make sure `pins` doesn't go below 0 and that we only close when it's both cooled and pins are 0.
+
+Wait, if I change `cool()` to:
+```java
+    void cool() {
+        if (cooled.compareAndSet(false, true)) {
+            if (pins.get() == 0) {
+                closeLoadedGeneration();
+            }
+        }
+    }
+```
+And `unpin()` to:
+```java
+    void unpin() {
+        int remaining = pins.decrementAndGet();
+        if (remaining == 0 && cooled.get()) {
+            closeLoadedGeneration();
+        }
+    }
+```
+But `pins.decrementAndGet()` still happens in both.
+
+Actually, the logic should be:
+The ledger's reference is just another pin. When the ledger is done with it, it unpins it.
+So `cool()` should just be:
+```java
+    void cool() {
+        if (cooled.compareAndSet(false, true)) {
+            unpin();
+        }
+    }
+```
+This is what it currently is. But the problem is that `unpin` is called when `WorkerHandle` is closed.
+
+If `WorkerHandle` is created, it calls `pin()`, which increments `pins`.
+If `pins` starts at 1.
+`WorkerHandle` created -> `pins` = 2.
+`WorkerHandle.close()` -> `unpin()` -> `pins` = 1.
+`ledger.cool()` -> `unpin()` -> `pins` = 0.
+This works.
+
+If `WorkerHandle` is NOT created.
+`pins` = 1.
+`ledger.cool()` -> `unpin()` -> `pins` = 0.
+This works.
+
+Wait, where did I see the problem?
+Ah, if `WorkerHandle` is created and then the ledger calls `cool()` and THEN `WorkerHandle` is closed.
+`pins` = 1.
+`WorkerHandle` created -> `pins` = 2.
+`ledger.cool()` -> `unpin()` -> `pins` = 1.
+`WorkerHandle.close()` -> `unpin()` -> `pins` = 0.
+This also works!
+
+So why did I think there was a problem?
+"If `WorkerHandle.close()` happens first: `pins` becomes 1. `cooled` is false. `remaining == 0` is false."
+Wait, if `pins` was 2 and `unpin()` is called, `remaining` is 1. Correct.
+
+Is there any case where `pins` becomes 0 but `cooled` is still false?
+Yes, if `pins` was 1 and `WorkerHandle.close()` is called. But `WorkerHandle` increments `pins` when it's created!
+So `pins` would be 2.
+
+Wait, `WorkerHandle` constructor:
+```java
+    WorkerHandle(TimelineFrame frame) {
+        this.frame = frame.pin();
+        this.revision = frame.revision();
+        this.processor = frame.module().processorFor(revision);
+    }
+```
+`frame.pin()`:
+```java
+    TimelineFrame pin() {
+        while (true) {
+            int current = pins.get();
+            if (current == 0) {
+                throw new IllegalStateException("Revision " + revision() + " is already closed");
+            }
+            if (pins.compareAndSet(current, current + 1)) {
+                return this;
+            }
+        }
+    }
+```
+So if `pins` was 1, it becomes 2.
+
+Is it possible for `WorkerHandle` to be created for a frame that has already been cooled?
+Yes. `ledger.current()` returns the current frame. If another thread calls `install` just after that, the frame becomes "previous" and `cool()` is called on it. But the first thread still has a reference to it and calls `pin()`.
+If `cool()` already finished and `pins` went from 1 to 0, then `pin()` will throw `IllegalStateException`.
+But `install` puts the previous frame in `shadow` before calling `cool()`.
+
+Wait, let's look at `TimelineLedger.install`:
+```java
+    void install(long revision) throws Exception {
+        TimelineFrame next = new TimelineFrame(LoadedGeneration.load(pluginJar, revision));
+        TimelineFrame previous = current.getAndSet(next);
+        if (previous != null) {
+            shadow.add(previous);
+            previous.cool();
+            pruneShadow();
+        }
+    }
+```
+If Thread A calls `ledger.current()`:
+```java
+    TimelineFrame current() {
+        TimelineFrame frame = current.get();
+        // ...
+        return frame;
+    }
+```
+It gets the frame.
+Then Thread B calls `install()`. It replaces the frame and calls `previous.cool()`.
+If Thread A hasn't called `pin()` yet, `pins` is 1.
+Thread B calls `cool()` -> `unpin()` -> `pins` becomes 0. `cooled` becomes true. `closeLoadedGeneration()` is called.
+Then Thread A calls `frame.pin()`. `pins.get()` is 0. **BOOM!** `IllegalStateException`.
+
+Is this a problem?
+The `TextDaemon.processRecord` calls `ThreadBridge.current(revisions)`, which calls `ThreadCache.cursorFor(revisions)`.
+`cursorFor` calls `ledger.current()`, then `new WorkerHandle(frame)`, which calls `frame.pin()`.
+If an `install` happens between `ledger.current()` and `frame.pin()`, it could throw.
+
+But `TextDaemon` seems to be designed to handle reloads while processing.
+
+Anyway, the OOM is about Metaspace, which means classes are not being unloaded. This confirms that `LoadedGeneration.close()` is not being called, or the `URLClassLoader` is still referenced.
+
+My fix for `ThreadCache` addresses the leak of `WorkerHandle` objects, which in turn keep `TimelineFrame` pins above 0.
+
+Wait, I should also check `src/main/java/io/harbor/textd/core/ThreadBridge.java` again.
+```java
+final class ThreadBridge {
+    private static final ThreadLocal<ThreadCache> ROUTES = ThreadLocal.withInitial(ThreadCache::new);
+    // ...
+```
+Each worker thread has its own `ThreadCache`. Each `ThreadCache` holds one `WorkerHandle`.
+When a reload occurs, the next time a worker thread processes a record, it will see the new revision, and it SHOULD close the old `WorkerHandle` and create a new one.
+Without my fix, it just creates a new one and forgets the old one, leaving it pinned.
+With 4 worker threads, each reload leaks 4 `WorkerHandle`s (one per thread), each keeping an old `TimelineFrame` pinned.
+This perfectly explains the Metaspace OOM.
+
+Wait, I just noticed something else.
+In `TimelineFrame.java`:
+```java
+    private void closeLoadedGeneration() {
+        if (closed.compareAndSet(false, true)) {
+            try {
+                loadedGeneration.close();
+            } catch (Exception exception) {
+                throw new IllegalStateException("Unable to close revision " + revision(), exception);
+            }
+        }
+    }
+```
+And `LoadedGeneration.close()`:
+```java
+    @Override
+    public void close() throws Exception {
+        module.close();
+        classLoader.close();
+    }
+```
+This looks correct.
+
+Let's apply the fix to `ThreadCache.java`.
+
+Actually, wait! Is there any other place where `WorkerHandle` is created?
+Only in `ThreadCache.cursorFor`.
+
+Wait, what about `TimelineLedger.close()`?
+```java
+    void close() {
+        TimelineFrame frame = current.getAndSet(null);
+        if (frame != null) {
+            shadow.add(frame);
+            frame.cool();
+        }
+        pruneShadow();
+    }
+```
+This unpins the current frame. But the worker threads still have their `WorkerHandle`s in their `ThreadLocal<ThreadCache>`.
+If the daemon is closed, we should probably clear the `ThreadLocal`.
+However, `TextDaemon.close()` calls `workers.shutdownNow()`. This will eventually terminate the worker threads, which will allow the `ThreadLocal` values to be GC'd, and since `ThreadCache` doesn't have a `finalize` method (and we shouldn't rely on it anyway), the `WorkerHandle` objects will be GC'd, but their `close()` method (which unpins the frame) will NOT be called unless something calls it.
+
+But if the threads are terminated, the `URLClassLoader` should eventually be eligible for GC anyway, provided no other references exist. But it's better to be explicit.
+
+Actually, the problem described is about "long refresh run", which means the daemon is running and being reloaded many times. In this case, the worker threads stay alive.
+
+So my fix in `ThreadCache.cursorFor` is definitely needed.
+
+Let's apply it.
+
+```json
+{
+  "analysis": "The Metaspace OOM is caused by old plugin class loaders not being unloaded. Analysis of the code reveals that `ThreadCache` leaks `WorkerHandle` objects when a new plugin generation is installed. Each `WorkerHandle` holds a pin on a `TimelineFrame`, and a frame is only closed when its pin count reaches zero. Since the old `WorkerHandle` is never closed, the pin count never drops, and the class loader is never closed.",
+  "plan": "I will modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to ensure that any existing `WorkerHandle` is closed before being replaced with a new one when a revision mismatch is detected.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor != null && !cursor.matches(frame)) {\n            cursor.close();\n            cursor = null;\n        }\n\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.1
+    }
+  ]
+}
+```
+
+Wait, I should also check if `TimelineFrame.java` needs a fix for the potential `IllegalStateException` I found, although it might not be the cause of the OOM. The task says "Get the daemon through the long run without changing the deterministic text-processing results". If the `IllegalStateException` is possible, it might crash the long run.
+
+Actually, let's look at `TimelineFrame.pin()` again.
+```java
+    TimelineFrame pin() {
+        while (true) {
+            int current = pins.get();
+            if (current == 0) {
+                throw new IllegalStateException("Revision " + revision() + " is already closed");
+            }
+            if (pins.compareAndSet(current, current + 1)) {
+                return this;
+            }
+        }
+    }
+```
+If this exception is thrown, it would crash the worker thread, which might be why the daemon "falls over".
+
+How to fix it?
+The frame should not be closed until we are sure no more pins can be taken.
+But currently, `ledger.current()` returns a frame, and then we try to pin it.
+If the ledger has already moved to a new frame and called `cool()` on the old one, and `cool()` has already reduced the pin count to 0, then `pin()` fails.
+
+A better way would be to pin the frame while we still hold a reference that is guaranteed to be pinned.
+In `TimelineLedger`:
+```java
+    TimelineFrame current() {
+        return current.get().pin();
+    }
+```
+But `current.get()` might be null during close. And we'd need to change the call site.
+
+Actually, `TimelineFrame` starts with `pins = 1`. This 1 is the ledger's pin.
+As long as it's the `current` frame in the ledger, `pins` will be at least 1.
+If we pin it while it's still the `current` frame, it will succeed.
+
+```java
+    TimelineFrame current() {
+        while (true) {
+            TimelineFrame frame = current.get();
+            if (frame == null) {
+                throw new IllegalStateException("No plugin generation is loaded");
+            }
+            try {
+                return frame.pin();
+            } catch (IllegalStateException e) {
+                // frame was closed just after we got it, try again
+            }
+        }
+    }
+```
+But `WorkerHandle` also calls `pin()`.
+
+Actually, if `ThreadCache.cursorFor` calls `ledger.current()`, and `ledger.current()` returns a pinned frame, then `WorkerHandle` doesn't need to pin it again, OR it's safe to pin it again.
+
+Wait, the current `TimelineLedger.current()` does NOT pin.
+```java
+    TimelineFrame current() {
+        TimelineFrame frame = current.get();
+        if (frame == null) {
+            throw new IllegalStateException("No plugin generation is loaded");
+        }
+        return frame;
+    }
+```
+If we change it to return a pinned frame:
+```java
+    TimelineFrame current() {
+        while (true) {
+            TimelineFrame frame = current.get();
+            if (frame == null) {
+                throw new IllegalStateException("No plugin generation is loaded");
+            }
+            try {
+                frame.pin();
+                return frame;
+            } catch (IllegalStateException e) {
+                // Try again
+            }
+        }
+    }
+```
+Then `WorkerHandle` would receive a pinned frame.
+Original `WorkerHandle` constructor:
+```java
+    WorkerHandle(TimelineFrame frame) {
+        this.frame = frame.pin();
+        // ...
+    }
+```
+If `ledger.current()` returns a pinned frame, then `WorkerHandle` pins it again (pins=2) and we have to remember to unpin the one we got from `ledger.current()`.
+
+Actually, a simpler fix is to make sure `pin()` only fails if it's already closed, and `cool()` only unpins but doesn't close if there are other pins. Wait, that's already what it does. The problem is `cool()` being called when `pins` is 1 and no other pins exist.
+
+Actually, the `IllegalStateException` in `pin()` is only a problem if we can't get a valid frame. But we can always get the *new* current frame.
+
+However, the OOM is the main issue. Let's fix the OOM first and see if it passes the stress test.
+
+Wait, I should also check `src/main/java/io/harbor/textd/core/TimelineFrame.java` for the bug I found:
+```java
+    void unpin() {
+        int remaining = pins.decrementAndGet();
+        if (remaining < 0) {
+            throw new IllegalStateException("Pin count underflow for revision " + revision());
+        }
+        if (remaining == 0 && cooled.get()) {
+            closeLoadedGeneration();
+        }
+    }
+```
+If `pins` was 1, `unpin()` makes it 0. If `cooled` is false, it stays 0.
+Then `cool()` is called:
+```java
+    void cool() {
+        if (cooled.compareAndSet(false, true)) {
+            unpin();
+        }
+    }
+```
+It calls `unpin()` again. `pins` becomes -1. **BOOM**.
+
+Yes, this is a real bug.
+To fix it, `unpin` should not be called in `cool()` if we want to support this logic, or we should manage pins more carefully.
+
+Actually, the standard way to do this is:
+`cool()` marks it as cooled and then calls `unpin()`.
+`unpin()` decrements and if it's 0 AND cooled, closes.
+This is exactly what it does.
+The problem is that `pins` should stay at least 1 until `cool()` is called.
+And `WorkerHandle` should increment it.
+So if `pins` is 1 (ledger), and a `WorkerHandle` is created, `pins` becomes 2.
+When `WorkerHandle` is closed, `pins` becomes 1.
+When `cool()` is called, `pins` becomes 0.
+This is all fine.
+
+The ONLY way `pins` becomes 0 before `cool()` is called is if `unpin()` is called more times than `pin()` was called.
+In the original code, where is `unpin()` called?
+1. In `cool()` (once, because of `compareAndSet`).
+2. In `WorkerHandle.close()`.
+
+`WorkerHandle` constructor calls `pin()`.
+So every call to `WorkerHandle.close()` is matched by a call to `pin()`.
+So the only way `pins` can go below 1 before `cool()` is called is if `WorkerHandle.close()` is called without a corresponding `pin()`, or more times. But `WorkerHandle` calls `pin()` once and `close()` calls `unpin()` once.
+
+Wait! In my proposed fix for `ThreadCache.java`:
+```java
+        if (cursor != null && !cursor.matches(frame)) {
+            cursor.close();
+            cursor = null;
+        }
+```
+This calls `cursor.close()`, which calls `frame.unpin()`. This is correct.
+
+What if `cursor.close()` is called multiple times?
+`WorkerHandle.close()`:
+```java
+    @Override
+    public void close() {
+        frame.unpin();
+    }
+```
+If `close()` is called twice, `unpin()` is called twice.
+In `ThreadCache`, I set `cursor = null` after calling `close()`, so it won't be called again from there.
+But `ThreadCache` itself is `AutoCloseable`.
+```java
+    @Override
+    public void close() {
+        if (cursor != null) {
+            cursor.close();
+            cursor = null;
+        }
+    }
+```
+This also sets `cursor = null`.
+
+So `WorkerHandle.close()` should only be called once.
+
+Wait, I see another potential issue in `WorkerHandle.java`.
+```java
+    @Override
+    public void close() {
+        frame.unpin();
+    }
+```
+It doesn't protect against multiple calls to `close()`. While `ThreadCache` seems to handle it, it's good practice.
+
+But let's look at `TimelineFrame.unpin()` again.
+The only way `remaining < 0` is if `unpin()` is called more times than `pin()` was called (including the initial pin).
+
+Actually, I think the logic in `TimelineFrame` is mostly fine, provided `pin()` and `unpin()` are balanced.
+
+The real issue is the leak in `ThreadCache`.
+
+Let's apply the fix for `ThreadCache` first.
+
+Wait, I should check if there's any other file I should look at.
+`src/main/java/io/harbor/textd/core/TimelineLedger.java`
+`src/main/java/io/harbor/textd/core/TimelineFrame.java`
+`src/main/java/io/harbor/textd/core/WorkerHandle.java`
+`src/main/java/io/harbor/textd/core/TextDaemon.java`
+`src/main/java/io/harbor/textd/core/ThreadBridge.java`
+`src/main/java/io/harbor/textd/core/ThreadCache.java`
+
+I've looked at all of them.
+
+Let's try to apply the fix to `ThreadCache.java` and then run the stress test.
+
+Wait, I'll also check `src/main/java/io/harbor/textd/core/TimelineFrame.java` again.
+Is it possible that `closeLoadedGeneration()` is called but the `URLClassLoader` is still not GC'd?
+```java
+    private void closeLoadedGeneration() {
+        if (closed.compareAndSet(false, true)) {
+            try {
+                loadedGeneration.close();
+            } catch (Exception exception) {
+                throw new IllegalStateException("Unable to close revision " + revision(), exception);
+            }
+        }
+    }
+```
+If `loadedGeneration.close()` is called, it calls `classLoader.close()`. This should close the jar file and make the classes eligible for GC, provided there are no other references to the classes or the class loader.
+The references to classes would be in `WorkerHandle.processor`.
+But `WorkerHandle` is closed and its reference in `ThreadCache` is cleared.
+The `processor` is a `TextProcessor` which is loaded by the plugin's class loader.
+As long as the `WorkerHandle` is alive, the `processor` is alive, and so is the class loader.
+By closing the `WorkerHandle` and clearing the reference in `ThreadCache`, we allow the `processor` and the class loader to be GC'd.
+
+So the fix in `ThreadCache` is indeed the key.
+
+Let's apply it.
+
+Wait, I should also consider if `TimelineFrame`'s `pins` should be an `AtomicInteger` initialized to 1. Yes, it is.
+
+One more check on `TimelineFrame.unpin()`:
+```java
+    void unpin() {
+        int remaining = pins.decrementAndGet();
+        if (remaining < 0) {
+            throw new IllegalStateException("Pin count underflow for revision " + revision());
+        }
+        if (remaining == 0 && cooled.get()) {
+            closeLoadedGeneration();
+        }
+    }
+```
+If `cooled` is true, and `remaining` becomes 0, it closes.
+If `cooled` is false, and `remaining` becomes 0, it doesn't close.
+Then when `cool()` is called, it calls `unpin()`, which will make `remaining` -1. **YES! THIS IS A BUG!**
+
+If `pins` is 1 and `unpin()` is called, `remaining` is 0. If `cooled` is false, it doesn't close.
+Then `cool()` calls `unpin()`, `pins.decrementAndGet()` makes it -1.
+
+Wait, when can `unpin()` be called when `pins` is 1 and `cooled` is false?
+Only if `WorkerHandle.close()` is called and `pins` was 1. But `WorkerHandle` constructor calls `pin()`, so `pins` would have been at least 2.
+Wait, if `pins` was 1, and `WorkerHandle` is created, `pins` becomes 2.
+If `WorkerHandle.close()` is called, `pins` becomes 1.
+Then `cool()` is called, `pins` becomes 0. Correct.
+
+But what if `cool()` is called FIRST?
+`pins` was 1. `cool()` calls `unpin()`. `pins` becomes 0. `cooled` is true. `closeLoadedGeneration()` is called.
+Now `WorkerHandle` constructor calls `pin()`.
+`pin()` sees `pins.get() == 0` and throws `IllegalStateException`.
+This is what I found earlier.
+
+Wait, but what if `pin()` was called before `cool()`?
+`pins` was 1. `WorkerHandle` calls `pin()`. `pins` becomes 2.
+`cool()` calls `unpin()`. `pins` becomes 1. `cooled` is true. `remaining` is 1, so no close.
+Then `WorkerHandle.close()` calls `unpin()`. `pins` becomes 0. `remaining` is 0 and `cooled` is true. `closeLoadedGeneration()` is called. Correct.
+
+So the only problematic case is when `pin()` is called after `pins` has already reached 0.
+And this can happen if `ledger.current()` returns a frame, and before `pin()` is called, `install()` is called and `cool()` completes.
+
+But back to the OOM. The OOM is because `unpin()` is NOT called when it should be.
+My fix for `ThreadCache` handles that.
+
+Is there any other place where `unpin` might be missed?
+No, the only place that pins is `WorkerHandle` and the initial pin.
+The only place that unpins is `WorkerHandle.close()` and `TimelineFrame.cool()`.
+
+Wait, let's look at `TimelineLedger.close()`:
+```java
+    void close() {
+        TimelineFrame frame = current.getAndSet(null);
+        if (frame != null) {
+            shadow.add(frame);
+            frame.cool();
+        }
+        pruneShadow();
+    }
+```
+If the daemon is closed, `current` is set to null.
+The worker threads might still have a `WorkerHandle` in their `ThreadLocal`.
+But the stress test doesn't seem to close the daemon and then keep the process alive. It just runs reloads.
+
+Wait, I should check `HotReloadStressRunner.java` to see what it does.
+```json
+{
+  "analysis": "I've identified a leak in `ThreadCache.java` where old `WorkerHandle` objects are not closed when a new generation is loaded. I also suspect a potential issue in `TimelineFrame.java` regarding the pin count logic, but the `ThreadCache` leak is the most likely cause of the Metaspace OOM.",
+  "plan": "I will examine `src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java` to understand the test better, then I will apply the fix to `ThreadCache.java` and possibly `TimelineFrame.java` if needed.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.1
+    }
+  ]
+}
+```

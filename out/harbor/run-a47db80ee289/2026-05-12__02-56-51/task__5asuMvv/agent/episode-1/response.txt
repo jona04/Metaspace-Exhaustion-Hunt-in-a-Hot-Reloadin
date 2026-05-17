@@ -1,0 +1,15 @@
+{
+  "analysis": "The project structure is now clear. It's a Java project using a plugin-based architecture. \n- `src/main/java/io/harbor/textd/core` contains the core logic: `TextDaemon`, `GenerationRegistry`, `LoadedGeneration`, and `GenerationLease`. These likely manage the lifecycle and 'hot reload' functionality.\n- `src/main/java/io/harbor/textd/cli` contains stress and integration runners (`HotReloadStressRunner`, `HotReloadLifecycleProbe`).\n- `bin/` contains scripts to run these tests.\n\nThe task description mentions the 'soak' keeps dying during repeated refreshes. The 'soak' likely refers to `bin/stress` or `HotReloadStressRunner`.",
+  "plan": "1. Examine the `bin/stress` script to see how it's invoked.\n2. Run the stress test to reproduce the failure.\n3. Examine `GenerationRegistry.java` and `LoadedGeneration.java` to understand how older generations are retired and how new ones are swapped in, as this is the likely source of a lifecycle leak or crash.",
+  "commands": [
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat bin/build\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

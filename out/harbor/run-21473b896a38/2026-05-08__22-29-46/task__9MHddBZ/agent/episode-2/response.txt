@@ -1,0 +1,19 @@
+{
+  "analysis": "I've identified a major red flag in `WorkerState.java`. \n\n```java\n    static Scope attach(Object module) {\n        ACTIVE_MODULES.get().push(module);\n        return new Scope();\n    }\n\n    static final class Scope implements AutoCloseable {\n        @Override\n        public void close() {\n        }\n    }\n```\n\nThe `attach` method pushes a `module` (which likely belongs to a plugin's `ClassLoader`) onto a `ThreadLocal` stack, but the `Scope.close()` method is empty! This means the module is never popped from the stack. Since the worker threads are reused (`Executors.newFixedThreadPool`), each worker thread's `ThreadLocal` will keep accumulating references to every `PluginModule` from every generation it has ever processed. This prevents the `ClassLoader` from being garbage collected, leading to a Metaspace leak.",
+  "plan": "1. Verify this by looking at `LoadedGeneration.java` to see how it loads classes.\n2. Run the stress test to confirm the Metaspace leak.\n3. Fix `WorkerState.java` by implementing `pop()` in `Scope.close()`.\n4. Run the stress test again to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/build\n",
+      "duration": 2.0
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

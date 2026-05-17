@@ -1,0 +1,15 @@
+{
+  "analysis": "In `TimelineLedger.java`, when a new revision is installed, the previous `TimelineFrame` is added to a `shadow` queue and `cool()` is called. `pruneShadow()` removes frames that are 'drained'.\n\nIn `ThreadBridge.java`, there's a `ThreadLocal<ThreadCache>`. `current(ledger)` calls `ROUTES.get().cursorFor(ledger)`.\n\nIf `ThreadCache` keeps references to old `TimelineFrame`s or `WorkerHandle`s, and those `WorkerHandle`s are tied to a specific classloader (which they likely are, since they process text using the plugin), then the classloader will never be GC'd as long as the worker thread is alive.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/ThreadCache.java`.\n2. Examine `src/main/java/io/harbor/textd/core/TimelineFrame.java` and `src/main/java/io/harbor/textd/core/WorkerHandle.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

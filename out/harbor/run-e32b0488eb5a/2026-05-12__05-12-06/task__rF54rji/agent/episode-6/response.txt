@@ -1,0 +1,11 @@
+{
+  "analysis": "`ThreadCache` holds a single `WorkerHandle`. When `cursorFor` is called, it checks if the current `WorkerHandle` matches the current `TimelineFrame`. If not, it replaces it with a new one. This seems okay for a single thread, as it only holds one `WorkerHandle` at a time. However, the old `WorkerHandle` is not closed before being replaced. If `WorkerHandle` holds resources or references to ClassLoaders, this could be a problem. But wait, it's just being overwritten. The old `WorkerHandle` should be eligible for GC, *unless* something else is holding onto it.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java` to see if it holds references to ClassLoaders or other resources.\n2. Examine `src/main/java/io/harbor/textd/core/TimelineLedger.java` and `TimelineFrame.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

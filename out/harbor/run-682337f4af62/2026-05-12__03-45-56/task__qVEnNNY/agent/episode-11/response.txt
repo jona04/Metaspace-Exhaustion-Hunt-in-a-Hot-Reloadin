@@ -1,0 +1,6 @@
+{
+  "analysis": "The task was to fix a failure in the `textd` deploy soak test where the daemon would run out of Metaspace during repeated processor swaps. Investigation revealed that `RouteState` was not closing its `RouteCursor` when a new revision was loaded. Since `RouteCursor` pins the `RevisionFrame`, and `RevisionFrame` holds onto the `LoadedGeneration` (and its ClassLoader), the old ClassLoaders were never being released, leading to a Metaspace leak. I modified `RouteState.java` to properly close the old cursor before replacing it. Subsequent runs of the stress test and the full integration suite passed successfully.",
+  "plan": "The task is complete. I have verified the fix with the provided stress test and integration suite.",
+  "commands": [],
+  "task_complete": true
+}

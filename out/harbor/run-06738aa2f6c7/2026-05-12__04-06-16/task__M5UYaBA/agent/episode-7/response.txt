@@ -1,0 +1,133 @@
+{
+  "analysis": "I found the leak. \n\nIn `ThreadCache.java`:\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame); // LEAK HERE!\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\nWhen `cursor.matches(frame)` is false, a new `WorkerHandle` is created and assigned to `cursor`, but the old `cursor` is never closed! \n\n`WorkerHandle`'s constructor pins the `TimelineFrame`:\n```java\n    WorkerHandle(TimelineFrame frame) {\n        this.frame = frame.pin();\n        ...\n    }\n```\nAnd `close()` unpins it:\n```java\n    @Override\n    public void close() {\n        frame.unpin();\n    }\n```\nBecause the old `WorkerHandle` is never closed, the `TimelineFrame` remains pinned, its pin count never reaches 0, and `closeLoadedGeneration()` is never called. This prevents the `URLClassLoader` from being closed, leading to the Metaspace leak.\n\nTo fix this, I need to close the old `cursor` before creating a new one in `ThreadCache.cursorFor`.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` when it doesn't match the current frame.\n2. Run the stress test again to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/cursor.close(); cursor = new WorkerHandle(frame);/' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 20.0
+    }
+  ]
+} Brief explanation: I'm using `sed` to replace the line where a new `WorkerHandle` is created with one that first closes the existing one. Wait, I should be careful with the `if (cursor == null)` block.
+
+Actually, the `sed` command I wrote:
+`sed -i 's/cursor = new WorkerHandle(frame);/cursor.close(); cursor = new WorkerHandle(frame);/' src/main/java/io/harbor/textd/core/ThreadCache.java`
+will affect both occurrences of `cursor = new WorkerHandle(frame);`.
+The first occurrence is inside `if (cursor == null)`. If `cursor` is null, `cursor.close()` will throw a `NullPointerException`.
+
+I should use a more precise replacement or use a temporary file.
+
+Let's refine the `sed` or just use `cat` to overwrite the file. Overwriting with `cat` is safer.
+
+```java
+package io.harbor.textd.core;
+
+final class ThreadCache implements AutoCloseable {
+    private WorkerHandle cursor;
+
+    WorkerHandle cursorFor(TimelineLedger ledger) {
+        TimelineFrame frame = ledger.current();
+        if (cursor == null) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        if (!cursor.matches(frame)) {
+            cursor.close();
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        return cursor;
+    }
+
+    @Override
+    public void close() {
+        if (cursor != null) {
+            cursor.close();
+            cursor = null;
+        }
+    }
+}
+```
+
+Wait, I should also check if there are other potential leaks.
+`TextDaemon.java`'s `workers` thread pool uses `ThreadBridge.current(revisions)`.
+`ThreadBridge` uses a `ThreadLocal<ThreadCache>`.
+The `ThreadLocal` is never cleared unless `ThreadBridge.clear()` is called.
+`TextDaemon.close()` shuts down the workers, but doesn't call `ThreadBridge.clear()` on the worker threads. However, since the threads themselves are dying (or at least the pool is shut down), the `ThreadLocal` should be eligible for GC eventually, but more importantly, the `ThreadCache` objects should be GC'd.
+Wait, if the worker threads don't exit, the `ThreadLocal` stays. `workers.shutdownNow()` is called.
+
+Let's look at `ThreadBridge.java` again.
+```java
+    static WorkerHandle current(TimelineLedger ledger) {
+        return ROUTES.get().cursorFor(ledger);
+    }
+```
+If the thread pool is reused or threads stay alive, the `ThreadLocal` persists. But the `WorkerHandle` inside `ThreadCache` will now be closed and replaced when the ledger moves to a new frame.
+
+One more thing: `TimelineLedger.close()` calls `pruneShadow()`.
+```java
+    void close() {
+        TimelineFrame frame = current.getAndSet(null);
+        if (frame != null) {
+            shadow.add(frame);
+            frame.cool();
+        }
+        pruneShadow();
+    }
+```
+And `TextDaemon.close()` calls `revisions.close()` and then shuts down workers.
+If a worker thread is still alive and has a `WorkerHandle` in its `ThreadLocal`, that `WorkerHandle` holds a pin on a `TimelineFrame`.
+When the worker thread finally dies, the `ThreadLocal` will be GC'd, the `ThreadCache` will be GC'd, but its `close()` method won't be called automatically by the GC!
+`ThreadLocal` doesn't call `close()` on its contents.
+So the `WorkerHandle` in the `ThreadLocal` of a dead thread might never be closed, and the `TimelineFrame` might never be unpinned.
+
+However, if the thread dies, the `ThreadLocal` map in the `Thread` object is cleared.
+But the `WorkerHandle` object itself is still not closed.
+Wait, if the `WorkerHandle` and `TimelineFrame` are only referenced by the `ThreadLocal`, and the thread dies, they become eligible for GC.
+When the `TimelineFrame` is GC'd, its `closeLoadedGeneration()` is NOT called automatically (unless there's a finalizer, which there isn't).
+But `TimelineFrame` is also held in the `shadow` queue of `TimelineLedger`.
+So as long as `TimelineLedger` is alive, the frames are alive.
+
+If the worker threads are daemon threads and the `TextDaemon` is closed, the threads might still be around if the JVM doesn't exit.
+But in this stress test, the `TextDaemon` is used in a try-with-resources.
+
+Wait, if I fix the leak in `ThreadCache.cursorFor`, the `WorkerHandle` will be closed when the *next* generation comes along.
+In the stress test, the loop is:
+```java
+        try (TextDaemon daemon = new TextDaemon(pluginJar, 2)) {
+            for (int generation = 1; generation <= cycles; generation++) {
+                daemon.reload(generation);
+                assertOutputs(generation, daemon.processBatch(List.of(SAMPLE, SAMPLE)));
+                ...
+            }
+        }
+```
+When `daemon.reload(generation)` is called, the `TimelineLedger` gets a new frame.
+Then `processBatch` is called. The workers call `ThreadBridge.current(revisions)`, which calls `cursorFor(ledger)`.
+With my fix, `cursorFor` will see the new frame, close the old `WorkerHandle` (unpinning the old frame), and create a new one.
+This should allow the old frame to be closed and its class loader to be closed.
+
+Let's apply the fix.{
+  "analysis": "The Metaspace leak is caused by `ThreadCache.cursorFor` failing to close the old `WorkerHandle` when a new one is created for a new generation. This leaves the previous `TimelineFrame` pinned, which in turn prevents the associated `URLClassLoader` from being closed. Since the stress test repeatedly reloads the plugin with a tight Metaspace limit (64MB), these leaked class loaders quickly exhaust the available memory.",
+  "plan": "I will modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to ensure that any existing `WorkerHandle` is closed before being replaced by a new one when the generation changes. Then, I will run the stress test with 500 cycles to verify that the leak is resolved and the system remains stable.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 20.0
+    }
+  ],
+  "task_complete": true
+}

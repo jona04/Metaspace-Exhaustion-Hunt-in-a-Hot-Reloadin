@@ -1,0 +1,11 @@
+{
+  "analysis": "I see the bug. In `ThreadCache.cursorFor`:\n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n\nWhen `cursor.matches(frame)` is false, a new `WorkerHandle` is created and assigned to `cursor`. However, the old `cursor` is never closed! `WorkerHandle` likely holds a pin on the `TimelineFrame`. If it's not closed, the `pins` count in `TimelineFrame` will never reach zero, `closeLoadedGeneration()` will never be called, and `isDrained()` will remain false. This causes `TimelineLedger.shadow` to grow indefinitely, leading to a memory leak (and potentially other resource leaks, like open JAR files or classloaders in `LoadedGeneration`).",
+  "plan": "1. Verify `WorkerHandle.java` to see if it indeed holds a pin and has a `close()` method that releases it.\n2. Verify that `ThreadCache.cursorFor` needs to call `cursor.close()` before replacing it.\n3. Create a reproduction test or just prepare the fix.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

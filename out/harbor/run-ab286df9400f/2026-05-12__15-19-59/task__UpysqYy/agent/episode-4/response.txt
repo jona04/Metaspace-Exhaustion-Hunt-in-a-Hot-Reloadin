@@ -1,0 +1,18 @@
+{
+  "analysis": "I've identified the issue. \n\n1. `ThreadBridge` uses a `ThreadLocal<ThreadCache>`.\n2. `ThreadCache` holds a `WorkerHandle`.\n3. `WorkerHandle` (presumably) holds a reference to a `TimelineFrame`, which holds a `LoadedGeneration`, which holds the `URLClassLoader` and the plugin classes.\n4. When a new generation is installed in `TimelineLedger`, the old generation is moved to the `shadow` queue and marked as 'cool'.\n5. `TimelineLedger.pruneShadow()` removes frames that are 'drained'.\n6. A frame is likely 'drained' when its reference count drops to zero.\n7. In `ThreadCache.cursorFor`, when a new frame is detected, the old `cursor` is replaced: `cursor = new WorkerHandle(frame);`. However, the old `WorkerHandle` (and its reference to the old frame) is not closed!\n\nI need to check `WorkerHandle.java` and `TimelineFrame.java` to see how they handle reference counting and closing.",
+  "plan": "1. Read `src/main/java/io/harbor/textd/core/WorkerHandle.java`.\n2. Read `src/main/java/io/harbor/textd/core/TimelineFrame.java`.\n3. Read `src/main/java/io/harbor/textd/core/LoadedGeneration.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.1
+    }
+  ]
+}

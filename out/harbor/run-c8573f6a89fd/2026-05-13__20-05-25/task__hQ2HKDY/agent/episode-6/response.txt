@@ -1,0 +1,19 @@
+{
+  "analysis": "The stress test failed with `java.lang.OutOfMemoryError: Metaspace`. This confirms my suspicion of a classloader leak during hot-reloading.\n\nLooking at the code:\n- `TimelineLedger.install` creates a new `TimelineFrame` and puts the old one in a `shadow` queue. It calls `previous.cool()` and `pruneShadow()`.\n- `ThreadBridge` uses a `ThreadLocal<ThreadCache>`.\n- `ThreadCache` holds a `WorkerHandle cursor`.\n- `ThreadCache.cursorFor` creates a new `WorkerHandle(frame)` if the current one doesn't match the latest frame. **Crucially, it doesn't close the old `cursor`!**\n- `TimelineFrame.isDrained()` likely checks if all workers have moved on from this frame. If `ThreadCache` keeps a reference to an old `WorkerHandle`, and that `WorkerHandle` keeps a reference to the `TimelineFrame`, the frame will never be drained.\n- `TimelineFrame` probably holds the `LoadedGeneration`, which contains the `URLClassLoader`.\n\nIf `WorkerHandle` or `TimelineFrame` isn't properly cleaned up, the `URLClassLoader` won't be closed, and its classes will stay in Metaspace.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java`, `src/main/java/io/harbor/textd/core/TimelineFrame.java`, and `src/main/java/io/harbor/textd/core/LoadedGeneration.java` to confirm the leak.\n2. In `ThreadCache.cursorFor`, if a new `WorkerHandle` is created, the old one should be closed.\n3. Verify if `WorkerHandle.close()` and `TimelineFrame.close()` (if it exists) properly release resources, specifically the classloader.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

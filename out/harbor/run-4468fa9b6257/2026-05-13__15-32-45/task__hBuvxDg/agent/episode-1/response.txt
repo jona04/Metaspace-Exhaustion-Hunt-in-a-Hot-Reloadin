@@ -1,0 +1,15 @@
+{
+  "analysis": "The project is a Java-based text processing daemon (`textd`). \n- `src/main/java/io/harbor/textd/core/TextDaemon.java` likely contains the main service logic.\n- `src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java` and `bin/stress` seem relevant to the 'long refresh run' and 'processor swaps' mentioned in the task description.\n- The 'processor swap' probably refers to hot-reloading plugins or processors.\n- The failure happens during 'long refresh runs' in 'constrained profiles', which strongly suggests a memory leak or resource exhaustion (e.g., threads, file descriptors) during the reload process.",
+  "plan": "1. Examine `bin/stress` to see how the stress test is invoked.\n2. Examine `HotReloadStressRunner.java` to understand how the reload/swap is triggered.\n3. Examine `TextDaemon.java` and `ThreadCache.java` or `ThreadBridge.java` to see how resources are managed during a swap.",
+  "commands": [
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

@@ -1,0 +1,6 @@
+{
+  "analysis": "The problem was a Metaspace leak caused by unclosed `WorkerHandle` objects in `ThreadCache`. During hot-reloads, when the daemon swapped to a new plugin version, the `ThreadCache` replaced its current `WorkerHandle` without calling `close()` on the old one. Since `WorkerHandle.close()` is responsible for unpinning the `TimelineFrame`, the old frames remained pinned indefinitely. This prevented the associated `URLClassLoader` from being closed, eventually exhausting the restricted Metaspace (64MB) in the CI profile. I have modified `ThreadCache.java` to properly close the old `WorkerHandle` before creating a new one. This fix was verified by running the full suite including the 500-cycle stress test.",
+  "plan": "Task is complete. The fix is verified.",
+  "commands": [],
+  "task_complete": true
+}

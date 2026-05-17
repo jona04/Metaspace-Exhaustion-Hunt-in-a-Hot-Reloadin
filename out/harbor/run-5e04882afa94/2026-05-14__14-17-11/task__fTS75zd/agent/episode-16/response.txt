@@ -1,0 +1,10 @@
+{
+  "analysis": "In `HotReloadStressRunner.java`, `daemon.process(SAMPLE)` is called. \n\n```java\n    public ProcessingResult process(String record) throws Exception {\n        return processBatch(List.of(record)).get(0);\n    }\n```\n\nWait, look at `TextDaemon.processBatch` again:\n\n```java\n    public List<ProcessingResult> processBatch(List<String> records) throws Exception {\n        CountDownLatch ready = new CountDownLatch(records.size());\n        CountDownLatch release = new CountDownLatch(1);\n        List<Future<ProcessingResult>> futures = new ArrayList<>();\n        for (String record : records) {\n            futures.add(workers.submit(() -> processRecord(record, ready, release)));\n        }\n        // ...\n    }\n```\n\nIt submits tasks to `workers`. The worker threads will call `processRecord`, which calls `ThreadBridge.current(revisions)`, which uses the `ThreadLocal`.",
+  "plan": "I want to see if there's any other `ThreadLocal` or cache. Let's look at `TimelineFrame.java` again to see if I missed something.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    }
+  ]
+}

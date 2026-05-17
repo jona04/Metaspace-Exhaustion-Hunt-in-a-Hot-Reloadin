@@ -1,0 +1,10 @@
+{
+  "analysis": "Ah, it's not a git repository. I'll just manually revert the changes to the scripts.",
+  "plan": "Manually revert changes to `bin/replay-check` and `bin/stress`.",
+  "commands": [
+    {
+      "keystrokes": "cat > bin/replay-check <<'EOF'\n#!/bin/bash\nset -euo pipefail\n\nROOT_DIR=\\$(cd \"\\$(dirname \"\\${BASH_SOURCE[0]}\")/..\" && pwd)\n\nif [[ \"\\${TEXTD_SKIP_BUILD:-0}\" != \"1\" ]]; then\n  \"\\$ROOT_DIR/bin/build\"\nfi\n\nREPLAY_TMP=\\$(mktemp)\ntrap 'rm -f \"\\$REPLAY_TMP\"' EXIT\n\njava -cp \"\\$ROOT_DIR/build/main-classes\" \\\n  io.harbor.textd.cli.SessionReplayRunner \\\n  \"\\$ROOT_DIR/build/plugins/customer-default.jar\" 24 > \"\\$REPLAY_TMP\"\n\npython3 - \"\\$REPLAY_TMP\" <<'PYEOF'\nimport json, sys\n\nwith open(sys.argv[1]) as f:\n    data = json.load(f)\n\nfirst  = data['first']\nsecond = data['second']\n\nd1 = first['unloaded_after_close']  - first['unloaded_before_close']\nd2 = second['unloaded_after_close'] - second['unloaded_before_close']\n\nif d1 > 0 and d2 > 0:\n    print(f\"replay-ok unloaded-first={d1} unloaded-second={d2}\")\nelse:\n    print(f\"replay-fail unloaded-first={d1} unloaded-second={d2}\", file=sys.stderr)\n    sys.exit(1)\nPYEOF\nEOF\n",
+      "duration": 0.5
+    }
+  ]
+}

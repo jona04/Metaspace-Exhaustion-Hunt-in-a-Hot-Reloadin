@@ -1,0 +1,10 @@
+{
+  "analysis": "The code confirms my suspicion. \n\n1. `WorkerHandle` calls `frame.pin()` in its constructor and `frame.unpin()` in its `close()` method.\n2. `TimelineFrame` uses a reference count (`pins`). It is initialized with `pins = 1`. \n3. `TimelineLedger.install` calls `frame.cool()`, which calls `unpin()`. This decrements `pins` to 0 (if no one else pinned it) and closes the generation.\n4. If a `WorkerHandle` is created, it pins the frame (pins becomes 2). \n5. In `ThreadCache.java`, when a new `WorkerHandle` is created because the revision changed, the old `WorkerHandle` is leaked. Its `close()` method is never called, so `frame.unpin()` is never called. \n6. Consequently, `pins` stays at 1 (or more), and the frame is never 'drained', so the `LoadedGeneration` (and its ClassLoader) is never closed.\n\nThe `./bin/stress` command is currently running. I expect it to eventually fail with a memory-related error or hang if it runs out of resources.",
+  "plan": "1. Wait for the stress test to finish/fail to confirm the issue.\n2. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before creating a new one.\n3. Run the stress test again to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "",
+      "duration": 10.0
+    }
+  ]
+}

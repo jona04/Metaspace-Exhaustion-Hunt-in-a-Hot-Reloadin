@@ -1,0 +1,10 @@
+{
+  "analysis": "Now that I've ensured every record unpins the generation, the `ThreadCache` in its current form is basically useless for caching across records, but it still works within a single record call (although `ThreadBridge.current` is only called once per record anyway).\n\nWait, if I'm clearing the `ThreadLocal` after every record, I don't even need the fix in `ThreadCache.java` anymore, but it doesn't hurt. \n\nActually, wait. If I clear the `ThreadLocal` after every record, I'm ensuring that no `WorkerHandle` is kept alive by idle threads. This should satisfy the requirement that old generations are reclaimed.\n\nLet's run the stress test again to make sure everything still works and performance is acceptable.",
+  "plan": "Run the stress test again.",
+  "commands": [
+    {
+      "keystrokes": "bin/stress 500\n",
+      "duration": 20.0
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "analysis": "The investigation revealed a memory leak in the `ThreadCache` class. When the `textd` service reloaded a new plugin revision, the `ThreadCache` (managed via `ThreadLocal`) would create a new `WorkerHandle` but failed to close the previous one. Each `WorkerHandle` holds a 'pin' on a `TimelineFrame`, which in turn prevents the associated `URLClassLoader` from being closed. This led to a Metaspace exhaustion under repeated reloads.\n\nI have modified `src/main/java/io/harbor/textd/core/ThreadCache.java` to explicitly call `cursor.close()` when a revision mismatch is detected, ensuring that old classloaders are properly decommissioned. The fix was verified with a 500-cycle stress run and the standard integration suite.",
+  "plan": "Task is complete, submitting the changes.",
+  "commands": [],
+  "task_complete": true
+}

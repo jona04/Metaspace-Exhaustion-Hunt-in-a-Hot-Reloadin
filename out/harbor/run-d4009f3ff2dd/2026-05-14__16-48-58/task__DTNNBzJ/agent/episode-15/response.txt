@@ -1,0 +1,27 @@
+{
+  "analysis": "Both the stress test and the test suite passed. The fix for the Metaspace leak is effective and hasn't introduced any regressions. I should now clean up the `ThreadCache.java` file to remove the redundant code I introduced with `sed`.",
+  "plan": "Clean up `src/main/java/io/harbor/textd/core/ThreadCache.java` to make the code cleaner and more maintainable.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor != null && !cursor.matches(frame)) {\n            cursor.close();\n            cursor = null;\n        }\n\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.1
+    }
+  ]
+} Berlian: Wait, I'll run the stress test one last time after the cleanup to be absolutely sure.
+
+```json
+{
+  "analysis": "The tests passed. I'm cleaning up the code in `ThreadCache.java` and will run the stress test one last time to verify.",
+  "plan": "Overwrite `ThreadCache.java` with clean code, then run `./bin/stress 100`.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor != null && !cursor.matches(frame)) {\n            cursor.close();\n            cursor = null;\n        }\n\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/stress 100\n",
+      "duration": 5.0
+    }
+  ]
+}
+```

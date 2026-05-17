@@ -1,0 +1,164 @@
+New Terminal Output:
+
+root@54160cd22210:/workspace/textd# cat src/main/java/io/harbor/textd/core/TextDaemon.java
+package io.harbor.textd.core;
+
+import io.harbor.textd.api.TextProcessor;
+
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+
+public final class TextDaemon implements AutoCloseable {
+    private final Path pluginJar;
+    private final ExecutorService workers;
+    private final AtomicReference<LoadedGeneration> activeGeneration = new AtomicReference<>();
+
+    public TextDaemon(Path pluginJar, int workerCount) {
+        this.pluginJar = pluginJar;
+        this.workers = Executors.newFixedThreadPool(workerCount, new WorkerThreadFactory());
+    }
+
+    public void reload(long generation) throws Exception {
+        LoadedGeneration next = LoadedGeneration.load(pluginJar, generation);
+        LoadedGeneration previous = activeGeneration.getAndSet(next);
+        if (previous != null) {
+            previous.close();
+        }
+    }
+
+    public ProcessingResult process(String record) throws Exception {
+        return processBatch(List.of(record)).get(0);
+    }
+
+    public List<ProcessingResult> processBatch(List<String> records) throws Exception {
+        LoadedGeneration generation = activeGeneration.get();
+        if (generation == null) {
+            throw new IllegalStateException("No plugin generation is loaded");
+        }
+
+        CountDownLatch ready = new CountDownLatch(records.size());
+        CountDownLatch release = new CountDownLatch(1);
+        List<Future<ProcessingResult>> futures = new ArrayList<>();
+        for (String record : records) {
+            futures.add(workers.submit(() -> processRecord(generation, record, ready, release)));
+        }
+
+        if (!ready.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Workers did not become ready");
+        }
+        release.countDown();
+
+        List<ProcessingResult> results = new ArrayList<>(records.size());
+        for (Future<ProcessingResult> future : futures) {
+            try {
+                results.add(future.get());
+            } catch (ExecutionException exception) {
+                Throwable cause = exception.getCause();
+                if (cause instanceof Exception checked) {
+                    throw checked;
+                }
+                if (cause instanceof Error error) {
+                    throw error;
+                }
+                throw new RuntimeException(cause);
+            }
+        }
+        return results;
+    }
+
+    private ProcessingResult processRecord(
+        LoadedGeneration generation,
+        String record,
+        CountDownLatch ready,
+        CountDownLatch release
+    ) throws Exception {
+        ready.countDown();
+        if (!release.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Request release timed out");
+        }
+
+        try (WorkerState.Scope ignored = WorkerState.attach(generation.module())) {
+            TextProcessor processor = generation.module().processorFor(generation.generation());
+            String output = processor.process(record);
+            return new ProcessingResult(generation.generation(), output, Thread.currentThread().getName());
+        }
+    }
+
+    @Override
+    public void close() throws Exception {
+        LoadedGeneration generation = activeGeneration.getAndSet(null);
+        if (generation != null) {
+            generation.close();
+        }
+
+        workers.shutdownNow();
+        workers.awaitTermination(5, TimeUnit.SECONDS);
+    }
+
+    private static final class WorkerThreadFactory implements ThreadFactory {
+        private final AtomicInteger sequence = new AtomicInteger(1);
+
+        @Override
+        public Thread newThread(Runnable runnable) {
+            Thread thread = new Thread(runnable);
+            thread.setName("textd-worker-" + sequence.getAndIncrement());
+            thread.setDaemon(true);
+            return thread;
+        }
+    }
+}
+root@54160cd22210:/workspace/textd# cat src/main/java/io/harbor/textd/core/LoadedGeneration.java
+package io.harbor.textd.core;
+
+import io.harbor.textd.api.PluginModule;
+import io.harbor.textd.api.PluginModuleFactory;
+
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Path;
+
+final class LoadedGeneration implements AutoCloseable {
+    private static final String FACTORY_CLASS = "io.harbor.textd.customer.CustomerPluginFactory";
+
+    private final long generation;
+    private final URLClassLoader classLoader;
+    private final PluginModule module;
+
+    private LoadedGeneration(long generation, URLClassLoader classLoader, PluginModule module) {
+        this.generation = generation;
+        this.classLoader = classLoader;
+        this.module = module;
+    }
+
+    static LoadedGeneration load(Path pluginJar, long generation) throws Exception {
+        URLClassLoader classLoader = new URLClassLoader(new URL[] {pluginJar.toUri().toURL()}, PluginModuleFactory.class.getClassLoader());
+        Class<?> factoryType = classLoader.loadClass(FACTORY_CLASS);
+        PluginModuleFactory factory = (PluginModuleFactory) factoryType.getDeclaredConstructor().newInstance();
+        return new LoadedGeneration(generation, classLoader, factory.open());
+    }
+
+    long generation() {
+        return generation;
+    }
+
+    PluginModule module() {
+        return module;
+    }
+
+    @Override
+    public void close() throws Exception {
+        module.close();
+        classLoader.close();
+    }
+}
+root@54160cd22210:/workspace/textd#

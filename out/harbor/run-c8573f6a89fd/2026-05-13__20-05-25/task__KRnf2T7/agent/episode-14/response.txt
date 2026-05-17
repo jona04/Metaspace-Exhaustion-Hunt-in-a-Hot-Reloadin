@@ -1,0 +1,11 @@
+{
+  "analysis": "The 200-cycle stress test also passed. The fix is confirmed. I've identified the resource leak in `ThreadCache.java` where old `WorkerHandle` instances were not being closed, leading to a Metaspace exhaustion as plugin ClassLoaders were never released. Closing the `WorkerHandle` before replacing it ensures the `TimelineFrame` can be unpinned and the `LoadedGeneration` can be closed.",
+  "plan": "Perform a final check of the changes and then submit.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.2
+    }
+  ],
+  "task_complete": true
+}

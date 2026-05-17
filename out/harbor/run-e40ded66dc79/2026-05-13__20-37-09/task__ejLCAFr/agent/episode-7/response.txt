@@ -1,0 +1,10 @@
+{
+  "analysis": "The code confirms the leak. \n\n1. `TimelineFrame` uses a reference counting mechanism (`pins`). \n2. When a new plugin is installed, the old `TimelineFrame` is 'cooled' (decrementing the count once). \n3. It will only be closed and its `LoadedGeneration` (which contains the ClassLoader) released when all 'pins' are released.\n4. `WorkerHandle` pins the frame on creation and unpins it on `close()`.\n5. `ThreadCache.cursorFor` creates new `WorkerHandle`s when the revision changes but **never closes the old one**.\n\nIn `ThreadCache.java`:\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame); // <--- Old cursor is lost and never closed!\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\nThis means the pin count on the old `TimelineFrame` never reaches zero, so `closeLoadedGeneration()` is never called, and the Metaspace remains occupied by the old ClassLoader and its classes.",
+  "plan": "I will modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before creating a new one.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    }
+  ]
+}

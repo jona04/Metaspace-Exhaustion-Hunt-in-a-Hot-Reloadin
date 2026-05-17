@@ -1,0 +1,18 @@
+{
+  "analysis": "In `TextDaemon.java`, `processRecord` uses `ThreadBridge.current(revisions)` to get a `WorkerHandle`. `LoadedGeneration` handles the class loading and closing of plugins. The issue is likely how `revisions` (a `TimelineLedger`) manages the generations and how `ThreadBridge` interacts with them.",
+  "plan": "I need to examine `TimelineLedger.java`, `ThreadBridge.java`, and `WorkerHandle.java` to understand how the generations are tracked and whether they are being properly closed when no longer needed.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    }
+  ]
+}

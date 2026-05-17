@@ -1,0 +1,10 @@
+{
+  "analysis": "`LoadedGeneration` seems to correctly close both the `module` and the `classLoader`. The `URLClassLoader.close()` method should release the resources. The leak I found in `ThreadCache` was definitely preventing `TimelineFrame` from being closed, which in turn prevented `LoadedGeneration` from being closed.",
+  "plan": "I'll double check `TimelineLedger.java` again to see how it handles the lifecycle of frames.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    }
+  ]
+}

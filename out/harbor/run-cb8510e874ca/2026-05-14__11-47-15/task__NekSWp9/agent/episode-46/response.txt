@@ -1,0 +1,10 @@
+{
+  "analysis": "Wait, I found something! In `WorkerHandle`, the `processor` is a `TextProcessor`. Where does it come from? `frame.module().processorFor(revision)`. If the `processor` holds a reference back to the `module` or the `classLoader`, then as long as the `WorkerHandle` is alive, the class loader is alive. But I'm closing the `WorkerHandle`. When `WorkerHandle.close()` is called, it calls `frame.unpin()`. But it DOES NOT null out the `processor` or the `frame` fields. However, the `WorkerHandle` itself should be eligible for GC once the `ThreadCache` is cleared. If the `WorkerHandle` is GC'd, its fields are no longer roots.",
+  "plan": "Wait, I have another idea. What if I null out the fields in `WorkerHandle.close()` and `ThreadCache.close()`? It shouldn't be necessary if the objects themselves are GC'd, but it might help if there's some other path to them.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/WorkerHandle.java\npackage io.harbor.textd.core;\n\nimport io.harbor.textd.api.TextProcessor;\n\nfinal class WorkerHandle implements AutoCloseable {\n    private TimelineFrame frame;\n    private final long revision;\n    private TextProcessor processor;\n\n    WorkerHandle(TimelineFrame frame) {\n        this.frame = frame.pin();\n        this.revision = frame.revision();\n        this.processor = frame.module().processorFor(revision);\n    }\n\n    boolean matches(TimelineFrame frame) {\n        return revision == frame.revision();\n    }\n\n    ProcessingResult process(String record) {\n        return processor.process(record, revision);\n    }\n\n    @Override\n    public void close() {\n        if (frame != null) {\n            frame.unpin();\n            frame = null;\n            processor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.1
+    }
+  ]
+}

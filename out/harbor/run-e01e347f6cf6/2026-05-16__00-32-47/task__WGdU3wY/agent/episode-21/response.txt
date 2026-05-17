@@ -1,0 +1,10 @@
+{
+  "analysis": "Wait, I have a better idea. If the worker threads are under our control (which they are, via the `WorkerThreadFactory` in `TextDaemon`), we can make sure they call `ThreadBridge.clear()` when they are finished.\n\nBut they are in a `FixedThreadPool`. They only finish when the pool is shut down. \n\nActually, the problem is that when `workers.shutdownNow()` is called, the threads are interrupted and they exit their `run()` loop. If we can wrap the `Runnable` in the `ThreadFactory` to call `ThreadBridge.clear()` in a `finally` block, that should work!\n\nLet's check `TextDaemon.java` again.",
+  "plan": "I will modify `TextDaemon.java` to ensure `ThreadBridge.clear()` is called when a worker thread exits.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.1
+    }
+  ]
+}

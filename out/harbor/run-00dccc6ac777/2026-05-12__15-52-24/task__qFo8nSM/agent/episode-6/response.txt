@@ -1,0 +1,15 @@
+{
+  "analysis": "The logic seems to be:\n1. `TimelineLedger.install` creates a new `TimelineFrame` (pin=1).\n2. When a worker thread processes a record, it gets a `WorkerHandle` via `ThreadBridge.current(revisions)`.\n3. `ThreadCache.cursorFor` checks if the current `WorkerHandle` matches the ledger's current frame.\n4. If it doesn't match (meaning a reload happened), it creates a new `WorkerHandle` for the new frame.\n5. `WorkerHandle` constructor calls `frame.pin()` (incrementing pin count).\n6. When the *old* `WorkerHandle` is replaced in `ThreadCache.cursorFor`, the old `WorkerHandle` is **NOT** closed immediately.\n\nWait, look at `ThreadCache.cursorFor` in `src/main/java/io/harbor/textd/core/ThreadCache.java`:\n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n\nWhen `!cursor.matches(frame)`, it assigns a new `WorkerHandle` to `cursor`, but it **never calls `close()` on the old `cursor`**. This means `frame.unpin()` is never called for the old frame from that thread. \n\nSince `TimelineFrame` only closes its `LoadedGeneration` (and thus the `URLClassLoader`) when its pin count reaches 0, the old classloaders are never closed, leading to the Metaspace OOM.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before replacing it with a new one.\n2. Run the stress test again to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/if (cursor != null) { cursor.close(); } cursor = new WorkerHandle(frame);/g' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

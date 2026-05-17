@@ -1,0 +1,23 @@
+{
+  "analysis": "The `TextDaemon` uses a `TimelineLedger` to manage revisions and `ThreadBridge.current(revisions)` to get a `WorkerHandle` for processing. The `HotReloadStressRunner` ran successfully for 50 cycles, but the task mentions a 'long refresh run'. Let's try running it with more cycles, say 500, as the default in the code suggests.\n\nThe `bin/stress` script uses a default of 50 if no argument is provided. Let's try 500.",
+  "plan": "1. Run `./bin/stress 500` to see if it fails with 500 cycles.\n2. Examine `TimelineLedger.java`, `ThreadBridge.java`, and `ThreadCache.java` to see how plugin classloaders are managed and if they are closed when a new generation is installed.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 20.0
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

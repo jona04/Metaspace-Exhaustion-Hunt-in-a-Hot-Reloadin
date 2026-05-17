@@ -1,0 +1,6 @@
+{
+  "analysis": "The `textd` service was leaking Metaspace because `WorkerBindings` was replacing `DispatchBinding` instances in a `ThreadLocal` without closing the old ones. Since each `DispatchBinding` holds a `GenerationLease`, which in turn prevents the `URLClassLoader` for that generation from being closed, the memory usage grew with every processor refresh until the 64MB Metaspace limit was reached. By adding a call to `binding.close()` before replacing the binding in `WorkerBindings.current()`, the old leases are released, allowing the class loaders to be garbage collected. The fix was verified by running `./bin/stress 500`, which previously failed with an `OutOfMemoryError` but now completes successfully.",
+  "plan": "The task is complete. The leak has been identified, fixed, and verified.",
+  "commands": [],
+  "task_complete": true
+}

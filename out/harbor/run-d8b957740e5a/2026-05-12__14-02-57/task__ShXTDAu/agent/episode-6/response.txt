@@ -1,0 +1,23 @@
+{
+  "analysis": "The 100-cycle stress test passed, but the default is 500. I'll try running the full 500 cycles to see if it fails as expected. \n\nLooking at the code:\n1. `TextDaemon` uses a `TimelineLedger` to manage revisions.\n2. `LoadedGeneration` loads plugins using a new `URLClassLoader` and closes it in its `close()` method.\n3. `ThreadCache` holds a `WorkerHandle` which points to a `TimelineFrame`. It updates the `cursor` if it doesn't match the current frame.\n4. `ThreadBridge.current(revisions)` likely uses a `ThreadLocal<ThreadCache>`.",
+  "plan": "1. Run the full stress test (500 cycles) to reproduce the failure.\n2. Examine `src/main/java/io/harbor/textd/core/ThreadBridge.java` to see how it manages `ThreadCache`.\n3. Examine `src/main/java/io/harbor/textd/core/TimelineLedger.java` and `src/main/java/io/harbor/textd/core/TimelineFrame.java` to see how generations are retired and closed.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 20.0
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

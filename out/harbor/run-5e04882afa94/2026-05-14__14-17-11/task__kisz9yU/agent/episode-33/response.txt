@@ -1,0 +1,10 @@
+{
+  "analysis": "Yes, `matches` only checks the revision number. It should check if the `frame` is the same. \n\n```java\n    boolean matches(TimelineFrame frame) {\n        return this.frame == frame;\n    }\n```\nWait, if I change it to `this.frame == frame`, it will be more robust across different daemons. \n\nActually, even within the same daemon, `ledger.current()` returns the same `TimelineFrame` object until a new revision is installed. So `this.frame == frame` is correct and safer.",
+  "plan": "Modify `src/main/java/io/harbor/textd/core/WorkerHandle.java` to use identity comparison in `matches`.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/WorkerHandle.java\npackage io.harbor.textd.core;\n\nimport io.harbor.textd.api.TextProcessor;\n\nfinal class WorkerHandle implements AutoCloseable {\n    private final TimelineFrame frame;\n    private final long revision;\n    private final TextProcessor processor;\n\n    WorkerHandle(TimelineFrame frame) {\n        this.frame = frame.pin();\n        this.revision = frame.revision();\n        this.processor = frame.module().processorFor(revision);\n    }\n\n    boolean matches(TimelineFrame frame) {\n        return this.frame == frame;\n    }\n\n    ProcessingResult process(String record) {\n        String output = processor.process(record);\n        return new ProcessingResult(revision, output, Thread.currentThread().getName());\n    }\n\n    @Override\n    public void close() {\n        frame.unpin();\n    }\n}\nEOF\n",
+      "duration": 0.5
+    }
+  ]
+}

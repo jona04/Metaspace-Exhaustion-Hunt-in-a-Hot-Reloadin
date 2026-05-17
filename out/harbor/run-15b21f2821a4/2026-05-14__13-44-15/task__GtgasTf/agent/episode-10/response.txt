@@ -1,0 +1,10 @@
+{
+  "analysis": "Now that I've fixed the leak in `ThreadCache.java`, I should verify if there are any other leaks. One thing to check is if `ThreadBridge.clear()` is ever called. If threads in the `workers` pool are not cleaned up, the `ThreadLocal` might still hold references to `ThreadCache`, which holds `WorkerHandle`, which holds `TimelineFrame`. However, `TextDaemon.close()` calls `workers.shutdownNow()`, but it doesn't seem to clear the `ThreadLocal` on those threads. But that's only at the end of the daemon's life. During the daemon's life, the threads in the pool are reused. My fix in `ThreadCache.cursorFor` should handle the reuse of threads by closing the old cursor when a new generation is detected.",
+  "plan": "I will run the stress test again to see if the fix works.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 1000\n",
+      "duration": 20.0
+    }
+  ]
+}

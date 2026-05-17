@@ -1,0 +1,14 @@
+{
+  "analysis": "I've analyzed the code:\n- `TimelineLedger` keeps a `shadow` queue of old `TimelineFrame`s.\n- `pruneShadow()` removes frames that are \"drained\".\n- `ThreadBridge` uses a `ThreadLocal` `ThreadCache` to store a `WorkerHandle`.\n- `ThreadCache.cursorFor(ledger)` updates the `cursor` if the current frame in the ledger is different from the frame in the existing `WorkerHandle`.\n- However, when `cursor` is replaced in `ThreadCache.cursorFor`, the old `cursor` is not closed.\n- Also, `WorkerHandle` needs to be investigated to see if it holds a reference to the frame and if it needs to be closed to signal that the frame is no longer in use.\n\nLet's look at `TimelineFrame.java` and `WorkerHandle.java`.",
+  "plan": "I will examine `TimelineFrame.java` and `WorkerHandle.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    }
+  ]
+}

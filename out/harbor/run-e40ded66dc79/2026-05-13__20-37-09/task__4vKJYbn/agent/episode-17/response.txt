@@ -1,0 +1,6 @@
+{
+  "analysis": "The `textd` service was failing during long runs with processor swaps due to a resource leak in the `ThreadCache` class. Specifically, when a new plugin generation was loaded, the `ThreadCache` would overwrite the existing `WorkerHandle` with a new one without calling `close()` on the old one. Since `WorkerHandle.close()` is responsible for unpinning the `TimelineFrame`, the old generations were never being unpinned. This prevented the associated `ClassLoader` and classes from being garbage collected, eventually leading to a Metaspace `OutOfMemoryError` under the constrained 64MB limit.\n\nI fixed this by ensuring that `cursor.close()` is called before replacing the `cursor` in `ThreadCache.cursorFor`. I verified the fix by running the stress test for 100 cycles and running the full integration suite, both of which passed.",
+  "plan": "The task is complete. I have identified the leak, implemented the fix, and verified it with the provided test tools.",
+  "commands": [],
+  "task_complete": true
+}

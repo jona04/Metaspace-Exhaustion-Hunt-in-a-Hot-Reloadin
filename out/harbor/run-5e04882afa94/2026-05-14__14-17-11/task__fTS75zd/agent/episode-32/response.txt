@@ -1,0 +1,14 @@
+{
+  "analysis": "Only `TextDaemon.java` calls it. \n\nWait! I found it! I found it! I found it! \n\nIn `TimelineFrame.java`, I have:\n\n```java\n    private final AtomicInteger pins = new AtomicInteger(1);\n```\n\nWhen `TimelineFrame` is created, it has 1 pin. \n\nI think I found a problem in `TimelineLedger.java`. \n\n```java\n    void install(long revision) throws Exception {\n        TimelineFrame next = new TimelineFrame(LoadedGeneration.load(pluginJar, revision));\n        TimelineFrame previous = current.getAndSet(next);\n        if (previous != null) {\n            shadow.add(previous);\n            previous.cool();\n            pruneShadow();\n        }\n    }\n```\n\nWait! If I call `install(1)` then `install(2)`. \n`frame1` is cooled. \n\nBut what if `install(1)` is called, and then `close()` is called? \n`current` is `frame1`. `close()` sets `current` to `null`, adds `frame1` to `shadow`, and calls `frame1.cool()`. \n\nThis is also correct. \n\nWait! I just noticed something in `TimelineLedger.java` again. \n\n```java\n    private void pruneShadow() {\n        shadow.removeIf(TimelineFrame::isDrained);\n    }\n```\n\nIt uses `shadow.removeIf`. `shadow` is a `ConcurrentLinkedQueue`. This is thread-safe. \n\nWait! I've got it! \n\nI'll try to remove the print statement I added earlier and run `bin/replay-check` again, just in case.",
+  "plan": "Remove the print statement from `TimelineFrame.java` and run `bin/replay-check`.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/System.out.println(\"Closing gen \" + revision()); //' src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/replay-check\n",
+      "duration": 10.0
+    }
+  ]
+}

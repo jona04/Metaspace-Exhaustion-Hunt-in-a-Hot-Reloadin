@@ -1,0 +1,10 @@
+{
+  "analysis": "I have analyzed the code and found a potential resource leak in `ThreadCache.java`. When a new plugin generation is loaded, the `cursorFor` method in `ThreadCache` replaces the existing `WorkerHandle` with a new one without calling `close()` on the old one. Since `WorkerHandle.close()` is responsible for unpinning the `TimelineFrame`, the old generation's pin count never reaches zero, preventing it from being closed and its class loader from being reclaimed. This leads to a Metaspace exhaustion over time during repeated reloads.",
+  "plan": "I will first run the stress test to confirm that it fails with the current code. Then I will apply the fix to `ThreadCache.java` and run the stress test again to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 10.0
+    }
+  ]
+}

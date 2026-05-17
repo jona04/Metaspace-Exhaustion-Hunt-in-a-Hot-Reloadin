@@ -1,0 +1,10 @@
+{
+  "analysis": "Nothing suspicious there. \n\nWait, I just had a thought. What if the classes are not being unloaded because they are still being used by some other thread? But there are no other threads. \n\nWait! I found it! I found the bug! In `LoadedGeneration.java`:\n```java\nfinal class LoadedGeneration implements AutoCloseable {\n    // ...\n    private final PluginModule module;\n    // ...\n    @Override\n    public void close() throws Exception {\n        module.close();\n        classLoader.close();\n    }\n}\n```\nWait! `PluginModule` is an interface. `CustomerPluginModule` does NOT implement `close()`! \n```java\npublic final class CustomerPluginModule implements PluginModule {\n    @Override\n    public TextProcessor processorFor(long generation) {\n        return new PipelineProcessor(generation);\n    }\n}\n```\nDoes `PluginModule` have a default `close()` method? Let's check `src/main/java/io/harbor/textd/api/PluginModule.java`.",
+  "plan": "Check `PluginModule.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/api/PluginModule.java\n",
+      "duration": 0.1
+    }
+  ]
+}

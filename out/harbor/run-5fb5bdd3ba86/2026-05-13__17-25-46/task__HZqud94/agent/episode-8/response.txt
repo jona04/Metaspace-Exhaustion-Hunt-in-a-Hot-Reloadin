@@ -1,0 +1,10 @@
+{
+  "analysis": "The problem is in `ThreadCache.java`. When a swap occurs, `cursorFor(ledger)` sees that `cursor.matches(frame)` is false. It then creates a new `WorkerHandle(frame)`, which pins the new frame. However, it simply overwrites the `cursor` field with the new `WorkerHandle` without calling `close()` on the old one. \n\nSince `WorkerHandle.close()` is responsible for calling `frame.unpin()`, the old `TimelineFrame`'s pin count never reaches zero (or never satisfies the condition for `closeLoadedGeneration()`). This means the `URLClassLoader` in `LoadedGeneration` is never closed, leading to a Metaspace leak as more and more classloaders are created and kept alive.\n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame); // <--- OLD CURSOR NOT CLOSED\n            return cursor;\n        }\n\n        return cursor;\n    }\n```",
+  "plan": "I will modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before creating a new one when the frame doesn't match.",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    }
+  ]
+}

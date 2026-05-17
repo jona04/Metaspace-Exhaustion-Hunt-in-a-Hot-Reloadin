@@ -1,0 +1,15 @@
+{
+  "analysis": "The `sed` command I used was a bit too aggressive because it would also affect the `if (cursor == null)` block where calling `cursor.close()` would result in a `NullPointerException`. I need to be more precise.",
+  "plan": "1. Correct the `ThreadCache.java` file. It should only call `close()` if `cursor` is not null.\n2. Actually, the `if (!cursor.matches(frame))` block is where I should call `close()`.",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

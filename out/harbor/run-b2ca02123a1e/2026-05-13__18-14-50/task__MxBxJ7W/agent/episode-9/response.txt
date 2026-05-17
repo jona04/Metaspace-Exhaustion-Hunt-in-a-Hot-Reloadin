@@ -1,0 +1,18 @@
+{
+  "analysis": "I've identified the bug. In `ThreadCache.java`, when the `cursor` is replaced because the revision has changed, the old `cursor` is not closed.\n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame); // BUG: old cursor is not closed!\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n\nWhen `new WorkerHandle(frame)` is called, it calls `frame.pin()`, which increments the pin count. When the `cursor` is replaced, the old `WorkerHandle` is leaked. The old `WorkerHandle` holds a reference to a `TimelineFrame` and its pin count remains high. Because the pin count never reaches zero, `closeLoadedGeneration()` is never called on the old `LoadedGeneration`, which means the `URLClassLoader` is never closed, and the `TimelineFrame` is never marked as 'drained'. This causes the `TimelineLedger`'s `shadow` queue to grow indefinitely and the Metaspace to fill up with classes from old class loaders.\n\nTo fix this, I need to call `cursor.close()` before replacing it in `ThreadCache.java`.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before creating a new one.\n2. Rebuild the project.\n3. Run the stress test with a large number of cycles (e.g., 200 or 500) to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/build\n",
+      "duration": 5.0
+    },
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 20.0
+    }
+  ]
+}

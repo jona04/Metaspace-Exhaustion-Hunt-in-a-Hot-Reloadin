@@ -1,0 +1,19 @@
+{
+  "analysis": "In `TextDaemon.java`, `processRecord` calls `ThreadBridge.current(revisions)` to get a `WorkerHandle`. \nIn `WorkerHandle.java`, it holds a `TimelineFrame` and a `TextProcessor` instance. \nCrucially, `WorkerHandle` implements `AutoCloseable`, but I don't see it being closed in `TextDaemon.java`'s `processRecord` method or anywhere else in the `processBatch` flow. This likely means the `TimelineFrame` remains pinned, and the `TextProcessor` (and its class loader) remains referenced by the thread.",
+  "plan": "1. Examine `ThreadBridge.java` to see how it manages `WorkerHandle` instances.\n2. Examine `TimelineLedger.java` and `TimelineFrame.java` to understand the pinning mechanism.\n3. Check `ThreadCache.java` as it might be caching these handles and causing the leak.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

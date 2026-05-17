@@ -1,0 +1,22 @@
+{
+  "analysis": "The stress test failed with `java.lang.OutOfMemoryError: Metaspace`. This confirms that class loading/unloading is not working correctly, and classes from older generations are likely being retained in Metaspace.\n\nKey observations:\n- `TextDaemon.reload(generation)` calls `revisions.install(generation)`.\n- `processRecord` calls `ThreadBridge.current(revisions)` to get a `WorkerHandle`.\n- The `TimelineLedger` (revisions) likely manages the different versions of the plugin.\n- Metaspace exhaustion usually happens when `ClassLoader`s are not being garbage collected. This occurs if there are still references to the `ClassLoader` or any class loaded by it.\n\nI need to investigate `TimelineLedger.java`, `ThreadBridge.java`, and `WorkerHandle.java`.",
+  "plan": "1. Examine `TimelineLedger.java`, `ThreadBridge.java`, `WorkerHandle.java`, and `LoadedGeneration.java`.\n2. Look for how `ClassLoader`s are created and whether they are ever closed or if references to them are leaked (e.g., in `ThreadLocal`s).",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    }
+  ]
+}

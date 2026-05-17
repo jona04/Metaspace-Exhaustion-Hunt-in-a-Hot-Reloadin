@@ -1,0 +1,19 @@
+{
+  "analysis": "The code uses `TimelineLedger` to manage revisions (plugins). `TextDaemon.processRecord` calls `ThreadBridge.current(revisions)` to get a `WorkerHandle`. If `TimelineLedger` or `ThreadBridge` is creating new `ClassLoader`s for every generation and not cleaning them up, we'll see Metaspace exhaustion. The `MaxMetaspaceSize=64m` is quite small, making this likely. I need to examine `TimelineLedger.java` and `ThreadBridge.java` (and `ThreadCache.java`).",
+  "plan": "Examine `TimelineLedger.java`, `ThreadBridge.java`, and `ThreadCache.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

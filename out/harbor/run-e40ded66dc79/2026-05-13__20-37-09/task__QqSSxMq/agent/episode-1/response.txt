@@ -1,0 +1,14 @@
+{
+  "analysis": "The project is a Java-based text processing daemon. \n- `src/main/java/io/harbor/textd/core/TextDaemon.java` likely contains the main logic.\n- `src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java` and `bin/stress` seem relevant to the 'long refresh run' and 'processor swaps' mentioned in the task.\n- The 'processor swap' likely refers to the hot-reloading of plugins (found in `plugin-src`).\n- The failure happens during 'repeated processor swaps' in a 'constrained CI profile', which strongly suggests a resource leak (Thread, Memory, or File Descriptors) during the reload process.",
+  "plan": "1. Examine `TextDaemon.java` and `HotReloadStressRunner.java` to understand how processors are swapped.\n2. Run the `stress` script to see if I can reproduce the failure and observe the error message.\n3. Check `ThreadBridge.java` and `ThreadCache.java` as they might be involved in the resource management during swaps.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 5.0
+    }
+  ]
+}

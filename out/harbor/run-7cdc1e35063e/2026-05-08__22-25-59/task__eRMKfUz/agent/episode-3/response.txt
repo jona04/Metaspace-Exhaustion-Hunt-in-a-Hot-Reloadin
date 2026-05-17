@@ -1,0 +1,11 @@
+{
+  "analysis": "I found the leak! \n\nIn `WorkerState.java`:\n```java\n    static Scope attach(Object module) {\n        ACTIVE_MODULES.get().push(module);\n        return new Scope();\n    }\n\n    static final class Scope implements AutoCloseable {\n        @Override\n        public void close() {\n        }\n    }\n```\nThe `Scope.close()` method is empty. It should be popping the module from the `Deque` in the `ThreadLocal`. \n\nBecause the worker threads are reused (fixed thread pool), the `ACTIVE_MODULES` `ThreadLocal` keeps growing and holding references to `module` objects. Since each `module` is loaded by a generation-specific `URLClassLoader`, these classloaders are never garbage collected, leading to the Metaspace leak.\n\nWait, even if it doesn't grow indefinitely (if it's only pushed once per task), it still holds a reference to the *last* module it processed. If that thread isn't used for a while, it still holds that reference. Actually, since `TextDaemon.processRecord` pushes it every time, the `Deque` just keeps growing indefinitely for every record processed, because `close()` does nothing.\n\nWait, `processRecord` is called for every record in `processBatch`. So yes, the `Deque` grows by 1 for every single record processed and never shrinks.",
+  "plan": "1. Fix `WorkerState.java` by implementing `Scope.close()` to pop the module from the deque.\n2. Verify the fix by running the stress test if possible.",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/WorkerState.java <<EOF\npackage io.harbor.textd.core;\n\nimport java.util.ArrayDeque;\nimport java.util.Deque;\n\nfinal class WorkerState {\n    private static final ThreadLocal<Deque<Object>> ACTIVE_MODULES = ThreadLocal.withInitial(ArrayDeque::new);\n\n    private WorkerState() {\n    }\n\n    static Scope attach(Object module) {\n        ACTIVE_MODULES.get().push(module);\n        return new Scope();\n    }\n\n    static final class Scope implements AutoCloseable {\n        @Override\n        public void close() {\n            ACTIVE_MODULES.get().pop();\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

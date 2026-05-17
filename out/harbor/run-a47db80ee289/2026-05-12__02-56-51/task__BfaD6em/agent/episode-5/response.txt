@@ -1,0 +1,19 @@
+{
+  "analysis": "The stress test failed with `java.lang.OutOfMemoryError: Metaspace`. This confirms a ClassLoader leak.\n\nLooking at `WorkerBindings.java`:\n```java\n    static DispatchBinding current(GenerationRegistry registry) {\n        GenerationLease activeLease = registry.active();\n        DispatchBinding binding = ACTIVE.get();\n        if (binding == null) {\n            DispatchBinding created = new DispatchBinding(activeLease);\n            ACTIVE.set(created);\n            return created;\n        }\n\n        if (!binding.matches(activeLease)) {\n            DispatchBinding replacement = new DispatchBinding(activeLease);\n            ACTIVE.set(replacement);\n            return replacement;\n        }\n\n        return binding;\n    }\n```\nWhen a new generation is loaded, `binding.matches(activeLease)` will be false. A new `DispatchBinding` is created and set to the `ThreadLocal`. However, the old `binding` is never closed! \n\n`DispatchBinding`'s constructor calls `lease.retain()`, so the old lease's reference count is never decremented when it's replaced in the `ThreadLocal`. This prevents the old `LoadedGeneration` (and its `URLClassLoader`) from being closed, leading to the Metaspace leak.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/WorkerBindings.java` to close the old `DispatchBinding` before replacing it in the `ThreadLocal`.\n2. Run the stress test again to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/if (!binding.matches(activeLease)) {/if (!binding.matches(activeLease)) {\\n            binding.close();/' src/main/java/io/harbor/textd/core/WorkerBindings.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerBindings.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 20.0
+    }
+  ],
+  "task_complete": false
+}

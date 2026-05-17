@@ -1,0 +1,15 @@
+{
+  "analysis": "The project is a Java-based text processing daemon. Based on the file structure and the task description, the issue is related to 'processor swaps' during a long refresh run. I see `HotReloadStressRunner.java` and `HotReloadIntegrationRunner.java` in `src/main/java/io/harbor/textd/cli`, which likely correspond to the `bin/stress` and `bin/integration` scripts. The core logic for reloading and managing 'generations' of processors seems to be in `src/main/java/io/harbor/textd/core`, specifically `TextDaemon.java` and `LoadedGeneration.java`.",
+  "plan": "1. Run the `bin/stress` script to reproduce the failure and see the error message.\n2. Examine the contents of `bin/stress` to understand how it triggers the reload.\n3. Analyze `TextDaemon.java` and `LoadedGeneration.java` to find potential resource leaks (e.g., unclosed ClassLoaders, thread leaks, or static collections growing indefinitely).",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 5.0
+    },
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

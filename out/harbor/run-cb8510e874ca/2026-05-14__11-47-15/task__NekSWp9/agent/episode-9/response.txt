@@ -1,0 +1,10 @@
+{
+  "analysis": "In `TimelineFrame`, `pins` starts at 1. When a `WorkerHandle` is created, it calls `frame.pin()`, incrementing `pins`. When `TimelineLedger.install(long)` is called, the previous frame's `cool()` is called, which calls `unpin()`, decrementing `pins` by 1. If a `WorkerHandle` is replaced in `ThreadCache.cursorFor`, the old `cursor` is NOT closed, so the old frame's `unpin()` is never called. This keeps the `pins` count above 0 and prevents the `LoadedGeneration` from being closed.",
+  "plan": "I will modify `ThreadCache.java` to call `cursor.close()` when replacing the cursor with a new one. This should allow the old `TimelineFrame` to be unpinned and eventually closed.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.1
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+New Terminal Output:
+(char 0)
+root@4d312fc19747:/workspace/textd# ./bin/replay-check
+sed -i '/System.out.println/d' src/main/java/io/harbor/textd/core/TextDaemon.java
+sed -i '/System.out.println/d' src/main/java/io/harbor/textd/core/TimelineFrame.java
+Traceback (most recent call last):
+  File "<stdin>", line 4, in <module>
+  File "/usr/lib/python3.12/json/__init__.py", line 293, in load
+    return loads(fp.read(),
+           ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/decoder.py", line 355, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+root@4d312fc19747:/workspace/textd# sed -i '/System.out.println/d' src/main/java/io/harbor/textd/core/TextDaemon.java
+root@4d312fc19747:/workspace/textd# sed -i '/System.out.println/d' src/main/java/io/harbor/textd/core/TimelineFrame.java
+root@4d312fc19747:/workspace/textd# sed -i '/System.out.println/d' src/main/java/io/harbor/textd/core/ThreadBridge.java
+root@4d312fc19747:/workspace/textd# ./bin/build
+/workspace/textd/src/main/java/io/harbor/textd/core/ThreadBridge.java:10: error: missing return statement
+    }
+    ^
+1 error
+root@4d312fc19747:/workspace/textd# ./bin/replay-check
+/workspace/textd/src/main/java/io/harbor/textd/core/ThreadBridge.java:10: error: missing return statement
+    }
+    ^
+1 error
+root@4d312fc19747:/workspace/textd#

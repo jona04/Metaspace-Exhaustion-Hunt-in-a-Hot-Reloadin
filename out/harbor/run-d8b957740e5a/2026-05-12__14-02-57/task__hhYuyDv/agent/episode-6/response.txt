@@ -1,0 +1,19 @@
+{
+  "analysis": "In `TextDaemon.java`, `processRecord` calls `ThreadBridge.current(revisions)`. \nIn `ThreadCache.java`, there's a `cursor` of type `WorkerHandle`. If the `frame` (which likely contains the class loader) changes, `cursor` is replaced: `cursor = new WorkerHandle(frame);`. \n\nHowever, I need to see `ThreadBridge.java` to see how `ThreadCache` is stored. If it's in a `ThreadLocal`, it might not be getting cleared correctly, especially since the `ExecutorService` uses a fixed thread pool. If the `ThreadLocal` is never cleared, and it holds onto `WorkerHandle` which holds onto `TimelineFrame` which holds onto the `ClassLoader`, that's a leak.\n\nAlso, `TimelineLedger` seems to manage generations. If old generations are kept alive, that's also a leak.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/ThreadBridge.java`.\n2. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java`.\n3. Examine `src/main/java/io/harbor/textd/core/TimelineLedger.java`.\n4. Examine `src/main/java/io/harbor/textd/core/TimelineFrame.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

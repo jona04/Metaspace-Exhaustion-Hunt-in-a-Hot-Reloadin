@@ -1,0 +1,6 @@
+{
+  "analysis": "The task was to fix a failure during repeated in-place processor swaps in the `textd` daemon. Investigation revealed a Metaspace OutOfMemoryError caused by a class loader leak. Specifically, in `RouteState.java`, when a new plugin generation was loaded, the previous `RouteCursor` (which held a pin on the old generation) was being replaced without being closed. This prevented the old `RevisionFrame` from being drained and its `URLClassLoader` from being closed. I modified `RouteState.java` to ensure the old cursor is closed before a new one is created. This fix was verified by running the stress test (500 cycles) and the full integration suite, both of which now pass successfully.",
+  "plan": "I have already implemented the fix and verified it with the provided test suite. The daemon now correctly handles repeated processor swaps without exhausting Metaspace.",
+  "commands": [],
+  "task_complete": true
+}

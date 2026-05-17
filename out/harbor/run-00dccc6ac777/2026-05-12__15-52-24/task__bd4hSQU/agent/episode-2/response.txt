@@ -1,0 +1,19 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with a constrained `-XX:MaxMetaspaceSize=64m`. This suggests a Metaspace leak, likely caused by repeated class loading during 'processor swaps' (plugin reloads). The `TextDaemon` uses `TimelineLedger` to manage revisions and `ThreadBridge` to bind workers to specific generations of the plugin.",
+  "plan": "1. Run the stress test to confirm it fails with an `OutOfMemoryError: Metaspace` or similar.\n2. Examine `TimelineLedger.java` and `ThreadBridge.java` to see how class loaders are handled and if they are being properly closed/released.\n3. Check `LoadedGeneration.java` as it likely holds the class loader for a specific version.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 100\n",
+      "duration": 5.0
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

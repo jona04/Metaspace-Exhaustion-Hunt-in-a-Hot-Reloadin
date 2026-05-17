@@ -1,0 +1,14 @@
+{
+  "analysis": "The project is a Java-based daemon called `textd`. It uses a plugin system where plugins can be hot-reloaded (generations). The task is to fix a resource leak where old plugin generations are not being reclaimed by the runtime after sessions close, causing it to fail during long runs in constrained environments.",
+  "plan": "1. Examine the `bin/stress` script and `HotReloadStressRunner.java` to understand how the stress test is performed and how to reproduce the issue.\n2. Examine `TextDaemon.java`, `LoadedGeneration.java`, and `TimelineLedger.java` to understand how plugin generations are managed and tracked.\n3. Look for where plugins are loaded (likely using a custom ClassLoader) and where they are supposed to be discarded.",
+  "commands": [
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.5
+    }
+  ]
+}

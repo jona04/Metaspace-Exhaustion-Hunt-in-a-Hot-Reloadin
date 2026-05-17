@@ -1,0 +1,18 @@
+{
+  "analysis": "I see a potential leak. `ThreadBridge` uses a `ThreadLocal<ThreadCache>`. `ThreadCache` likely holds references to `WorkerHandle` which might be tied to a specific `LoadedGeneration`. \n\n`TimelineLedger` has a `shadow` queue of `TimelineFrame`s. It prunes them when they are 'drained'.\n\nLet's look at `ThreadCache.java`, `TimelineFrame.java`, and `WorkerHandle.java`.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/ThreadCache.java`.\n2. Examine `src/main/java/io/harbor/textd/core/TimelineFrame.java`.\n3. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.3
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.3
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.3
+    }
+  ]
+}

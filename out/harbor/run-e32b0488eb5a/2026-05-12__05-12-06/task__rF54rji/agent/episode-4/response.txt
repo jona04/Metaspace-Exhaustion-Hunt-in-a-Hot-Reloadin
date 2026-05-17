@@ -1,0 +1,11 @@
+{
+  "analysis": "In `TextDaemon.java`, the `processRecord` method calls `ThreadBridge.current(revisions)` to get a `WorkerHandle`. This suggests that `ThreadBridge` might be caching something per-thread. If the `revisions` (which likely manages different versions of the plugin/classes) changes, but the threads in the `ExecutorService` keep holding onto old versions of the plugin classes, we'll have a leak.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/ThreadBridge.java` to see how it manages the `WorkerHandle` and if it interacts with `ThreadLocal` or some other cache.\n2. Examine `src/main/java/io/harbor/textd/core/TimelineLedger.java` to see how it manages plugin generations.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

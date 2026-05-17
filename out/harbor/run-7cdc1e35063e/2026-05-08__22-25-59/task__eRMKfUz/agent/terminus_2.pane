@@ -1,0 +1,336 @@
+asciinema rec --stdin /logs/agent/recording.cast
+[?2004hroot@54160cd22210:/workspace/textd# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@54160cd22210:/workspace/textd# clear
+[?2004l[H[J[3J[?2004hroot@54160cd22210:/workspace/textd# ls -R
+[?2004l.:
+[0m[01;34mbin[0m  [01;34mplugin-src[0m  [01;34msrc[0m
+
+./bin:
+[01;32mbuild[0m  [01;32mintegration[0m  [01;32mrun-suite[0m  [01;32mstress[0m
+
+./plugin-src:
+[01;34mio[0m
+
+./plugin-src/io:
+[01;34mharbor[0m
+
+./plugin-src/io/harbor:
+[01;34mtextd[0m
+
+./plugin-src/io/harbor/textd:
+[01;34mcustomer[0m
+
+./plugin-src/io/harbor/textd/customer:
+CustomerPluginFactory.java  CustomerPluginModule.java  PipelineProcessor.java  PipelineStages.java
+
+./src:
+[01;34mmain[0m
+
+./src/main:
+[01;34mjava[0m
+
+./src/main/java:
+[01;34mio[0m
+
+./src/main/java/io:
+[01;34mharbor[0m
+
+./src/main/java/io/harbor:
+[01;34mtextd[0m
+
+./src/main/java/io/harbor/textd:
+[01;34mapi[0m  [01;34mcli[0m  [01;34mcore[0m
+
+./src/main/java/io/harbor/textd/api:
+PluginModule.java  PluginModuleFactory.java  TextProcessor.java
+
+./src/main/java/io/harbor/textd/cli:
+HotReloadIntegrationRunner.java  HotReloadStressRunner.java
+
+./src/main/java/io/harbor/textd/core:
+LoadedGeneration.java  OutputFormat.java  ProcessingResult.java  TextDaemon.java  WorkerState.java
+[?2004hroot@54160cd22210:/workspace/textd# cat src/main/java/io/harbor/textd/core/TextDaemon.java
+[?2004lpackage io.harbor.textd.core;
+
+import io.harbor.textd.api.TextProcessor;
+
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+
+public final class TextDaemon implements AutoCloseable {
+    private final Path pluginJar;
+    private final ExecutorService workers;
+    private final AtomicReference<LoadedGeneration> activeGeneration = new AtomicReference<>();
+
+    public TextDaemon(Path pluginJar, int workerCount) {
+        this.pluginJar = pluginJar;
+        this.workers = Executors.newFixedThreadPool(workerCount, new WorkerThreadFactory());
+    }
+
+    public void reload(long generation) throws Exception {
+        LoadedGeneration next = LoadedGeneration.load(pluginJar, generation);
+        LoadedGeneration previous = activeGeneration.getAndSet(next);
+        if (previous != null) {
+            previous.close();
+        }
+    }
+
+    public ProcessingResult process(String record) throws Exception {
+        return processBatch(List.of(record)).get(0);
+    }
+
+    public List<ProcessingResult> processBatch(List<String> records) throws Exception {
+        LoadedGeneration generation = activeGeneration.get();
+        if (generation == null) {
+            throw new IllegalStateException("No plugin generation is loaded");
+        }
+
+        CountDownLatch ready = new CountDownLatch(records.size());
+        CountDownLatch release = new CountDownLatch(1);
+        List<Future<ProcessingResult>> futures = new ArrayList<>();
+        for (String record : records) {
+            futures.add(workers.submit(() -> processRecord(generation, record, ready, release)));
+        }
+
+        if (!ready.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Workers did not become ready");
+        }
+        release.countDown();
+
+        List<ProcessingResult> results = new ArrayList<>(records.size());
+        for (Future<ProcessingResult> future : futures) {
+            try {
+                results.add(future.get());
+            } catch (ExecutionException exception) {
+                Throwable cause = exception.getCause();
+                if (cause instanceof Exception checked) {
+                    throw checked;
+                }
+                if (cause instanceof Error error) {
+                    throw error;
+                }
+                throw new RuntimeException(cause);
+            }
+        }
+        return results;
+    }
+
+    private ProcessingResult processRecord(
+        LoadedGeneration generation,
+        String record,
+        CountDownLatch ready,
+        CountDownLatch release
+    ) throws Exception {
+        ready.countDown();
+        if (!release.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Request release timed out");
+        }
+
+        try (WorkerState.Scope ignored = WorkerState.attach(generation.module())) {
+            TextProcessor processor = generation.module().processorFor(generation.generation());
+            String output = processor.process(record);
+            return new ProcessingResult(generation.generation(), output, Thread.currentThread().getName());
+        }
+    }
+
+    @Override
+    public void close() throws Exception {
+        LoadedGeneration generation = activeGeneration.getAndSet(null);
+        if (generation != null) {
+            generation.close();
+        }
+
+        workers.shutdownNow();
+        workers.awaitTermination(5, TimeUnit.SECONDS);
+    }
+
+    private static final class WorkerThreadFactory implements ThreadFactory {
+        private final AtomicInteger sequence = new AtomicInteger(1);
+
+        @Override
+        public Thread newThread(Runnable runnable) {
+            Thread thread = new Thread(runnable);
+            thread.setName("textd-worker-" + sequence.getAndIncrement());
+            thread.setDaemon(true);
+            return thread;
+        }
+    }
+}
+[?2004hroot@54160cd22210:/workspace/textd# cat src/main/java/io/harbor/textd/core/LoadedGeneration.java
+[?2004lpackage io.harbor.textd.core;
+
+import io.harbor.textd.api.PluginModule;
+import io.harbor.textd.api.PluginModuleFactory;
+
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Path;
+
+final class LoadedGeneration implements AutoCloseable {
+    private static final String FACTORY_CLASS = "io.harbor.textd.customer.CustomerPluginFactory";
+
+    private final long generation;
+    private final URLClassLoader classLoader;
+    private final PluginModule module;
+
+    private LoadedGeneration(long generation, URLClassLoader classLoader, PluginModule module) {
+        this.generation = generation;
+        this.classLoader = classLoader;
+        this.module = module;
+    }
+
+    static LoadedGeneration load(Path pluginJar, long generation) throws Exception {
+        URLClassLoader classLoader = new URLClassLoader(new URL[] {pluginJar.toUri().toURL()}, PluginModuleFactory.class.getClassLoader());
+        Class<?> factoryType = classLoader.loadClass(FACTORY_CLASS);
+        PluginModuleFactory factory = (PluginModuleFactory) factoryType.getDeclaredConstructor().newInstance();
+        return new LoadedGeneration(generation, classLoader, factory.open());
+    }
+
+    long generation() {
+        return generation;
+    }
+
+    PluginModule module() {
+        return module;
+    }
+
+    @Override
+    public void close() throws Exception {
+        module.close();
+        classLoader.close();
+    }
+}
+[?2004hroot@54160cd22210:/workspace/textd# cat src/main/java/io/harbor/textd/core/WorkerState.java
+[?2004lpackage io.harbor.textd.core;
+
+import java.util.ArrayDeque;
+import java.util.Deque;
+
+final class WorkerState {
+    private static final ThreadLocal<Deque<Object>> ACTIVE_MODULES = ThreadLocal.withInitial(ArrayDeque::new);
+
+    private WorkerState() {
+    }
+
+    static Scope attach(Object module) {
+        ACTIVE_MODULES.get().push(module);
+        return new Scope();
+    }
+
+    static final class Scope implements AutoCloseable {
+        @Override
+        public void close() {
+        }
+    }
+}
+[?2004hroot@54160cd22210:/workspace/textd# cat > src/main/java/io/harbor/textd/core/WorkerState.java <<EOF
+[?2004l[?2004h> package io.harbor.textd.core;
+[?2004l[?2004h> 
+[?2004l[?2004h> import java.util.ArrayDeque;
+[?2004l[?2004h> import java.util.Deque;
+[?2004l[?2004h> 
+[?2004l[?2004h> final class WorkerState {
+[?2004l[?2004h>     private static final ThreadLocal<Deque<Object>> ACTIVE_MODULES = ThreadLocal.withInitial(ArrayDeque::new);
+[?2004l[?2004h> 
+[?2004l[?2004h>     private WorkerState() {
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     static Scope attach(Object module) {
+[?2004l[?2004h>         ACTIVE_MODULES.get().push(module);
+[?2004l[?2004h>         return new Scope();
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     static final class Scope implements AutoCloseable {
+[?2004l[?2004h>         @Override
+[?2004l[?2004h>         public void close() {
+[?2004l[?2004h>             ACTIVE_MODULES.get().pop();
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h> }
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@54160cd22210:/workspace/textd# cat bin/build
+[?2004l#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+BUILD_DIR="$ROOT_DIR/build"
+MAIN_CLASSES="$BUILD_DIR/main-classes"
+PLUGIN_CLASSES="$BUILD_DIR/plugin-classes"
+PLUGIN_DIR="$BUILD_DIR/plugins"
+
+rm -rf "$MAIN_CLASSES" "$PLUGIN_CLASSES"
+mkdir -p "$MAIN_CLASSES" "$PLUGIN_CLASSES" "$PLUGIN_DIR"
+
+find "$ROOT_DIR/src/main/java" -name '*.java' | sort > "$BUILD_DIR/main-sources.txt"
+javac --release 17 -d "$MAIN_CLASSES" @"$BUILD_DIR/main-sources.txt"
+
+find "$ROOT_DIR/plugin-src" -name '*.java' | sort > "$BUILD_DIR/plugin-sources.txt"
+javac --release 17 -cp "$MAIN_CLASSES" -d "$PLUGIN_CLASSES" @"$BUILD_DIR/plugin-sources.txt"
+
+jar --create --file "$PLUGIN_DIR/customer-default.jar" -C "$PLUGIN_CLASSES" .
+[?2004hroot@54160cd22210:/workspace/textd# cat bin/stress
+[?2004l#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+if [[ "${TEXTD_SKIP_BUILD:-0}" != "1" ]]; then
+  "$ROOT_DIR/bin/build"
+fi
+
+java -XX:MaxMetaspaceSize=64m -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.HotReloadStressRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" \
+  "${1:-500}"
+[?2004hroot@54160cd22210:/workspace/textd# ./bin/stress
+[?2004lstress-ok cycles=500
+[?2004hroot@54160cd22210:/workspace/textd# cat bin/run-suite
+[?2004l#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+"$ROOT_DIR/bin/build"
+TEXTD_SKIP_BUILD=1 "$ROOT_DIR/bin/integration" 12 >/tmp/textd-integration.json
+TEXTD_SKIP_BUILD=1 "$ROOT_DIR/bin/stress" 500 >/tmp/textd-stress.log
+
+echo "suite-ok"
+[?2004hroot@54160cd22210:/workspace/textd# ./bin/run-suite
+[?2004lsuite-ok
+[?2004hroot@54160cd22210:/workspace/textd# cat src/main/java/io/harbor/textd/core/WorkerState.java
+[?2004lpackage io.harbor.textd.core;
+
+import java.util.ArrayDeque;
+import java.util.Deque;
+
+final class WorkerState {
+    private static final ThreadLocal<Deque<Object>> ACTIVE_MODULES = ThreadLocal.withInitial(ArrayDeque::new);
+
+    private WorkerState() {
+    }
+
+    static Scope attach(Object module) {
+        ACTIVE_MODULES.get().push(module);
+        return new Scope();
+    }
+
+    static final class Scope implements AutoCloseable {
+        @Override
+        public void close() {
+            ACTIVE_MODULES.get().pop();
+        }
+    }
+}
+[?2004hroot@54160cd22210:/workspace/textd# 

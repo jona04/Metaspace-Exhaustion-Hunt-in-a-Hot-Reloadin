@@ -1,0 +1,35 @@
+New Terminal Output:
+
+root@c868184e4faf:/workspace/textd# sed -i 's/cursor = new WorkerHandle(frame);/cursor.close(); cursor = new WorkerHandle(frame);/' src/main/java/io/harbor/text
+d/core/ThreadCache.java
+root@c868184e4faf:/workspace/textd# cat src/main/java/io/harbor/textd/core/ThreadCache.java
+package io.harbor.textd.core;
+
+final class ThreadCache implements AutoCloseable {
+    private WorkerHandle cursor;
+
+    WorkerHandle cursorFor(TimelineLedger ledger) {
+        TimelineFrame frame = ledger.current();
+        if (cursor == null) {
+            cursor.close(); cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        if (!cursor.matches(frame)) {
+            cursor.close(); cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        return cursor;
+    }
+
+    @Override
+    public void close() {
+        if (cursor != null) {
+            cursor.close();
+            cursor = null;
+        }
+    }
+}
+root@c868184e4faf:/workspace/textd# ./bin/stress 500
+

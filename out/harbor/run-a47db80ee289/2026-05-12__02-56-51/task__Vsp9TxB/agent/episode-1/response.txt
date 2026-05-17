@@ -1,0 +1,11 @@
+{
+  "analysis": "The project structure reveals a Java-based daemon (`TextDaemon.java`) with a plugin system. The core logic for handling generations (likely related to the processor refreshes) is in `src/main/java/io/harbor/textd/core`, specifically `GenerationRegistry.java`, `LoadedGeneration.java`, and `GenerationLease.java`. There are also CLI tools for testing hot reloads: `HotReloadIntegrationRunner.java` and `HotReloadStressRunner.java`. The issue is described as a 'runtime lifecycle problem' during 'repeated in-place processor refreshes'.",
+  "plan": "1. Run the stress test or integration suite to reproduce the failure and see the error message.\n2. Examine `GenerationRegistry.java` and `LoadedGeneration.java` to understand how new versions of processors are loaded and how old ones are decommissioned.\n3. Look at `WorkerBindings.java` to see how workers transition between generations.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}

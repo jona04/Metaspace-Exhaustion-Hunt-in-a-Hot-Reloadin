@@ -1,0 +1,11 @@
+{
+  "analysis": "The `TimelineFrame` uses a reference counting mechanism (`pin`/`unpin`). \n- When a `WorkerHandle` is created, it calls `frame.pin()`.\n- When `WorkerHandle.close()` is called, it calls `frame.unpin()`.\n- `TimelineFrame.unpin()` closes the `LoadedGeneration` when the pin count reaches 0 and the frame is 'cooled'.\n- In `ThreadCache.cursorFor`, when a new `WorkerHandle` is created because the revision changed, the old `WorkerHandle` is NOT closed. This means `frame.unpin()` is never called for the old frame, so the pin count never reaches 0, and the old `LoadedGeneration` (and its `ClassLoader`) is never closed.\n\nThis is definitely the cause of the Metaspace leak.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to call `cursor.close()` before replacing it with a new `WorkerHandle`.\n2. Also check `LoadedGeneration.java` to see how it handles the `ClassLoader` closure.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.2
+    }
+  ],
+  "task_complete": false
+}

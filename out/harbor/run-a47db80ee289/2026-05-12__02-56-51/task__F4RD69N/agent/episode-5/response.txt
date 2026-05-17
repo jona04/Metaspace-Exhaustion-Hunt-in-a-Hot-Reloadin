@@ -1,0 +1,15 @@
+{
+  "analysis": "The code shows that `GenerationRegistry` manages `GenerationLease` objects. When a new generation is activated, the previous one is moved to a `retired` queue and `retire()` is called. `sweepRetired()` removes leases that are closed. `LoadedGeneration.load` creates a new `URLClassLoader` for each generation.\n\nWait, I need to see `GenerationLease.java` to see how it handles the lifecycle and if it actually closes the `LoadedGeneration`.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/GenerationLease.java`.\n2. Examine `src/main/java/io/harbor/textd/core/WorkerBindings.java` to see how workers hold onto these leases.\n3. Check the output of the stress test (if it finished).",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/GenerationLease.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerBindings.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

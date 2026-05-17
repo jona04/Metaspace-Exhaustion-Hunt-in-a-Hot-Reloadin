@@ -1,0 +1,15 @@
+{
+  "analysis": "I've reviewed the code. Here's how the generation lifecycle works:\n1. `GenerationRegistry.activate` creates a new `LoadedGeneration` and wraps it in a `GenerationLease` with an initial reference count of 1.\n2. When a new generation is activated, the previous one is retired (`previous.retire()`). `retire()` decrements the reference count.\n3. `GenerationLease.release()` checks if the reference count is 0 AND the lease is retired. If so, it calls `closeLoadedGeneration()`, which closes the `PluginModule` and the `URLClassLoader`.\n4. `GenerationRegistry.sweepRetired()` removes closed leases from the `retired` queue.\n\nThe issue might be that some components are retaining a lease but never releasing it, or the reference counting logic has a flaw.\n\nLet's look at how workers use these leases. `WorkerBindings.java` and `TextDaemon.java` are likely candidates.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/WorkerBindings.java` and `src/main/java/io/harbor/textd/core/TextDaemon.java` to see how they interact with `GenerationLease`.\n2. Look for calls to `retain()` and `release()`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerBindings.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

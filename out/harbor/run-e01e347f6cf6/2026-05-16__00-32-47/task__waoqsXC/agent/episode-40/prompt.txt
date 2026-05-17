@@ -1,0 +1,41 @@
+Current Terminal Screen:
+>         }
+>
+>         try {
+>             WorkerHandle binding = ThreadBridge.current(revisions);
+>             return binding.process(record);
+>         } finally {
+>             ThreadBridge.clear();
+>         }
+>     }
+>
+>     @Override
+>     public void close() throws Exception {
+>         revisions.close();
+>         workers.shutdownNow();
+>         workers.awaitTermination(5, TimeUnit.SECONDS);
+>     }
+>
+>     private static final class WorkerThreadFactory implements ThreadFactory {
+>         private final AtomicInteger sequence = new AtomicInteger(1);
+>
+>         @Override
+>         public Thread newThread(Runnable runnable) {
+>             Thread thread = new Thread(() -> {
+>                 try {
+>                     runnable.run();
+>                 } finally {
+>                     ThreadBridge.clear();
+>                 }
+>             });
+>             thread.setName("textd-worker-" + sequence.getAndIncrement());
+>             thread.setDaemon(true);
+>             return thread;
+>         }
+>     }
+> }
+> EOF
+root@4d312fc19747:/workspace/textd# ./bin/build
+./bin/replay-check
+root@4d312fc19747:/workspace/textd# ./bin/replay-check
+

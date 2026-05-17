@@ -1,0 +1,6 @@
+{
+  "analysis": "The `textd` daemon was suffering from a Metaspace leak during in-place processor refreshes. The root cause was in `WorkerBindings.java`, where a `ThreadLocal<DispatchBinding>` was used to cache the active processor for each worker thread. When a new processor generation was activated, the `current()` method would create a new `DispatchBinding` and overwrite the old one in the `ThreadLocal` without calling `close()` on the previous binding. Since each `DispatchBinding` holds a reference lease on a `LoadedGeneration` (which contains a `URLClassLoader`), the old class loaders were never closed or garbage collected, leading to `java.lang.OutOfMemoryError: Metaspace` under the constrained 64MB limit.\n\nI have modified `WorkerBindings.java` to explicitly call `binding.close()` before replacing an outdated binding. This ensures the reference count on the old `GenerationLease` drops to zero, allowing the `LoadedGeneration` to close its `URLClassLoader` and reclaim Metaspace.",
+  "plan": "The fix has been verified with both the `./bin/stress` test and the full `./bin/run-suite`. No further actions are required.",
+  "commands": [],
+  "task_complete": true
+}

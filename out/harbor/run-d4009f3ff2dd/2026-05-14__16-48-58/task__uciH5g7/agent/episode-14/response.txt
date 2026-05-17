@@ -1,0 +1,10 @@
+{
+  "analysis": "`LoadedGeneration` properly closes both the `module` and the `classLoader`. The issue was indeed that `TimelineFrame` (which wraps `LoadedGeneration`) was never being closed because it remained pinned by leaked `WorkerHandle`s in the `ThreadLocal` `ThreadCache`.",
+  "plan": "I'm confident in the fix. I'll run the stress test one more time with a higher number of cycles to be absolutely sure.",
+  "commands": [
+    {
+      "keystrokes": "bin/stress 750\n",
+      "duration": 20.0
+    }
+  ]
+}

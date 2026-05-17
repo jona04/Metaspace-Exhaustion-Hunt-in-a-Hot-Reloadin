@@ -1,0 +1,19 @@
+{
+  "analysis": "In `TextDaemon.java`, I see `ThreadBridge.current(revisions)`. This suggests that there might be some state stored in the worker threads. The `workers` pool is a `FixedThreadPool`. If `ThreadBridge` or `revisions` (a `TimelineLedger`) stores references in `ThreadLocal` variables within these worker threads, and these references include classes or classloaders from previous generations, they won't be collected.\n\nAlso, `revisions.install(generation)` is called in `reload`. I should check `TimelineLedger.java` and `ThreadBridge.java`.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/TimelineLedger.java`.\n2. Examine `src/main/java/io/harbor/textd/core/ThreadBridge.java`.\n3. Examine `src/main/java/io/harbor/textd/core/ThreadCache.java` (found in the file list earlier).",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

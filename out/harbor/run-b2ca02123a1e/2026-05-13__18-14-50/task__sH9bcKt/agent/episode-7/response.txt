@@ -1,0 +1,14 @@
+{
+  "analysis": "In `ThreadCache.java`, I see that when the `cursor` doesn't match the current frame, a new `WorkerHandle` is created and assigned to `cursor`: \n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\nHowever, the old `cursor` is not closed! `WorkerHandle.close()` calls `frame.unpin()`. If it's not closed, the `TimelineFrame` remains 'pinned', which likely prevents the `TimelineFrame` (and its associated ClassLoader) from being released.",
+  "plan": "1. Verify `TimelineFrame.java` to see what `pin()` and `unpin()` do.\n2. Verify `ThreadBridge.java` to see how `ThreadCache` is used.\n3. Fix the leak in `ThreadCache.java` by closing the old cursor before replacing it.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    }
+  ]
+}

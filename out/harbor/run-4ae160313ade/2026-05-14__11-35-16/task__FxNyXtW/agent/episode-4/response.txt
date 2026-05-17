@@ -1,0 +1,14 @@
+{
+  "analysis": "The `TimelineLedger` keeps track of the current `TimelineFrame` and a queue of `shadow` frames (previous generations). A frame is removed from the `shadow` queue when it is \"drained\".\n\n`ThreadBridge` uses a `ThreadLocal<ThreadCache>` to store `WorkerHandle`s. This is a common source of memory leaks if not managed correctly, especially with class loaders.\n\n`WorkerHandle` pins a `TimelineFrame` in its constructor and unpins it in its `close()` method. It also holds a reference to a `TextProcessor` from the plugin module.\n\nLet's look at `TimelineFrame.java` and `ThreadCache.java` next.",
+  "plan": "I will examine `src/main/java/io/harbor/textd/core/TimelineFrame.java` and `src/main/java/io/harbor/textd/core/ThreadCache.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.2
+    }
+  ]
+}_

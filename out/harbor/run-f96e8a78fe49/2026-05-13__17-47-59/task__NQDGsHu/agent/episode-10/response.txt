@@ -1,0 +1,10 @@
+{
+  "analysis": "Exactly as suspected. `WorkerHandle` calls `frame.pin()` in its constructor and `frame.unpin()` in its `close()` method. In `ThreadCache.java`, when a new `WorkerHandle` is created to replace an old one, the old one is simply discarded without being closed. This keeps the old `TimelineFrame` pinned, preventing it from being 'drained' and its `LoadedGeneration` (and ClassLoader) from being closed.",
+  "plan": "Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to call `cursor.close()` when replacing it with a new `WorkerHandle`.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    }
+  ]
+}

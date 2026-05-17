@@ -1,0 +1,10 @@
+{
+  "analysis": "I have identified a resource leak in `ThreadCache.java`. When a new generation is installed, the `cursorFor` method in `ThreadCache` replaces the existing `WorkerHandle` without closing it. Since `WorkerHandle` pins a `TimelineFrame` upon creation and unpins it only when closed, failing to close the old `WorkerHandle` causes the `TimelineFrame` (and its associated `URLClassLoader` and `PluginModule`) to never be reclaimed. This matches the problem description where old plugin generations are not being fully reclaimed.",
+  "plan": "I will first examine the `bin/stress` script to understand how to reproduce the issue and then apply the fix to `src/main/java/io/harbor/textd/core/ThreadCache.java`. After applying the fix, I will run the stress test to ensure the issue is resolved.",
+  "commands": [
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.5
+    }
+  ]
+}

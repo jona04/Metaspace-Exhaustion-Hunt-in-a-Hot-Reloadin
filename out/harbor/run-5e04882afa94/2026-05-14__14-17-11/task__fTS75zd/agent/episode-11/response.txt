@@ -1,0 +1,14 @@
+{
+  "analysis": "The issue is in `ThreadCache.java`. When a new `WorkerHandle` is created because the revision changed, the old `WorkerHandle` is simply replaced without being closed:\n\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\n\n`WorkerHandle.close()` calls `frame.unpin()`, which is necessary for the `TimelineFrame` to eventually reach a pin count of 0 and close its `LoadedGeneration` (and `ClassLoader`). By not calling `close()` on the old `cursor`, the old `TimelineFrame` remains pinned forever, preventing the `ClassLoader` from being garbage collected.\n\nAlso, `ThreadDaemon.close()` shuts down the worker threads, but it doesn't seem to clear the `ThreadLocal` in those threads. However, since the threads themselves should be terminated, the `ThreadLocal` values should eventually be eligible for GC, *unless* they are being held by something else. But wait, the worker threads are part of a fixed thread pool in `TextDaemon`. When `TextDaemon.close()` is called, `workers.shutdownNow()` is called. This should terminate the threads, and thus their `ThreadLocal` maps should be cleared.\n\nWait, if the threads are terminated, the `ThreadLocal` values *should* be gone. But the `bin/replay-check` failed. Let's look at `SessionReplayRunner` again. It creates a `TextDaemon`, reloads it multiple times, and then calls `daemon.close()`. Then it calls `drainGc()`.",
+  "plan": "I will fix the leak in `ThreadCache.java` by closing the old `cursor` before replacing it. I also need to check if there are other places where `WorkerHandle` is not closed. In `TextDaemon.processRecord`, it calls `ThreadBridge.current(revisions)`, which returns the `cursor` from `ThreadCache`. It doesn't close it, but it shouldn't, because the `ThreadCache` owns it. However, the `ThreadCache` itself is stored in a `ThreadLocal` in the worker threads.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/cursor.close(); cursor = new WorkerHandle(frame);/' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ]
+}

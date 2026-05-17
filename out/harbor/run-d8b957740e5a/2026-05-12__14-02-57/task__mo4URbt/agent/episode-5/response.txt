@@ -1,0 +1,23 @@
+{
+  "analysis": "I found a resource leak in `ThreadCache.java`. When `cursorFor(ledger)` is called and the current revision doesn't match the cached `cursor`, a new `WorkerHandle` is created and assigned to `cursor`: \n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\nHowever, the old `cursor` is never closed! Since `WorkerHandle.close()` is responsible for calling `frame.unpin()`, the old `TimelineFrame` remains pinned indefinitely. This prevents the `LoadedGeneration` (and its class loader) from ever being closed and garbage collected, leading to the Metaspace OOM during repeated swaps.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before replacing it with a new one.\n2. Rebuild the project.\n3. Run the stress test again to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/cursor.close(); cursor = new WorkerHandle(frame);/' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/build\n",
+      "duration": 5.0
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 20.0
+    }
+  ],
+  "task_complete": false
+}

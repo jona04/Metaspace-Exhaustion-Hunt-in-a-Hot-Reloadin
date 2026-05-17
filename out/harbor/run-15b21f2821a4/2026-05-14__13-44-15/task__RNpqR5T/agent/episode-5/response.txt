@@ -1,0 +1,14 @@
+{
+  "analysis": "I've identified a potential resource leak in `ThreadCache.java`. When `cursorFor` is called and the current frame doesn't match the cached `cursor`, a new `WorkerHandle` is created and assigned to `cursor`, but the old `cursor` is never closed. Since `WorkerHandle.close()` calls `frame.unpin()`, failing to call it means the pin count for the old frame will never reach zero (if it was the last pin), preventing `closeLoadedGeneration()` from being called and thus leaking the plugin class loader and module.",
+  "plan": "I will modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before replacing it with a new one.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/cursor.close(); cursor = new WorkerHandle(frame);/2' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    }
+  ]
+}

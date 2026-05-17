@@ -1,0 +1,18 @@
+{
+  "analysis": "Everything is working exactly as it should! Generations 1, 2, 3 are closed during the session as new ones are loaded. Workers die. Generation 4 is closed after workers die. \n\nSo why is the class count not decreasing? \n\nWait! I just realized something. In Java, `ClassLoadingMXBean.getUnloadedClassCount()` returns the total number of classes that have been unloaded *since the JVM started*. \n\nIf the JVM hasn't actually unloaded the classes yet, this will be 0. \n\nWhy hasn't the JVM unloaded the classes? \nI'm calling `System.gc()` 3 times. \n\nWait! I know why! It's because of the `System.out.println` statements I added! No, that shouldn't matter.\n\nWait! I found it! I found it! I found it! \n\nIn `SessionReplayRunner.java`:\n```java\n    private static void drainGc() throws InterruptedException {\n        for (int i = 0; i < 3; i++) {\n            System.gc();\n            Thread.sleep(50);\n        }\n    }\n```\n\nIs it possible that the JVM needs more time or more pressure to unload classes? \n\nActually, I have a better idea. What if I use a different way to check for unloading? No, I must pass the existing test.\n\nWait! I just noticed something in the task description: \n\"Get the daemon through the long run without changing the deterministic text-processing results from the shipped revisions. Old plugin generations must be fully reclaimed by the runtime once sessions close.\"\n\nWait! I think I see it! \nIn `ThreadCache.java`, I'm still creating a new `WorkerHandle` for *every* generation even if it's already been loaded? No, `cursor.matches(frame)` handles that.\n\nWait! I found it! Look at `ThreadBridge.java` again. \n```java\n    private static final ThreadLocal<ThreadCache> ROUTES = ThreadLocal.withInitial(ThreadCache::new);\n```\n\nWait! Does the main thread ever call `ThreadBridge.current()`? \nI'll check by adding a print statement in `ThreadBridge.current()`.",
+  "plan": "Check if main thread calls `ThreadBridge.current()`.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/return ROUTES.get().cursorFor(ledger);/if (Thread.currentThread().getName().equals(\"main\")) System.out.println(\"MAIN THREAD CALLED CURRENT\"); return ROUTES.get().cursorFor(ledger);/' src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/build\n",
+      "duration": 5.0
+    },
+    {
+      "keystrokes": "java -cp build/main-classes io.harbor.textd.cli.SessionReplayRunner build/plugins/customer-default.jar 4\n",
+      "duration": 5.0
+    }
+  ]
+}

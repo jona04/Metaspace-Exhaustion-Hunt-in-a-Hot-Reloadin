@@ -1,0 +1,15 @@
+{
+  "analysis": "The project is a Java-based text processing daemon (`textd`). \n- `src/main/java` contains the core logic, including `TextDaemon.java` and `ThreadCache.java`.\n- `plugin-src` contains a customer plugin implementation.\n- `bin` contains scripts like `stress` and `run-suite`, which likely trigger the long runs mentioned in the task.\n- The task mentions 'repeated processor swaps' and 'constrained CI profile', which suggests a resource leak (memory or threads) during hot-reloading or plugin swapping.\n- There is no README, so I'll need to examine the scripts and the code.",
+  "plan": "1. Examine `bin/stress` to see how the long run is executed.\n2. Examine `src/main/java/io/harbor/textd/core/TextDaemon.java` to understand the lifecycle and how 'processor swaps' (hot reloading) are handled.\n3. Examine `src/main/java/io/harbor/textd/core/ThreadCache.java` as it sounds like a potential source of leaks.",
+  "commands": [
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat bin/build\n",
+      "duration": 0.2
+    }
+  ],
+  "task_complete": false
+}

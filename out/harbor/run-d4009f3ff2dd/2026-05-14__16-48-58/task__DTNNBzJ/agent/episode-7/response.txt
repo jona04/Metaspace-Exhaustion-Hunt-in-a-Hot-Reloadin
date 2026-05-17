@@ -1,0 +1,18 @@
+{
+  "analysis": "The `ThreadBridge` uses a `ThreadLocal<ThreadCache>`. This `ThreadCache` might be holding onto references to old `LoadedGeneration` objects. `TimelineLedger` manages `TimelineFrame` objects, which contain `LoadedGeneration`. It has a `shadow` queue for old frames and attempts to prune them when they are 'drained'.",
+  "plan": "I need to look at `src/main/java/io/harbor/textd/core/ThreadCache.java`, `src/main/java/io/harbor/textd/core/TimelineFrame.java`, and `src/main/java/io/harbor/textd/core/WorkerHandle.java` to see how the frames are tracked and drained.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    }
+  ]
+}

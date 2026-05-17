@@ -1,0 +1,15 @@
+{
+  "analysis": "The `WorkerBindings` class uses a `ThreadLocal<DispatchBinding>`. \n\nWhen `current(registry)` is called:\n1. It gets the `activeLease` from the registry.\n2. It checks if there's an existing `binding` in the `ThreadLocal`.\n3. If no binding exists, it creates one (which calls `lease.retain()`).\n4. If a binding exists but doesn't match the active lease (i.e., a reload happened), it creates a replacement.\n\n**Crucially**, when a replacement is created, the old `binding` is just overwritten in the `ThreadLocal` without being closed. This means `binding.close()` (which calls `lease.release()`) is never called for the old binding. Since the old lease's reference count never drops to zero, the `LoadedGeneration` (and its `URLClassLoader`) is never closed, leading to a Metaspace leak.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/WorkerBindings.java` to close the old binding before replacing it in the `ThreadLocal`.\n2. Also, ensure that the `ThreadLocal` is cleared when the worker is done, although in this daemon the workers are persistent threads. However, the leak happens specifically during reloads because the old binding is abandoned.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/WorkerBindings.java\npackage io.harbor.textd.core;\n\nfinal class WorkerBindings {\n    private static final ThreadLocal<DispatchBinding> ACTIVE = new ThreadLocal<>();\n\n    private WorkerBindings() {\n    }\n\n    static DispatchBinding current(GenerationRegistry registry) {\n        GenerationLease activeLease = registry.active();\n        DispatchBinding binding = ACTIVE.get();\n        if (binding == null) {\n            DispatchBinding created = new DispatchBinding(activeLease);\n            ACTIVE.set(created);\n            return created;\n        }\n\n        if (!binding.matches(activeLease)) {\n            binding.close();\n            DispatchBinding replacement = new DispatchBinding(activeLease);\n            ACTIVE.set(replacement);\n            return replacement;\n        }\n\n        return binding;\n    }\n\n    static void releaseCurrent() {\n        DispatchBinding binding = ACTIVE.get();\n        if (binding != null) {\n            binding.close();\n            ACTIVE.remove();\n        }\n    }\n}\nEOF\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

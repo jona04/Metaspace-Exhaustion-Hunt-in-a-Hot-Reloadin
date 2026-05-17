@@ -1,0 +1,6 @@
+{
+  "analysis": "The problem was identified as a Metaspace memory leak caused by failing to close old `WorkerHandle` instances during hot-reloads of the text processing plugin. Each `WorkerHandle` pinned a `TimelineFrame`, which in turn held a reference to a `URLClassLoader`. Because the old `WorkerHandle` was never closed in `ThreadCache.cursorFor`, the pin count never reached zero, preventing the class loader from being closed and leading to `java.lang.OutOfMemoryError: Metaspace` under stress.\n\nI have modified `src/main/java/io/harbor/textd/core/ThreadCache.java` to explicitly call `cursor.close()` before replacing it with a new handle for a new generation. Verification with `./bin/stress` and `./bin/run-suite` confirms the fix is effective and does not introduce regressions.",
+  "plan": "Task is finished. I have verified the fix with both the stress test (which previously failed) and the integration suite.",
+  "commands": [],
+  "task_complete": true
+}

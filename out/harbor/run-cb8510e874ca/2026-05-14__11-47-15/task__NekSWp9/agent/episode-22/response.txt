@@ -1,0 +1,10 @@
+{
+  "analysis": "Wait, I see a potential issue. In `TimelineLedger.install`, I call `pruneShadow()`. In `TimelineLedger.close()`, I call `pruneShadow()`. But `pruneShadow()` only removes frames that are *already* drained. If a frame becomes drained *after* the last call to `pruneShadow()`, it stays in the `shadow` queue. However, the `shadow` queue itself shouldn't prevent the `TimelineFrame` from being GC'd if it's otherwise unreachable. But the `TimelineFrame` holds a `LoadedGeneration`, which holds a `URLClassLoader`, which holds the classes. If the `TimelineFrame` is in the `shadow` queue, it's still reachable.",
+  "plan": "In `isBalanced()`, `pruneShadow()` is called. `SessionReplayRunner` calls `daemon.isBalanced()`. So the shadow queue should be pruned. The fact that `unloaded-first` is 0 might be due to how JVM reports class unloading. Let's look at `SessionReplayRunner.java` again to see how it calculates the unloaded count.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/SessionReplayRunner.java\n",
+      "duration": 0.1
+    }
+  ]
+}

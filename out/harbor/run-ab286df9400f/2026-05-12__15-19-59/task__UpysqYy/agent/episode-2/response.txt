@@ -1,0 +1,14 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with a very tight `MaxMetaspaceSize` of 64m. This strongly suggests that the 'processor swaps' (hot-reloading) are leaking class loaders or classes, eventually exhausting the Metaspace. The failure is likely an `OutOfMemoryError: Metaspace` during long runs.",
+  "plan": "1. Wait for the current `./bin/stress` execution to finish or fail to confirm the error.\n2. Examine `src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java` to see how it performs the swaps.\n3. Examine `src/main/java/io/harbor/textd/core/TextDaemon.java` and `src/main/java/io/harbor/textd/core/ThreadCache.java` to see how old processors and their class loaders are being disposed of (or not).",
+  "commands": [
+    {
+      "keystrokes": "",
+      "duration": 10.0
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.2
+    }
+  ]
+}

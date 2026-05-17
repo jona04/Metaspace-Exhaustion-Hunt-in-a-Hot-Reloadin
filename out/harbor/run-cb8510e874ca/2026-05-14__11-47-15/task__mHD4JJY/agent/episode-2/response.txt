@@ -1,0 +1,14 @@
+{
+  "analysis": "The `TextDaemon` uses a `TimelineLedger` to manage revisions. It uses a `ThreadBridge` to bind workers to a specific generation. `LoadedGeneration` handles the actual loading of the plugin JAR via a `URLClassLoader`. The stress test limits `MaxMetaspaceSize` to 64m, which is likely why it's failing if old generations aren't being garbage collected.\n\nI need to see `TimelineLedger.java` and `ThreadBridge.java` to understand how generations are tracked and retired.",
+  "plan": "I will read `src/main/java/io/harbor/textd/core/TimelineLedger.java` and `src/main/java/io/harbor/textd/core/ThreadBridge.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    }
+  ]
+}

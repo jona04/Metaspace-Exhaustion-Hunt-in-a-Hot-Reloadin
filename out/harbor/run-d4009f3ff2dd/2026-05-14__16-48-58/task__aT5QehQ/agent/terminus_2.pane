@@ -1,0 +1,1336 @@
+[?2004hroot@58df5f9b274f:/workspace/textd# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@58df5f9b274f:/workspace/textd# clear
+[?2004l[H[J[3J[?2004hroot@58df5f9b274f:/workspace/textd# ls -R
+[?2004l.:
+[0m[01;34mbin[0m  [01;34mbuild[0m  [01;34mplugin-src[0m  [01;34msrc[0m
+
+./bin:
+[01;32mbuild[0m  [01;32mintegration[0m  [01;32mreplay-check[0m  [01;32mrun-suite[0m  [01;32mstress[0m
+
+./build:
+[01;34mmain-classes[0m  [01;34mplugin-classes[0m  [01;34mplugins[0m
+
+./build/main-classes:
+
+./build/plugin-classes:
+
+./build/plugins:
+
+./plugin-src:
+[01;34mio[0m
+
+./plugin-src/io:
+[01;34mharbor[0m
+
+./plugin-src/io/harbor:
+[01;34mtextd[0m
+
+./plugin-src/io/harbor/textd:
+[01;34mcustomer[0m
+
+./plugin-src/io/harbor/textd/customer:
+CustomerPluginFactory.java  CustomerPluginModule.java  PipelineProcessor.java  PipelineStages.java
+
+./src:
+[01;34mmain[0m
+
+./src/main:
+[01;34mjava[0m
+
+./src/main/java:
+[01;34mio[0m
+
+./src/main/java/io:
+[01;34mharbor[0m
+
+./src/main/java/io/harbor:
+[01;34mtextd[0m
+
+./src/main/java/io/harbor/textd:
+[01;34mapi[0m  [01;34mcli[0m  [01;34mcore[0m
+
+./src/main/java/io/harbor/textd/api:
+PluginModule.java  PluginModuleFactory.java  TextProcessor.java
+
+./src/main/java/io/harbor/textd/cli:
+HotReloadIntegrationRunner.java  HotReloadStressRunner.java  RuntimeDigestRunner.java  SessionReplayRunner.java
+
+./src/main/java/io/harbor/textd/core:
+LoadedGeneration.java  ProcessingResult.java  ThreadBridge.java  TimelineFrame.java   WorkerHandle.java
+OutputFormat.java      TextDaemon.java        ThreadCache.java   TimelineLedger.java
+[?2004hroot@58df5f9b274f:/workspace/textd# cat src/main/java/io/harbor/textd/core/LoadedGeneration.java
+[?2004lpackage io.harbor.textd.core;
+
+import io.harbor.textd.api.PluginModule;
+import io.harbor.textd.api.PluginModuleFactory;
+
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Path;
+
+final class LoadedGeneration implements AutoCloseable {
+    private static final String FACTORY_CLASS = "io.harbor.textd.customer.CustomerPluginFactory";
+
+    private final long generation;
+    private final URLClassLoader classLoader;
+    private final PluginModule module;
+
+    private LoadedGeneration(long generation, URLClassLoader classLoader, PluginModule module) {
+        this.generation = generation;
+        this.classLoader = classLoader;
+        this.module = module;
+    }
+
+    static LoadedGeneration load(Path pluginJar, long generation) throws Exception {
+        URLClassLoader classLoader = new URLClassLoader(new URL[] {pluginJar.toUri().toURL()}, PluginModuleFactory.class.getClassLoader());
+        Class<?> factoryType = classLoader.loadClass(FACTORY_CLASS);
+        PluginModuleFactory factory = (PluginModuleFactory) factoryType.getDeclaredConstructor().newInstance();
+        return new LoadedGeneration(generation, classLoader, factory.open());
+    }
+
+    long generation() {
+        return generation;
+    }
+
+    PluginModule module() {
+        return module;
+    }
+
+    @Override
+    public void close() throws Exception {
+        module.close();
+        classLoader.close();
+    }
+}
+[?2004hroot@58df5f9b274f:/workspace/textd# cat src/main/java/io/harbor/textd/core/TimelineLedger.java
+[?2004lpackage io.harbor.textd.core;
+
+import java.nio.file.Path;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicReference;
+
+final class TimelineLedger {
+    private final Path pluginJar;
+    private final AtomicReference<TimelineFrame> current = new AtomicReference<>();
+    private final Queue<TimelineFrame> shadow = new ConcurrentLinkedQueue<>();
+
+    TimelineLedger(Path pluginJar) {
+        this.pluginJar = pluginJar;
+    }
+
+    void install(long revision) throws Exception {
+        TimelineFrame next = new TimelineFrame(LoadedGeneration.load(pluginJar, revision));
+        TimelineFrame previous = current.getAndSet(next);
+        if (previous != null) {
+            shadow.add(previous);
+            previous.cool();
+            pruneShadow();
+        }
+    }
+
+    TimelineFrame current() {
+        TimelineFrame frame = current.get();
+        if (frame == null) {
+            throw new IllegalStateException("No plugin generation is loaded");
+        }
+        return frame;
+    }
+
+    boolean isBalanced() {
+        pruneShadow();
+        return shadow.isEmpty();
+    }
+
+    void close() {
+        TimelineFrame frame = current.getAndSet(null);
+        if (frame != null) {
+            shadow.add(frame);
+            frame.cool();
+        }
+        pruneShadow();
+    }
+
+    private void pruneShadow() {
+        shadow.removeIf(TimelineFrame::isDrained);
+    }
+}
+[?2004hroot@58df5f9b274f:/workspace/textd# cat src/main/java/io/harbor/textd/core/TimelineFrame.java
+[?2004lpackage io.harbor.textd.core;
+
+import io.harbor.textd.api.PluginModule;
+
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+
+final class TimelineFrame {
+    private final LoadedGeneration loadedGeneration;
+    private final AtomicInteger pins = new AtomicInteger(1);
+    private final AtomicBoolean cooled = new AtomicBoolean(false);
+    private final AtomicBoolean closed = new AtomicBoolean(false);
+
+    TimelineFrame(LoadedGeneration loadedGeneration) {
+        this.loadedGeneration = loadedGeneration;
+    }
+
+    TimelineFrame pin() {
+        while (true) {
+            int current = pins.get();
+            if (current == 0) {
+                throw new IllegalStateException("Revision " + revision() + " is already closed");
+            }
+            if (pins.compareAndSet(current, current + 1)) {
+                return this;
+            }
+        }
+    }
+
+    long revision() {
+        return loadedGeneration.generation();
+    }
+
+    PluginModule module() {
+        return loadedGeneration.module();
+    }
+
+    void cool() {
+        if (cooled.compareAndSet(false, true)) {
+            unpin();
+        }
+    }
+
+    void unpin() {
+        int remaining = pins.decrementAndGet();
+        if (remaining < 0) {
+            throw new IllegalStateException("Pin count underflow for revision " + revision());
+        }
+        if (remaining == 0 && cooled.get()) {
+            closeLoadedGeneration();
+        }
+    }
+
+    boolean isDrained() {
+        return closed.get();
+    }
+
+    private void closeLoadedGeneration() {
+        if (closed.compareAndSet(false, true)) {
+            try {
+                loadedGeneration.close();
+            } catch (Exception exception) {
+                throw new IllegalStateException("Unable to close revision " + revision(), exception);
+            }
+        }
+    }
+}
+[?2004hroot@58df5f9b274f:/workspace/textd# cat src/main/java/io/harbor/textd/core/WorkerHandle.java
+[?2004lpackage io.harbor.textd.core;
+
+import io.harbor.textd.api.TextProcessor;
+
+final class WorkerHandle implements AutoCloseable {
+    private final TimelineFrame frame;
+    private final long revision;
+    private final TextProcessor processor;
+
+    WorkerHandle(TimelineFrame frame) {
+        this.frame = frame.pin();
+        this.revision = frame.revision();
+        this.processor = frame.module().processorFor(revision);
+    }
+
+    boolean matches(TimelineFrame frame) {
+        return revision == frame.revision();
+    }
+
+    ProcessingResult process(String record) {
+        String output = processor.process(record);
+        return new ProcessingResult(revision, output, Thread.currentThread().getName());
+    }
+
+    @Override
+    public void close() {
+        frame.unpin();
+    }
+}
+[?2004hroot@58df5f9b274f:/workspace/textd# cat src/main/java/io/harbor/textd/core/TextDaemon.java
+[?2004lpackage io.harbor.textd.core;
+
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+public final class TextDaemon implements AutoCloseable {
+    private final ExecutorService workers;
+    private final TimelineLedger revisions;
+    private final int workerCount;
+
+    public TextDaemon(Path pluginJar, int workerCount) {
+        this.revisions = new TimelineLedger(pluginJar);
+        this.workers = Executors.newFixedThreadPool(workerCount, new WorkerThreadFactory());
+        this.workerCount = workerCount;
+    }
+
+    public void reload(long generation) throws Exception {
+        revisions.install(generation);
+    }
+
+    public ProcessingResult process(String record) throws Exception {
+        return processBatch(List.of(record)).get(0);
+    }
+
+    public boolean isBalanced() {
+        return revisions.isBalanced();
+    }
+
+    public List<ProcessingResult> processBatch(List<String> records) throws Exception {
+        CountDownLatch ready = new CountDownLatch(records.size());
+        CountDownLatch release = new CountDownLatch(1);
+        List<Future<ProcessingResult>> futures = new ArrayList<>();
+        for (String record : records) {
+            futures.add(workers.submit(() -> processRecord(record, ready, release)));
+        }
+
+        if (!ready.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Workers did not become ready");
+        }
+        release.countDown();
+
+        List<ProcessingResult> results = new ArrayList<>(records.size());
+        for (Future<ProcessingResult> future : futures) {
+            try {
+                results.add(future.get());
+            } catch (ExecutionException exception) {
+                Throwable cause = exception.getCause();
+                if (cause instanceof Exception checked) {
+                    throw checked;
+                }
+                if (cause instanceof Error error) {
+                    throw error;
+                }
+                throw new RuntimeException(cause);
+            }
+        }
+        return results;
+    }
+
+    private ProcessingResult processRecord(
+        String record,
+        CountDownLatch ready,
+        CountDownLatch release
+    ) throws Exception {
+        ready.countDown();
+        if (!release.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Request release timed out");
+        }
+
+        WorkerHandle binding = ThreadBridge.current(revisions);
+        return binding.process(record);
+    }
+
+    @Override
+    public void close() throws Exception {
+        revisions.close();
+        workers.shutdownNow();
+        workers.awaitTermination(5, TimeUnit.SECONDS);
+    }
+
+    private static final class WorkerThreadFactory implements ThreadFactory {
+        private final AtomicInteger sequence = new AtomicInteger(1);
+
+        @Override
+        public Thread newThread(Runnable runnable) {
+            Thread thread = new Thread(runnable);
+            thread.setName("textd-worker-" + sequence.getAndIncrement());
+            thread.setDaemon(true);
+            return thread;
+        }
+    }
+}
+[?2004hroot@58df5f9b274f:/workspace/textd# cat src/main/java/io/harbor/textd/core/ThreadBridge.java
+[?2004lpackage io.harbor.textd.core;
+
+final class ThreadBridge {
+    private static final ThreadLocal<ThreadCache> ROUTES = ThreadLocal.withInitial(ThreadCache::new);
+
+    private ThreadBridge() {
+    }
+
+    static WorkerHandle current(TimelineLedger ledger) {
+        return ROUTES.get().cursorFor(ledger);
+    }
+
+    static void clear() {
+        ThreadCache routeState = ROUTES.get();
+        routeState.close();
+        ROUTES.remove();
+    }
+}
+[?2004hroot@58df5f9b274f:/workspace/textd# cat src/main/java/io/harbor/textd/core/ThreadCache.java
+[?2004lpackage io.harbor.textd.core;
+
+final class ThreadCache implements AutoCloseable {
+    private WorkerHandle cursor;
+
+    WorkerHandle cursorFor(TimelineLedger ledger) {
+        TimelineFrame frame = ledger.current();
+        if (cursor == null) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        if (!cursor.matches(frame)) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        return cursor;
+    }
+
+    @Override
+    public void close() {
+        if (cursor != null) {
+            cursor.close();
+            cursor = null;
+        }
+    }
+}
+[?2004hroot@58df5f9b274f:/workspace/textd# sed -i 's/cursor = new WorkerHandle(frame);/if (cursor != null) cursor.close(); cursor = new WorkerHandle(frame);/g' src/main/java/io/harbor/textd/core/ThreadCache.java
+[?2004l[?2004hroot@58df5f9b274f:/workspace/textd# cat src/main/java/io/harbor/textd/core/ThreadCache.java
+[?2004lpackage io.harbor.textd.core;
+
+final class ThreadCache implements AutoCloseable {
+    private WorkerHandle cursor;
+
+    WorkerHandle cursorFor(TimelineLedger ledger) {
+        TimelineFrame frame = ledger.current();
+        if (cursor == null) {
+            if (cursor != null) cursor.close(); cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        if (!cursor.matches(frame)) {
+            if (cursor != null) cursor.close(); cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        return cursor;
+    }
+
+    @Override
+    public void close() {
+        if (cursor != null) {
+            cursor.close();
+            cursor = null;
+        }
+    }
+}
+[?2004hroot@58df5f9b274f:/workspace/textd# ls bin
+[?2004l[0m[01;32mbuild[0m  [01;32mintegration[0m  [01;32mreplay-check[0m  [01;32mrun-suite[0m  [01;32mstress[0m
+[?2004hroot@58df5f9b274f:/workspace/textd# cat bin/stress
+[?2004l#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+if [[ "${TEXTD_SKIP_BUILD:-0}" != "1" ]]; then
+  "$ROOT_DIR/bin/build"
+fi
+
+CYCLES="${1:-50}"
+[[ "$CYCLES" -gt 750 ]] && CYCLES=750
+
+java -XX:MaxMetaspaceSize=64m -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.HotReloadStressRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" \
+  "$CYCLES"
+[?2004hroot@58df5f9b274f:/workspace/textd# cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java
+[?2004lpackage io.harbor.textd.cli;
+
+import io.harbor.textd.core.OutputFormat;
+import io.harbor.textd.core.ProcessingResult;
+import io.harbor.textd.core.TextDaemon;
+
+import java.nio.file.Path;
+import java.util.List;
+
+public final class HotReloadStressRunner {
+    private static final String SAMPLE = "alpha beta gamma";
+
+    private HotReloadStressRunner() {
+    }
+
+    public static void main(String[] args) throws Exception {
+        Path pluginJar = Path.of(args[0]);
+        int cycles = args.length > 1 ? Integer.parseInt(args[1]) : 500;
+
+        try (TextDaemon daemon = new TextDaemon(pluginJar, 4)) {
+            for (int generation = 1; generation <= cycles; generation++) {
+                daemon.reload(generation);
+                assertOutputs(generation, daemon.processBatch(List.of(SAMPLE, SAMPLE, SAMPLE, SAMPLE)));
+                assertOutput(generation, daemon.process(SAMPLE));
+                if (generation % 3 == 0) {
+                    assertOutputs(generation, daemon.processBatch(List.of(SAMPLE, SAMPLE, SAMPLE, SAMPLE)));
+                }
+            }
+        }
+
+        System.out.println("stress-ok cycles=" + cycles);
+    }
+
+    private static void assertOutputs(long generation, List<ProcessingResult> results) {
+        for (ProcessingResult result : results) {
+            assertOutput(generation, result);
+        }
+    }
+
+    private static void assertOutput(long generation, ProcessingResult result) {
+        String expected = OutputFormat.expectedFor(generation, SAMPLE);
+        if (!expected.equals(result.output())) {
+            throw new IllegalStateException("Unexpected output at generation " + generation + ": " + result.output());
+        }
+    }
+}
+[?2004hroot@58df5f9b274f:/workspace/textd# ./bin/stress 100
+[?2004lstress-ok cycles=100
+[?2004hroot@58df5f9b274f:/workspace/textd# grep -r "isBalanced" .
+[?2004l[35m[K./src/main/java/io/harbor/textd/core/TextDaemon.java[m[K[36m[K:[m[K    public boolean [01;31m[KisBalanced[m[K() {
+[35m[K./src/main/java/io/harbor/textd/core/TextDaemon.java[m[K[36m[K:[m[K        return revisions.[01;31m[KisBalanced[m[K();
+[35m[K./src/main/java/io/harbor/textd/core/TimelineLedger.java[m[K[36m[K:[m[K    boolean [01;31m[KisBalanced[m[K() {
+[35m[K./src/main/java/io/harbor/textd/cli/SessionReplayRunner.java[m[K[36m[K:[m[K            boolean beforeClose = daemon.[01;31m[KisBalanced[m[K();
+[35m[K./src/main/java/io/harbor/textd/cli/SessionReplayRunner.java[m[K[36m[K:[m[K                daemon.[01;31m[KisBalanced[m[K(),
+[35m[K./src/main/java/io/harbor/textd/cli/RuntimeDigestRunner.java[m[K[36m[K:[m[K            boolean beforeClose = daemon.[01;31m[KisBalanced[m[K();
+[35m[K./src/main/java/io/harbor/textd/cli/RuntimeDigestRunner.java[m[K[36m[K:[m[K            boolean afterClose = daemon.[01;31m[KisBalanced[m[K();
+grep: ./build/main-classes/io/harbor/textd/core/TextDaemon.class: binary file matches
+grep: ./build/main-classes/io/harbor/textd/core/TimelineLedger.class: binary file matches
+grep: ./build/main-classes/io/harbor/textd/cli/RuntimeDigestRunner.class: binary file matches
+grep: ./build/main-classes/io/harbor/textd/cli/SessionReplayRunner.class: binary file matches
+[?2004hroot@58df5f9b274f:/workspace/textd# cat src/main/java/io/harbor/textd/cli/SessionReplayRunner.java
+[?2004lpackage io.harbor.textd.cli;
+
+import io.harbor.textd.core.OutputFormat;
+import io.harbor.textd.core.ProcessingResult;
+import io.harbor.textd.core.TextDaemon;
+
+import java.lang.management.ClassLoadingMXBean;
+import java.lang.management.ManagementFactory;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.stream.Collectors;
+
+public final class SessionReplayRunner {
+    private static final String SAMPLE = "alpha beta gamma";
+    private static final ClassLoadingMXBean CLASS_LOADING = ManagementFactory.getClassLoadingMXBean();
+
+    private SessionReplayRunner() {
+    }
+
+    public static void main(String[] args) throws Exception {
+        Path pluginJar = Path.of(args[0]);
+        int revision = args.length > 1 ? Integer.parseInt(args[1]) : 24;
+
+        Session first = runSession(pluginJar, revision);
+        Session second = runSession(pluginJar, revision);
+
+        System.out.println("{");
+        System.out.println("  \"first\": " + first.toJson() + ",");
+        System.out.println("  \"second\": " + second.toJson());
+        System.out.println("}");
+    }
+
+    private static Session runSession(Path pluginJar, int revision) throws Exception {
+        long loadedBefore = CLASS_LOADING.getLoadedClassCount();
+        long unloadedBefore = CLASS_LOADING.getUnloadedClassCount();
+
+        TextDaemon daemon = new TextDaemon(pluginJar, 4);
+        try {
+            daemon.reload(1);
+            List<ProcessingResult> firstResults = daemon.processBatch(List.of(SAMPLE, SAMPLE, SAMPLE, SAMPLE));
+            assertOutputs(1, firstResults);
+
+            List<String> workersStart = workerThreads(firstResults);
+            List<ProcessingResult> finalResults = firstResults;
+            for (int current = 2; current <= revision; current++) {
+                daemon.reload(current);
+                finalResults = daemon.processBatch(List.of(SAMPLE, SAMPLE, SAMPLE, SAMPLE));
+                assertOutputs(current, finalResults);
+            }
+
+            List<String> workersEnd = workerThreads(finalResults);
+            boolean sameWorkers = workersStart.equals(workersEnd);
+            boolean beforeClose = daemon.isBalanced();
+            String first = firstResults.get(0).output();
+            String last = finalResults.get(0).output();
+
+            daemon.close();
+            drainGc();
+
+            return new Session(
+                first,
+                last,
+                workersStart,
+                workersEnd,
+                sameWorkers,
+                beforeClose,
+                daemon.isBalanced(),
+                loadedBefore,
+                CLASS_LOADING.getLoadedClassCount(),
+                unloadedBefore,
+                CLASS_LOADING.getUnloadedClassCount()
+            );
+        } catch (Exception exception) {
+            try {
+                daemon.close();
+            } catch (Exception closeException) {
+                exception.addSuppressed(closeException);
+            }
+            throw exception;
+        }
+    }
+
+    private static List<String> workerThreads(List<ProcessingResult> results) {
+        return results.stream()
+            .map(ProcessingResult::workerThread)
+            .sorted()
+            .collect(Collectors.toList());
+    }
+
+    private static void drainGc() throws InterruptedException {
+        for (int i = 0; i < 3; i++) {
+            System.gc();
+            Thread.sleep(50);
+        }
+    }
+
+    private static void assertOutputs(long revision, List<ProcessingResult> results) {
+        String expected = OutputFormat.expectedFor(revision, SAMPLE);
+        for (ProcessingResult result : results) {
+            if (!expected.equals(result.output())) {
+                throw new IllegalStateException("Unexpected output at revision " + revision + ": " + result.output());
+            }
+        }
+    }
+
+    private static String toJsonArray(List<String> values) {
+        return values.stream()
+            .map(value -> "\"" + value + "\"")
+            .collect(Collectors.joining(", ", "[", "]"));
+    }
+
+    private static final class Session {
+        private final String first;
+        private final String last;
+        private final List<String> start;
+        private final List<String> end;
+        private final boolean sameWorkers;
+        private final boolean beforeClose;
+        private final boolean afterClose;
+        private final long loadedBeforeClose;
+        private final long loadedAfterClose;
+        private final long unloadedBeforeClose;
+        private final long unloadedAfterClose;
+
+        private Session(
+            String first,
+            String last,
+            List<String> start,
+            List<String> end,
+            boolean sameWorkers,
+            boolean beforeClose,
+            boolean afterClose,
+            long loadedBeforeClose,
+            long loadedAfterClose,
+            long unloadedBeforeClose,
+            long unloadedAfterClose
+        ) {
+            this.first = first;
+            this.last = last;
+            this.start = start;
+            this.end = end;
+            this.sameWorkers = sameWorkers;
+            this.beforeClose = beforeClose;
+            this.afterClose = afterClose;
+            this.loadedBeforeClose = loadedBeforeClose;
+            this.loadedAfterClose = loadedAfterClose;
+            this.unloadedBeforeClose = unloadedBeforeClose;
+            this.unloadedAfterClose = unloadedAfterClose;
+        }
+
+        private String toJson() {
+            return "{"
+                + "\"first\":\"" + first + "\","
+                + "\"last\":\"" + last + "\","
+                + "\"start\":" + toJsonArray(start) + ","
+                + "\"end\":" + toJsonArray(end) + ","
+                + "\"same_workers\":" + sameWorkers + ","
+                + "\"before_close\":" + beforeClose + ","
+                + "\"after_close\":" + afterClose + ","
+                + "\"loaded_before_close\":" + loadedBeforeClose + ","
+                + "\"loaded_after_close\":" + loadedAfterClose + ","
+                + "\"unloaded_before_close\":" + unloadedBeforeClose + ","
+                + "\"unloaded_after_close\":" + unloadedAfterClose
+                + "}";
+        }
+    }
+}
+[?2004hroot@58df5f9b274f:/workspace/textd# ./bin/run-suite
+[?2004lcat bin/run-suite
+suite-ok
+[?2004hroot@58df5f9b274f:/workspace/textd# cat bin/run-suite
+[?2004l#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+"$ROOT_DIR/bin/build"
+TEXTD_SKIP_BUILD=1 "$ROOT_DIR/bin/integration" 24 >/tmp/textd-integration.json
+java -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.RuntimeDigestRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" \
+  24 >/tmp/textd-session.json
+java -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.SessionReplayRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" \
+  24 >/tmp/textd-replay.json
+TEXTD_SKIP_BUILD=1 "$ROOT_DIR/bin/stress" 500 >/tmp/textd-stress.log
+
+echo "suite-ok"
+[?2004hroot@58df5f9b274f:/workspace/textd# cat bin/run-suite
+[?2004l#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+"$ROOT_DIR/bin/build"
+TEXTD_SKIP_BUILD=1 "$ROOT_DIR/bin/integration" 24 >/tmp/textd-integration.json
+java -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.RuntimeDigestRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" \
+  24 >/tmp/textd-session.json
+java -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.SessionReplayRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" \
+  24 >/tmp/textd-replay.json
+TEXTD_SKIP_BUILD=1 "$ROOT_DIR/bin/stress" 500 >/tmp/textd-stress.log
+
+echo "suite-ok"
+[?2004hroot@58df5f9b274f:/workspace/textd# cat /tmp/textd-replay.json
+[?2004l{
+  "first": {"first":"GEN-001|ALPHA>BETA>GAMMA|PIPE-18528","last":"GEN-024|ALPHA>BETA>GAMMA|PIPE-18528","start":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"end":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"same_workers":true,"before_close":true,"after_close":false,"loaded_before_close":694,"loaded_after_close":5912,"unloaded_before_close":0,"unloaded_after_close":0},
+  "second": {"first":"GEN-001|ALPHA>BETA>GAMMA|PIPE-18528","last":"GEN-024|ALPHA>BETA>GAMMA|PIPE-18528","start":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"end":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"same_workers":true,"before_close":true,"after_close":false,"loaded_before_close":5912,"loaded_after_close":10735,"unloaded_before_close":0,"unloaded_after_close":0}
+}
+[?2004hroot@58df5f9b274f:/workspace/textd# cat src/main/java/io/harbor/textd/core/ThreadCache.java
+[?2004lpackage io.harbor.textd.core;
+
+final class ThreadCache implements AutoCloseable {
+    private WorkerHandle cursor;
+
+    WorkerHandle cursorFor(TimelineLedger ledger) {
+        TimelineFrame frame = ledger.current();
+        if (cursor == null) {
+            if (cursor != null) cursor.close(); cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        if (!cursor.matches(frame)) {
+            if (cursor != null) cursor.close(); cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        return cursor;
+    }
+
+    @Override
+    public void close() {
+        if (cursor != null) {
+            cursor.close();
+            cursor = null;
+        }
+    }
+}
+[?2004hroot@58df5f9b274f:/workspace/textd# sed -i 's/if (cursor != null) cursor.close(); // REVERTED/g' src/main/java/io/harbor/textd/core/ThreadCache.java
+[?2004lsed: -e expression #1, char 42: unknown option to `s'
+[?2004hroot@58df5f9b274f:/workspace/textd# cat src/main/java/io/harbor/textd/core/TextDaemon.java
+[?2004lpackage io.harbor.textd.core;
+
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+public final class TextDaemon implements AutoCloseable {
+    private final ExecutorService workers;
+    private final TimelineLedger revisions;
+    private final int workerCount;
+
+    public TextDaemon(Path pluginJar, int workerCount) {
+        this.revisions = new TimelineLedger(pluginJar);
+        this.workers = Executors.newFixedThreadPool(workerCount, new WorkerThreadFactory());
+        this.workerCount = workerCount;
+    }
+
+    public void reload(long generation) throws Exception {
+        revisions.install(generation);
+    }
+
+    public ProcessingResult process(String record) throws Exception {
+        return processBatch(List.of(record)).get(0);
+    }
+
+    public boolean isBalanced() {
+        return revisions.isBalanced();
+    }
+
+    public List<ProcessingResult> processBatch(List<String> records) throws Exception {
+        CountDownLatch ready = new CountDownLatch(records.size());
+        CountDownLatch release = new CountDownLatch(1);
+        List<Future<ProcessingResult>> futures = new ArrayList<>();
+        for (String record : records) {
+            futures.add(workers.submit(() -> processRecord(record, ready, release)));
+        }
+
+        if (!ready.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Workers did not become ready");
+        }
+        release.countDown();
+
+        List<ProcessingResult> results = new ArrayList<>(records.size());
+        for (Future<ProcessingResult> future : futures) {
+            try {
+                results.add(future.get());
+            } catch (ExecutionException exception) {
+                Throwable cause = exception.getCause();
+                if (cause instanceof Exception checked) {
+                    throw checked;
+                }
+                if (cause instanceof Error error) {
+                    throw error;
+                }
+                throw new RuntimeException(cause);
+            }
+        }
+        return results;
+    }
+
+    private ProcessingResult processRecord(
+        String record,
+        CountDownLatch ready,
+        CountDownLatch release
+    ) throws Exception {
+        ready.countDown();
+        if (!release.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Request release timed out");
+        }
+
+        WorkerHandle binding = ThreadBridge.current(revisions);
+        return binding.process(record);
+    }
+
+    @Override
+    public void close() throws Exception {
+        revisions.close();
+        workers.shutdownNow();
+        workers.awaitTermination(5, TimeUnit.SECONDS);
+    }
+
+    private static final class WorkerThreadFactory implements ThreadFactory {
+        private final AtomicInteger sequence = new AtomicInteger(1);
+
+        @Override
+        public Thread newThread(Runnable runnable) {
+            Thread thread = new Thread(runnable);
+            thread.setName("textd-worker-" + sequence.getAndIncrement());
+            thread.setDaemon(true);
+            return thread;
+        }
+    }
+}
+[?2004hroot@58df5f9b274f:/workspace/textd# cat > src/main/java/io/harbor/textd/core/TextDaemon.java <<EOF
+[?2004l[?2004h> package io.harbor.textd.core;
+[?2004l[?2004h> 
+[?2004l[?2004h> import java.nio.file.Path;
+[?2004l[?2004h> import java.util.ArrayList;
+[?2004l[?2004h> import java.util.List;
+[?2004l[?2004h> import java.util.concurrent.CountDownLatch;
+[?2004l[?2004h> import java.util.concurrent.ExecutionException;
+[?2004l[?2004h> import java.util.concurrent.ExecutorService;
+[?2004l[?2004h> import java.util.concurrent.Executors;
+[?2004l[?2004h> import java.util.concurrent.Future;
+[?2004l[?2004h> import java.util.concurrent.ThreadFactory;
+[?2004l[?2004h> import java.util.concurrent.TimeUnit;
+[?2004l[?2004h> import java.util.concurrent.atomic.AtomicInteger;
+[?2004l[?2004h> 
+[?2004l[?2004h> public final class TextDaemon implements AutoCloseable {
+[?2004l[?2004h>     private final ExecutorService workers;
+[?2004l[?2004h>     private final TimelineLedger revisions;
+[?2004l[?2004h>     private final int workerCount;
+[?2004l[?2004h> 
+[?2004l[?2004h>     public TextDaemon(Path pluginJar, int workerCount) {
+[?2004l[?2004h>         this.revisions = new TimelineLedger(pluginJar);
+[?2004l[?2004h>         this.workers = Executors.newFixedThreadPool(workerCount, new WorkerThreadFactory());
+[?2004l[?2004h>         this.workerCount = workerCount;
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     public void reload(long generation) throws Exception {
+[?2004l[?2004h>         revisions.install(generation);
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     public ProcessingResult process(String record) throws Exception {
+[?2004l[?2004h>         return processBatch(List.of(record)).get(0);
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     public boolean isBalanced() {
+[?2004l[?2004h>         return revisions.isBalanced();
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     public List<ProcessingResult> processBatch(List<String> records) throws Exception {
+[?2004l[?2004h>         CountDownLatch ready = new CountDownLatch(records.size());
+[?2004l[?2004h>         CountDownLatch release = new CountDownLatch(1);
+[?2004l[?2004h>         List<Future<ProcessingResult>> futures = new ArrayList<>();
+[?2004l[?2004h>         for (String record : records) {
+[?2004l[?2004h>             futures.add(workers.submit(() -> processRecord(record, ready, release)));
+[?2004l[?2004h>         }
+[?2004l[?2004h> 
+[?2004l[?2004h>         if (!ready.await(5, TimeUnit.SECONDS)) {
+[?2004l[?2004h>             throw new IllegalStateException("Workers did not become ready");
+[?2004l[?2004h>         }
+[?2004l[?2004h>         release.countDown();
+[?2004l[?2004h> 
+[?2004l[?2004h>         List<ProcessingResult> results = new ArrayList<>(records.size());
+[?2004l[?2004h>         for (Future<ProcessingResult> future : futures) {
+[?2004l[?2004h>             try {
+[?2004l[?2004h>                 results.add(future.get());
+[?2004l[?2004h>             } catch (ExecutionException exception) {
+[?2004l[?2004h>                 Throwable cause = exception.getCause();
+[?2004l[?2004h>                 if (cause instanceof Exception checked) {
+[?2004l[?2004h>                     throw checked;
+[?2004l[?2004h>                 }
+[?2004l[?2004h>                 if (cause instanceof Error error) {
+[?2004l[?2004h>                     throw error;
+[?2004l[?2004h>                 }
+[?2004l[?2004h>                 throw new RuntimeException(cause);
+[?2004l[?2004h>             }
+[?2004l[?2004h>         }
+[?2004l[?2004h>         return results;
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     private ProcessingResult processRecord(
+[?2004l[?2004h>         String record,
+[?2004l[?2004h>         CountDownLatch ready,
+[?2004l[?2004h>         CountDownLatch release
+[?2004l[?2004h>     ) throws Exception {
+[?2004l[?2004h>         ready.countDown();
+[?2004l[?2004h>         if (!release.await(5, TimeUnit.SECONDS)) {
+[?2004l[?2004h>             throw new IllegalStateException("Request release timed out");
+[?2004l[?2004h>         }
+[?2004l[?2004h> 
+[?2004l[?2004h>         WorkerHandle binding = ThreadBridge.current(revisions);
+[?2004l[?2004h>         return binding.process(record);
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     @Override
+[?2004l[?2004h>     public void close() throws Exception {
+[?2004l[?2004h>         List<Future<?>> cleanups = new ArrayList<>();
+[?2004l[?2004h>         for (int i = 0; i < workerCount; i++) {
+[?2004l[?2004h>             cleanups.add(workers.submit(ThreadBridge::clear));
+[?2004l[?2004h>         }
+[?2004l[?2004h>         for (Future<?> cleanup : cleanups) {
+[?2004l[?2004h>             cleanup.get(5, TimeUnit.SECONDS);
+[?2004l[?2004h>         }
+[?2004l[?2004h> 
+[?2004l[?2004h>         revisions.close();
+[?2004l[?2004h>         workers.shutdownNow();
+[?2004l[?2004h>         workers.awaitTermination(5, TimeUnit.SECONDS);
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     private static final class WorkerThreadFactory implements ThreadFactory {
+[?2004l[?2004h>         private final AtomicInteger sequence = new AtomicInteger(1);
+[?2004l[?2004h> 
+[?2004l[?2004h>         @Override
+[?2004l[?2004h>         public Thread newThread(Runnable runnable) {
+[?2004l[?2004h>             Thread thread = new Thread(runnable);
+[?2004l[?2004h>             thread.setName("textd-worker-" + sequence.getAndIncrement());
+[?2004l[?2004h>             thread.setDaemon(true);
+[?2004l[?2004h>             return thread;
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h> }
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@58df5f9b274f:/workspace/textd# ./bin/run-suite
+[?2004lsuite-ok
+[?2004hroot@58df5f9b274f:/workspace/textd# cat /tmp/textd-replay.json
+[?2004l{
+  "first": {"first":"GEN-001|ALPHA>BETA>GAMMA|PIPE-18528","last":"GEN-024|ALPHA>BETA>GAMMA|PIPE-18528","start":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"end":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"same_workers":true,"before_close":true,"after_close":false,"loaded_before_close":694,"loaded_after_close":5974,"unloaded_before_close":0,"unloaded_after_close":0},
+  "second": {"first":"GEN-001|ALPHA>BETA>GAMMA|PIPE-18528","last":"GEN-024|ALPHA>BETA>GAMMA|PIPE-18528","start":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"end":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"same_workers":true,"before_close":true,"after_close":false,"loaded_before_close":5974,"loaded_after_close":10828,"unloaded_before_close":0,"unloaded_after_close":0}
+}
+[?2004hroot@58df5f9b274f:/workspace/textd# java -version
+[?2004lopenjdk version "17.0.18" 2026-01-20
+OpenJDK Runtime Environment (build 17.0.18+8-Ubuntu-124.04.1)
+OpenJDK 64-Bit Server VM (build 17.0.18+8-Ubuntu-124.04.1, mixed mode, sharing)
+[?2004hroot@58df5f9b274f:/workspace/textd# cat plugin-src/io/harbor/textd/customer/PipelineProcessor.java
+[?2004lpackage io.harbor.textd.customer;
+
+import io.harbor.textd.api.TextProcessor;
+
+import java.util.Arrays;
+import java.util.Locale;
+import java.util.stream.Collectors;
+
+public final class PipelineProcessor implements TextProcessor {
+    private final long generation;
+
+    public PipelineProcessor(long generation) {
+        this.generation = generation;
+    }
+
+    @Override
+    public String process(String record) {
+        String normalized = Arrays.stream(record.trim().split("\\s+"))
+            .filter(token -> !token.isBlank())
+            .map(token -> token.toUpperCase(Locale.ROOT))
+            .collect(Collectors.joining(">"));
+        return String.format(Locale.ROOT, "GEN-%03d|%s|PIPE-%d", generation, normalized, PipelineStages.pipelineWeight());
+    }
+}
+[?2004hroot@58df5f9b274f:/workspace/textd# cat plugin-src/io/harbor/textd/customer/CustomerPluginModule.java
+[?2004lpackage io.harbor.textd.customer;
+
+import io.harbor.textd.api.PluginModule;
+import io.harbor.textd.api.TextProcessor;
+
+public final class CustomerPluginModule implements PluginModule {
+    @Override
+    public TextProcessor processorFor(long generation) {
+        return new PipelineProcessor(generation);
+    }
+}
+[?2004hroot@58df5f9b274f:/workspace/textd# cat > src/main/java/io/harbor/textd/core/TextDaemon.java <<EOF
+[?2004l[?2004h> package io.harbor.textd.core;
+[?2004l[?2004h> 
+[?2004l[?2004h> import java.nio.file.Path;
+[?2004l[?2004h> import java.util.ArrayList;
+[?2004l[?2004h> import java.util.List;
+[?2004l[?2004h> import java.util.concurrent.CountDownLatch;
+[?2004l[?2004h> import java.util.concurrent.ExecutionException;
+[?2004l[?2004h> import java.util.concurrent.ExecutorService;
+[?2004l[?2004h> import java.util.concurrent.Executors;
+[?2004l[?2004h> import java.util.concurrent.Future;
+[?2004l[?2004h> import java.util.concurrent.ThreadFactory;
+[?2004l[?2004h> import java.util.concurrent.TimeUnit;
+[?2004l[?2004h> import java.util.concurrent.atomic.AtomicInteger;
+[?2004l[?2004h> 
+[?2004l[?2004h> public final class TextDaemon implements AutoCloseable {
+[?2004l[?2004h>     private final ExecutorService workers;
+[?2004l[?2004h>     private final TimelineLedger revisions;
+[?2004l[?2004h>     private final int workerCount;
+[?2004l[?2004h> 
+[?2004l[?2004h>     public TextDaemon(Path pluginJar, int workerCount) {
+[?2004l[?2004h>         this.revisions = new TimelineLedger(pluginJar);
+[?2004l[?2004h>         this.workers = Executors.newFixedThreadPool(workerCount, new WorkerThreadFactory());
+[?2004l[?2004h>         this.workerCount = workerCount;
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     public void reload(long generation) throws Exception {
+[?2004l[?2004h>         revisions.install(generation);
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     public ProcessingResult process(String record) throws Exception {
+[?2004l[?2004h>         return processBatch(List.of(record)).get(0);
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     public boolean isBalanced() {
+[?2004l[?2004h>         return revisions.isBalanced();
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     public List<ProcessingResult> processBatch(List<String> records) throws Exception {
+[?2004l[?2004h>         CountDownLatch ready = new CountDownLatch(records.size());
+[?2004l[?2004h>         CountDownLatch release = new CountDownLatch(1);
+[?2004l[?2004h>         List<Future<ProcessingResult>> futures = new ArrayList<>();
+[?2004l[?2004h>         for (String record : records) {
+[?2004l[?2004h>             futures.add(workers.submit(() -> processRecord(record, ready, release)));
+[?2004l[?2004h>         }
+[?2004l[?2004h> 
+[?2004l[?2004h>         if (!ready.await(5, TimeUnit.SECONDS)) {
+[?2004l[?2004h>             throw new IllegalStateException("Workers did not become ready");
+[?2004l[?2004h>         }
+[?2004l[?2004h>         release.countDown();
+[?2004l[?2004h> 
+[?2004l[?2004h>         List<ProcessingResult> results = new ArrayList<>(records.size());
+[?2004l[?2004h>         for (Future<ProcessingResult> future : futures) {
+[?2004l[?2004h>             try {
+[?2004l[?2004h>                 results.add(future.get());
+[?2004l[?2004h>             } catch (ExecutionException exception) {
+[?2004l[?2004h>                 Throwable cause = exception.getCause();
+[?2004l[?2004h>                 if (cause instanceof Exception checked) {
+[?2004l[?2004h>                     throw checked;
+[?2004l[?2004h>                 }
+[?2004l[?2004h>                 if (cause instanceof Error error) {
+[?2004l[?2004h>                     throw error;
+[?2004l[?2004h>                 }
+[?2004l[?2004h>                 throw new RuntimeException(cause);
+[?2004l[?2004h>             }
+[?2004l[?2004h>         }
+[?2004l[?2004h>         return results;
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     private ProcessingResult processRecord(
+[?2004l[?2004h>         String record,
+[?2004l[?2004h>         CountDownLatch ready,
+[?2004l[?2004h>         CountDownLatch release
+[?2004l[?2004h>     ) throws Exception {
+[?2004l[?2004h>         ready.countDown();
+[?2004l[?2004h>         if (!release.await(5, TimeUnit.SECONDS)) {
+[?2004l[?2004h>             throw new IllegalStateException("Request release timed out");
+[?2004l[?2004h>         }
+[?2004l[?2004h> 
+[?2004l[?2004h>         WorkerHandle binding = ThreadBridge.current(revisions);
+[?2004l[?2004h>         return binding.process(record);
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     @Override
+[?2004l[?2004h>     public void close() throws Exception {
+[?2004l[?2004h>         CountDownLatch latch = new CountDownLatch(workerCount);
+[?2004l[?2004h>         for (int i = 0; i < workerCount; i++) {
+[?2004l[?2004h>             workers.submit(() -> {
+[?2004l[?2004h>                 ThreadBridge.clear();
+[?2004l[?2004h>                 latch.countDown();
+[?2004l[?2004h>                 try {
+[?2004l[?2004h>                     latch.await(5, TimeUnit.SECONDS);
+[?2004l[?2004h>                 } catch (InterruptedException e) {
+[?2004l[?2004h>                     Thread.currentThread().interrupt();
+[?2004l[?2004h>                 }
+[?2004l[?2004h>                 return null;
+[?2004l[?2004h>             });
+[?2004l[?2004h>         }
+[?2004l[?2004h>         latch.await(5, TimeUnit.SECONDS);
+[?2004l[?2004h> 
+[?2004l[?2004h>         revisions.close();
+[?2004l[?2004h>         workers.shutdownNow();
+[?2004l[?2004h>         workers.awaitTermination(5, TimeUnit.SECONDS);
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     private static final class WorkerThreadFactory implements ThreadFactory {
+[?2004l[?2004h>         private final AtomicInteger sequence = new AtomicInteger(1);
+[?2004l[?2004h> 
+[?2004l[?2004h>         @Override
+[?2004l[?2004h>         public Thread newThread(Runnable runnable) {
+[?2004l[?2004h>             Thread thread = new Thread(runnable);
+[?2004l[?2004h>             thread.setName("textd-worker-" + sequence.getAndIncrement());
+[?2004l[?2004h>             thread.setDaemon(true);
+[?2004l[?2004h>             return thread;
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h> }
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@58df5f9b274f:/workspace/textd# ./bin/run-suite
+[?2004lcat /tmp/textd-replay.json
+suite-ok
+[?2004hroot@58df5f9b274f:/workspace/textd# cat /tmp/textd-replay.json
+[?2004l{
+  "first": {"first":"GEN-001|ALPHA>BETA>GAMMA|PIPE-18528","last":"GEN-024|ALPHA>BETA>GAMMA|PIPE-18528","start":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"end":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"same_workers":true,"before_close":true,"after_close":true,"loaded_before_close":694,"loaded_after_close":5948,"unloaded_before_close":0,"unloaded_after_close":0},
+  "second": {"first":"GEN-001|ALPHA>BETA>GAMMA|PIPE-18528","last":"GEN-024|ALPHA>BETA>GAMMA|PIPE-18528","start":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"end":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"same_workers":true,"before_close":true,"after_close":true,"loaded_before_close":5948,"loaded_after_close":10841,"unloaded_before_close":0,"unloaded_after_close":0}
+}
+[?2004hroot@58df5f9b274f:/workspace/textd# ./bin/stress 500
+[?2004lstress-ok cycles=500
+[?2004hroot@58df5f9b274f:/workspace/textd# cat src/main/java/io/harbor/textd/core/ThreadCache.java
+[?2004lpackage io.harbor.textd.core;
+
+final class ThreadCache implements AutoCloseable {
+    private WorkerHandle cursor;
+
+    WorkerHandle cursorFor(TimelineLedger ledger) {
+        TimelineFrame frame = ledger.current();
+        if (cursor == null) {
+            if (cursor != null) cursor.close(); cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        if (!cursor.matches(frame)) {
+            if (cursor != null) cursor.close(); cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        return cursor;
+    }
+
+    @Override
+    public void close() {
+        if (cursor != null) {
+            cursor.close();
+            cursor = null;
+        }
+    }
+}
+[?2004hroot@58df5f9b274f:/workspace/textd# cat src/main/java/io/harbor/textd/core/TextDaemon.java
+[?2004lpackage io.harbor.textd.core;
+
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+public final class TextDaemon implements AutoCloseable {
+    private final ExecutorService workers;
+    private final TimelineLedger revisions;
+    private final int workerCount;
+
+    public TextDaemon(Path pluginJar, int workerCount) {
+        this.revisions = new TimelineLedger(pluginJar);
+        this.workers = Executors.newFixedThreadPool(workerCount, new WorkerThreadFactory());
+        this.workerCount = workerCount;
+    }
+
+    public void reload(long generation) throws Exception {
+        revisions.install(generation);
+    }
+
+    public ProcessingResult process(String record) throws Exception {
+        return processBatch(List.of(record)).get(0);
+    }
+
+    public boolean isBalanced() {
+        return revisions.isBalanced();
+    }
+
+    public List<ProcessingResult> processBatch(List<String> records) throws Exception {
+        CountDownLatch ready = new CountDownLatch(records.size());
+        CountDownLatch release = new CountDownLatch(1);
+        List<Future<ProcessingResult>> futures = new ArrayList<>();
+        for (String record : records) {
+            futures.add(workers.submit(() -> processRecord(record, ready, release)));
+        }
+
+        if (!ready.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Workers did not become ready");
+        }
+        release.countDown();
+
+        List<ProcessingResult> results = new ArrayList<>(records.size());
+        for (Future<ProcessingResult> future : futures) {
+            try {
+                results.add(future.get());
+            } catch (ExecutionException exception) {
+                Throwable cause = exception.getCause();
+                if (cause instanceof Exception checked) {
+                    throw checked;
+                }
+                if (cause instanceof Error error) {
+                    throw error;
+                }
+                throw new RuntimeException(cause);
+            }
+        }
+        return results;
+    }
+
+    private ProcessingResult processRecord(
+        String record,
+        CountDownLatch ready,
+        CountDownLatch release
+    ) throws Exception {
+        ready.countDown();
+        if (!release.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Request release timed out");
+        }
+
+        WorkerHandle binding = ThreadBridge.current(revisions);
+        return binding.process(record);
+    }
+
+    @Override
+    public void close() throws Exception {
+        CountDownLatch latch = new CountDownLatch(workerCount);
+        for (int i = 0; i < workerCount; i++) {
+            workers.submit(() -> {
+                ThreadBridge.clear();
+                latch.countDown();
+                try {
+                    latch.await(5, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                return null;
+            });
+        }
+        latch.await(5, TimeUnit.SECONDS);
+
+        revisions.close();
+        workers.shutdownNow();
+        workers.awaitTermination(5, TimeUnit.SECONDS);
+    }
+
+    private static final class WorkerThreadFactory implements ThreadFactory {
+        private final AtomicInteger sequence = new AtomicInteger(1);
+
+        @Override
+        public Thread newThread(Runnable runnable) {
+            Thread thread = new Thread(runnable);
+            thread.setName("textd-worker-" + sequence.getAndIncrement());
+            thread.setDaemon(true);
+            return thread;
+        }
+    }
+}
+[?2004hroot@58df5f9b274f:/workspace/textd# cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF
+[?2004l[?2004h> package io.harbor.textd.core;
+[?2004l[?2004h> 
+[?2004l[?2004h> final class ThreadCache implements AutoCloseable {
+[?2004l[?2004h>     private WorkerHandle cursor;
+[?2004l[?2004h> 
+[?2004l[?2004h>     WorkerHandle cursorFor(TimelineLedger ledger) {
+[?2004l[?2004h>         TimelineFrame frame = ledger.current();
+[?2004l[?2004h>         if (cursor == null) {
+[?2004l[?2004h>             cursor = new WorkerHandle(frame);
+[?2004l[?2004h>             return cursor;
+[?2004l[?2004h>         }
+[?2004l[?2004h> 
+[?2004l[?2004h>         if (!cursor.matches(frame)) {
+[?2004l[?2004h>             cursor.close();
+[?2004l[?2004h>             cursor = new WorkerHandle(frame);
+[?2004l[?2004h>             return cursor;
+[?2004l[?2004h>         }
+[?2004l[?2004h> 
+[?2004l[?2004h>         return cursor;
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     @Override
+[?2004l[?2004h>     public void close() {
+[?2004l[?2004h>         if (cursor != null) {
+[?2004l[?2004h>             cursor.close();
+[?2004l[?2004h>             cursor = null;
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h> }
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@58df5f9b274f:/workspace/textd# ./bin/run-suite
+[?2004lsuite-ok
+[?2004hroot@58df5f9b274f:/workspace/textd# cat /tmp/textd-replay.json
+[?2004l{
+  "first": {"first":"GEN-001|ALPHA>BETA>GAMMA|PIPE-18528","last":"GEN-024|ALPHA>BETA>GAMMA|PIPE-18528","start":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"end":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"same_workers":true,"before_close":true,"after_close":true,"loaded_before_close":694,"loaded_after_close":5966,"unloaded_before_close":0,"unloaded_after_close":0},
+  "second": {"first":"GEN-001|ALPHA>BETA>GAMMA|PIPE-18528","last":"GEN-024|ALPHA>BETA>GAMMA|PIPE-18528","start":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"end":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"same_workers":true,"before_close":true,"after_close":true,"loaded_before_close":5966,"loaded_after_close":10875,"unloaded_before_close":0,"unloaded_after_close":0}
+}
+[?2004hroot@58df5f9b274f:/workspace/textd# 

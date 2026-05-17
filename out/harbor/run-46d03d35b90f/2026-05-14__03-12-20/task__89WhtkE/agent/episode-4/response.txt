@@ -1,0 +1,10 @@
+{
+  "analysis": "I've analyzed the code and found a potential resource leak in `ThreadCache.cursorFor`. When the `cursor` is replaced because the generation has changed, the old `cursor` is not closed. \n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            // The old cursor should be closed here to unpin the old TimelineFrame\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n\nIn `WorkerHandle`, the constructor pins the `TimelineFrame`, and `close()` unpins it. If `cursorFor` replaces `cursor` without calling `close()`, the old `TimelineFrame` will remain pinned forever, preventing it from being drained and closed in `TimelineLedger`.",
+  "plan": "I will modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before creating a new one. Before that, I'll run the stress test to confirm the failure.",
+  "commands": [
+    {
+      "keystrokes": "bin/run-suite\n",
+      "duration": 5.0
+    }
+  ]
+}

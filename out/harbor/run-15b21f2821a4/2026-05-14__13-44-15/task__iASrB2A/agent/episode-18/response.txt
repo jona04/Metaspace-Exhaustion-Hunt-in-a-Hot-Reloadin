@@ -1,0 +1,18 @@
+{
+  "analysis": "I don't see anything obviously leaking in the plugin source. \n\nLet's check `src/main/java/io/harbor/textd/core/ThreadCache.java` again. Is it possible that `cursor` is not being closed because `cursorFor` is not called for all threads?\n\nIn `SessionReplayRunner.java`:\n```java\n            daemon.reload(1);\n            List<ProcessingResult> firstResults = daemon.processBatch(List.of(SAMPLE, SAMPLE, SAMPLE, SAMPLE));\n```\nHere `processBatch` is called with 4 records. Since there are 4 worker threads, each thread should get one record and thus call `cursorFor` once.\n\nThen in the loop:\n```java\n            for (int current = 2; current <= revision; current++) {\n                daemon.reload(current);\n                finalResults = daemon.processBatch(List.of(SAMPLE, SAMPLE, SAMPLE, SAMPLE));\n                assertOutputs(current, finalResults);\n            }\n```\nAgain, each generation, 4 records are processed, so each of the 4 threads should call `cursorFor` and release the old pin.\n\nWait! I just noticed something in `TimelineLedger.java`:\n```java\n    boolean isBalanced() {\n        pruneShadow();\n        return shadow.isEmpty();\n    }\n```\n`pruneShadow()` only removes if `isDrained()` is true. \n\nWait! I have an idea. Is it possible that `pruneShadow()` is not being called enough?\n\nIn `SessionReplayRunner.java`:\n```java\n            boolean beforeClose = daemon.isBalanced();\n```\nThis calls `pruneShadow()`. If it returns `true`, then `shadow` is empty, meaning all previous generations have been closed.\n\nLet's see the output of `replay-check` again. I'll modify `SessionReplayRunner.java` to print more info, or just check the output more carefully.\n\nWait! I see the problem! \nIn `TimelineFrame.java`:\n```java\n    private void closeLoadedGeneration() {\n        if (closed.compareAndSet(false, true)) {\n            try {\n                loadedGeneration.close();\n            } catch (Exception exception) {\n                throw new IllegalStateException(\"Unable to close revision \" + revision(), exception);\n            }\n        }\n    }\n```\nAnd in `LoadedGeneration.java`:\n```java\n    @Override\n    public void close() throws Exception {\n        module.close();\n        classLoader.close();\n    }\n```\nThis looks correct. `classLoader.close()` is called.\n\nWait! I might have found it! \nIn `TimelineLedger.java`:\n```java\n    private void pruneShadow() {\n        shadow.removeIf(TimelineFrame::isDrained);\n    }\n```\n`shadow` is a `ConcurrentLinkedQueue`. `removeIf` is available on it.\n\nLet's try to add some print statements to `TimelineFrame` and `TimelineLedger` to see what's going on.",
+  "plan": "I will add print statements to `TimelineFrame.java` and `TimelineLedger.java` to track the lifecycle of generations.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/closeLoadedGeneration();/System.out.println(\"Closing generation \" + revision()); closeLoadedGeneration();/' src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "sed -i 's/shadow.add(previous);/System.out.println(\"Shadowing generation \" + previous.revision()); shadow.add(previous);/' src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/replay-check\n",
+      "duration": 10.0
+    }
+  ]
+}

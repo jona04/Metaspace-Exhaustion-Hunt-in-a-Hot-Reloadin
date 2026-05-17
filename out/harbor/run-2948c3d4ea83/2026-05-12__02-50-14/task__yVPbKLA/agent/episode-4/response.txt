@@ -1,0 +1,11 @@
+{
+  "analysis": "I found the issue. `WorkerBindings` uses a `ThreadLocal<DispatchBinding>`. \n\nIn `WorkerBindings.current(registry)`:\n```java\n    static DispatchBinding current(GenerationRegistry registry) {\n        GenerationLease activeLease = registry.active();\n        DispatchBinding binding = ACTIVE.get();\n        if (binding == null) {\n            DispatchBinding created = new DispatchBinding(activeLease);\n            ACTIVE.set(created);\n            return created;\n        }\n\n        if (!binding.matches(activeLease)) {\n            DispatchBinding replacement = new DispatchBinding(activeLease);\n            ACTIVE.set(replacement);\n            return replacement;\n        }\n\n        return binding;\n    }\n```\n\nWhen a `DispatchBinding` is created, it presumably retains the lease. When it is replaced, the old `DispatchBinding` is simply forgotten (the reference is lost without calling `close()` on it). \n\nWait, let's look at `DispatchBinding.java` to confirm if it retains/releases the lease.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/DispatchBinding.java`.\n2. Verify if `DispatchBinding` retains the lease in its constructor and releases it in `close()`.\n3. If it does, then `WorkerBindings.current` is leaking leases because it doesn't call `binding.close()` before replacing it with a new one.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/DispatchBinding.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

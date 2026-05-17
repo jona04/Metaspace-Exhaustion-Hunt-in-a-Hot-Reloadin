@@ -1,0 +1,18 @@
+{
+  "analysis": "I've analyzed the code. Here's what I found:\n1. `TextDaemon.processRecord` calls `ThreadBridge.current(revisions)` to get a `WorkerHandle`.\n2. `ThreadBridge` (I need to see this code) likely uses a `ThreadLocal<ThreadCache>`.\n3. `ThreadCache.cursorFor` checks if the current `cursor` matches the ledger's current frame. If it doesn't match (because of a reload), it creates a new `WorkerHandle` and assigns it to `cursor`.\n4. **Crucially**, in `ThreadCache.cursorFor`, when a new `WorkerHandle` is created because the old one doesn't match, the old `cursor` is **never closed**. `WorkerHandle.close()` calls `frame.unpin()`. If `unpin()` isn't called, the old `TimelineFrame` (and its associated ClassLoader/Plugin) might never be released.",
+  "plan": "1. Verify `ThreadBridge.java` to confirm it uses `ThreadLocal<ThreadCache>`.\n2. Verify `TimelineFrame.java` and `TimelineLedger.java` to see how pinning/unpinning affects resource release.\n3. Fix the leak in `ThreadCache.java` by closing the old `cursor` before replacing it.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    }
+  ]
+}

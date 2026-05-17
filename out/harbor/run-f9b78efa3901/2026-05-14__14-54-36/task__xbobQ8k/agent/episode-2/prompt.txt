@@ -1,0 +1,64 @@
+New Terminal Output:
+
+root@722b3f608e8b:/workspace/textd# cat bin/stress
+#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+if [[ "${TEXTD_SKIP_BUILD:-0}" != "1" ]]; then
+  "$ROOT_DIR/bin/build"
+fi
+
+java -XX:MaxMetaspaceSize=64m -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.HotReloadStressRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" \
+  "${1:-50}"
+root@722b3f608e8b:/workspace/textd# cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java
+package io.harbor.textd.cli;
+
+import io.harbor.textd.core.OutputFormat;
+import io.harbor.textd.core.ProcessingResult;
+import io.harbor.textd.core.TextDaemon;
+
+import java.nio.file.Path;
+import java.util.List;
+
+public final class HotReloadStressRunner {
+    private static final String SAMPLE = "alpha beta gamma";
+
+    private HotReloadStressRunner() {
+    }
+
+    public static void main(String[] args) throws Exception {
+        Path pluginJar = Path.of(args[0]);
+        int cycles = args.length > 1 ? Integer.parseInt(args[1]) : 500;
+
+        try (TextDaemon daemon = new TextDaemon(pluginJar, 4)) {
+            for (int generation = 1; generation <= cycles; generation++) {
+                daemon.reload(generation);
+                assertOutputs(generation, daemon.processBatch(List.of(SAMPLE, SAMPLE, SAMPLE, SAMPLE)));
+                assertOutput(generation, daemon.process(SAMPLE));
+                if (generation % 3 == 0) {
+                    assertOutputs(generation, daemon.processBatch(List.of(SAMPLE, SAMPLE, SAMPLE, SAMPLE)));
+                }
+            }
+        }
+
+        System.out.println("stress-ok cycles=" + cycles);
+    }
+
+    private static void assertOutputs(long generation, List<ProcessingResult> results) {
+        for (ProcessingResult result : results) {
+            assertOutput(generation, result);
+        }
+    }
+
+    private static void assertOutput(long generation, ProcessingResult result) {
+        String expected = OutputFormat.expectedFor(generation, SAMPLE);
+        if (!expected.equals(result.output())) {
+            throw new IllegalStateException("Unexpected output at generation " + generation + ": " + result.output());
+        }
+    }
+}
+root@722b3f608e8b:/workspace/textd#

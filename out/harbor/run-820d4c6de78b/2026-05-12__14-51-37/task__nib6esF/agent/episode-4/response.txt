@@ -1,0 +1,19 @@
+{
+  "analysis": "The stress test failed with `java.lang.OutOfMemoryError: Metaspace`. This confirms a leak related to ClassLoaders, as Metaspace is where class metadata is stored. Each 'processor swap' or reload is likely creating a new ClassLoader that isn't being garbage collected, or the classes loaded by it are being held onto. The `bin/stress` script limits Metaspace to 64MB, which is why it fails in the 'constrained CI profile'.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/TextDaemon.java` and `src/main/java/io/harbor/textd/core/LoadedGeneration.java` to see how ClassLoaders are managed during a reload.\n2. Look for things that could prevent a ClassLoader from being GC'd: static references, thread locals, or unclosed resources.\n3. Check `src/main/java/io/harbor/textd/core/WorkerHandle.java` as it appeared in the stack trace.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

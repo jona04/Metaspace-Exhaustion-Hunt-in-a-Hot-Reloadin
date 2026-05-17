@@ -1,0 +1,15 @@
+{
+  "analysis": "The project is a Java-based text processing daemon. Based on the directory structure and the task description, the 'processor swaps' likely refer to the hot-reloading mechanism implemented in `HotReloadStressRunner.java` or `HotReloadIntegrationRunner.java`. The core logic seems to reside in `io.harbor.textd.core`. The issue is a failure during long runs, which often points to a resource leak (memory, threads, or file descriptors) during these swaps.",
+  "plan": "1. Examine the `bin/stress` script to see how the long run is executed.\n2. Run the stress test to observe the failure and look for error messages (e.g., OutOfMemoryError).\n3. Inspect `TextDaemon.java` and `ThreadCache.java` as they likely manage the lifecycle of processors and threads.",
+  "commands": [
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}

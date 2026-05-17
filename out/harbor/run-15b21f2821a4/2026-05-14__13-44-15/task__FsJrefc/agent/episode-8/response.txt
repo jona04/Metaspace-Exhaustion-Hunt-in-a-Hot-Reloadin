@@ -1,0 +1,14 @@
+{
+  "analysis": "I see several classes involved in managing the plugin generations. \n- `TimelineLedger` keeps track of the current `TimelineFrame` and a `shadow` queue of older frames.\n- `TimelineFrame` (which I haven't seen yet) seems to have `pin()`, `unpin()`, `cool()`, and `isDrained()` methods.\n- `ThreadBridge` uses a `ThreadLocal<ThreadCache>`.\n- `WorkerHandle` pins a `TimelineFrame` when created and unpins it when closed.\n\nThe `WorkerHandle` is obtained via `ThreadBridge.current(ledger)`, which calls `ROUTES.get().cursorFor(ledger)`. \n\nLet's look at `ThreadCache.java` and `TimelineFrame.java`.",
+  "plan": "Examine `ThreadCache.java` and `TimelineFrame.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    }
+  ]
+}

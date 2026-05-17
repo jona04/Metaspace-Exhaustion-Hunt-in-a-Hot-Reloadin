@@ -1,0 +1,15 @@
+{
+  "analysis": "The `bin/stress` command produced no output yet, it might be running or it might have failed silently if it doesn't print anything on success (but `HotReloadStressRunner` should print `stress-ok`). \n\nLooking at `WorkerHandle.java` and `ThreadCache.java`:\nIn `WorkerHandle(TimelineFrame frame)`, it calls `frame.pin()`.\nIn `WorkerHandle.close()`, it calls `frame.unpin()`.\n\nIn `ThreadCache.cursorFor(TimelineLedger ledger)`:\n```java\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\nWhen `!cursor.matches(frame)` is true, a new `WorkerHandle` is created and assigned to `cursor`, but the *old* `cursor` is never closed. This means `frame.unpin()` is never called for the old frame, and the `pins` count will never reach zero, so `closeLoadedGeneration()` will never be called. This leads to a leak of `LoadedGeneration` objects (which probably include ClassLoaders and other resources).",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before replacing it.\n2. Check `bin/stress` output again (I'll wait a bit more or check if it finished).\n3. Re-run `bin/stress` after the fix.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "bin/stress\n",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}

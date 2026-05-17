@@ -1,0 +1,10 @@
+{
+  "analysis": "The `bin/stress` script seems to be the one that simulates the 'long refresh run' in a 'constrained CI profile' because it sets `-XX:MaxMetaspaceSize=64m`. Metaspace is where Java stores class metadata. Frequent reloading of plugins might be causing it to leak or exceed this limit.\n\nThe `bin/run-suite` script runs `bin/stress 500`. This is likely the 'long refresh run' mentioned in the task description.",
+  "plan": "I will try to reproduce the failure by running `bin/stress 500`.",
+  "commands": [
+    {
+      "keystrokes": "bin/stress 500\n",
+      "duration": 10.0
+    }
+  ]
+}

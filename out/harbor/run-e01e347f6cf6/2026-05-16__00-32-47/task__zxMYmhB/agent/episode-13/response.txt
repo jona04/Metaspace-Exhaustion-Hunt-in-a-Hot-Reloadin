@@ -1,0 +1,10 @@
+{
+  "analysis": "I have identified a resource leak in `ThreadCache.java`. When a new plugin generation is loaded, the `cursorFor` method replaces the existing `WorkerHandle` without closing it. Since `WorkerHandle.close()` is responsible for unpinning the `TimelineFrame`, failing to call it prevents the frame (and its associated `URLClassLoader`) from being reclaimed, leading to a Metaspace exhaustion during long runs with many reloads.",
+  "plan": "I will first run the stress test to confirm it fails with the current code. Then I will apply a fix to `src/main/java/io/harbor/textd/core/ThreadCache.java` to ensure the old `WorkerHandle` is closed before being replaced. Finally, I will run the stress test again to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 10.0
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+New Terminal Output:
+
+ls -l
+Exception in thread "main" java.lang.OutOfMemoryError: Metaspace
+        at io.harbor.textd.customer.PipelineStages.<clinit>(PipelineStages.java:10)
+        at io.harbor.textd.customer.PipelineProcessor.process(PipelineProcessor.java:22)
+        at io.harbor.textd.core.RouteCursor.process(RouteCursor.java:21)
+        at io.harbor.textd.core.TextDaemon.processRecord(TextDaemon.java:80)
+        at io.harbor.textd.core.TextDaemon.lambda$processBatch$0(TextDaemon.java:43)
+        at io.harbor.textd.core.TextDaemon$$Lambda$1/0x00007c863d001c58.call(Unknown Source)
+        at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+        at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
+        at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+        at java.base/java.lang.Thread.run(Thread.java:840)
+root@a9b47570bd30:/workspace/textd# ps aux | grep java
+root         571  0.0  0.0   3912  2176 pts/1    S+   03:46   0:00 grep --color=auto java
+root@a9b47570bd30:/workspace/textd# ls -l
+total 16
+drwxr-xr-x 2 root root 4096 May 12 03:42 bin
+drwxr-xr-x 5 root root 4096 May 12 03:46 build
+drwxr-xr-x 3 root root 4096 May  8 22:16 plugin-src
+drwxr-xr-x 3 root root 4096 May  8 22:16 src
+root@a9b47570bd30:/workspace/textd# cat bin/stress
+#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+if [[ "${TEXTD_SKIP_BUILD:-0}" != "1" ]]; then
+  "$ROOT_DIR/bin/build"
+fi
+
+java -XX:MaxMetaspaceSize=64m -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.HotReloadStressRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" \
+  "${1:-500}"
+root@a9b47570bd30:/workspace/textd#

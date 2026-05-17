@@ -1,0 +1,126 @@
+New Terminal Output:
+
+root@f71bd1e69418:/workspace/textd# cat bin/replay-check
+#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+if [[ "${TEXTD_SKIP_BUILD:-0}" != "1" ]]; then
+  "$ROOT_DIR/bin/build"
+fi
+
+REPLAY_TMP=$(mktemp)
+trap 'rm -f "$REPLAY_TMP"' EXIT
+
+java -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.SessionReplayRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" 24 > "$REPLAY_TMP"
+
+python3 - "$REPLAY_TMP" <<'PYEOF'
+import json, sys
+
+with open(sys.argv[1]) as f:
+    data = json.load(f)
+
+first  = data['first']
+second = data['second']
+
+d1 = first['unloaded_after_close']  - first['unloaded_before_close']
+d2 = second['unloaded_after_close'] - second['unloaded_before_close']
+
+if d1 > 0 and d2 > 0:
+    print(f"replay-ok unloaded-first={d1} unloaded-second={d2}")
+else:
+    print(f"replay-fail unloaded-first={d1} unloaded-second={d2}", file=sys.stderr)
+    sys.exit(1)
+PYEOF
+root@f71bd1e69418:/workspace/textd# cat src/main/java/io/harbor/textd/cli/RuntimeDigestRunner.java
+package io.harbor.textd.cli;
+
+import io.harbor.textd.core.OutputFormat;
+import io.harbor.textd.core.ProcessingResult;
+import io.harbor.textd.core.TextDaemon;
+
+import java.nio.file.Path;
+import java.util.List;
+import java.util.stream.Collectors;
+
+public final class RuntimeDigestRunner {
+    private static final String SAMPLE = "alpha beta gamma";
+
+    private RuntimeDigestRunner() {
+    }
+
+    public static void main(String[] args) throws Exception {
+        Path pluginJar = Path.of(args[0]);
+        int revision = args.length > 1 ? Integer.parseInt(args[1]) : 24;
+
+        TextDaemon daemon = new TextDaemon(pluginJar, 4);
+        try {
+            daemon.reload(1);
+            List<ProcessingResult> firstResults = daemon.processBatch(List.of(SAMPLE, SAMPLE, SAMPLE, SAMPLE));
+            assertOutputs(1, firstResults);
+
+            List<String> workersStart = firstResults.stream()
+                .map(ProcessingResult::workerThread)
+                .sorted()
+                .collect(Collectors.toList());
+
+            List<ProcessingResult> finalResults = firstResults;
+            for (int current = 2; current <= revision; current++) {
+                daemon.reload(current);
+                finalResults = daemon.processBatch(List.of(SAMPLE, SAMPLE, SAMPLE, SAMPLE));
+                assertOutputs(current, finalResults);
+            }
+
+            List<String> workersEnd = finalResults.stream()
+                .map(ProcessingResult::workerThread)
+                .sorted()
+                .collect(Collectors.toList());
+
+            boolean sameWorkers = workersStart.equals(workersEnd);
+            boolean beforeClose = daemon.isBalanced();
+            String first = firstResults.get(0).output();
+            String last = finalResults.get(0).output();
+
+            daemon.close();
+            boolean afterClose = daemon.isBalanced();
+
+            System.out.println("{");
+            System.out.println("  \"sample\": \"" + SAMPLE + "\",");
+            System.out.println("  \"first\": \"" + first + "\",");
+            System.out.println("  \"rev\": " + revision + ",");
+            System.out.println("  \"last\": \"" + last + "\",");
+            System.out.println("  \"start\": " + toJsonArray(workersStart) + ",");
+            System.out.println("  \"end\": " + toJsonArray(workersEnd) + ",");
+            System.out.println("  \"same_workers\": " + sameWorkers + ",");
+            System.out.println("  \"before_close\": " + beforeClose + ",");
+            System.out.println("  \"after_close\": " + afterClose);
+            System.out.println("}");
+        } catch (Exception exception) {
+            try {
+                daemon.close();
+            } catch (Exception closeException) {
+                exception.addSuppressed(closeException);
+            }
+            throw exception;
+        }
+    }
+
+    private static void assertOutputs(long revision, List<ProcessingResult> results) {
+        String expected = OutputFormat.expectedFor(revision, SAMPLE);
+        for (ProcessingResult result : results) {
+            if (!expected.equals(result.output())) {
+                throw new IllegalStateException("Unexpected output at revision " + revision + ": " + result.output());
+            }
+        }
+    }
+
+    private static String toJsonArray(List<String> values) {
+        return values.stream()
+            .map(value -> "\"" + value + "\"")
+            .collect(Collectors.joining(", ", "[", "]"));
+    }
+}
+root@f71bd1e69418:/workspace/textd#

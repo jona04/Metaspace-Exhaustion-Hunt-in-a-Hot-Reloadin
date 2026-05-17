@@ -1,0 +1,19 @@
+{
+  "analysis": "The stress test failed with `java.lang.OutOfMemoryError: Metaspace`. This confirms that repeated loading of plugins is leaking class metadata. The stack trace shows `PipelineStages.<clinit>` being called during processing, which triggered a class load that hit the limit. The daemon uses a `ThreadPoolExecutor`, and the `TextDaemon` seems to be responsible for processing batches.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/TextDaemon.java` to see how it handles plugin loading and replacement.\n2. Examine `src/main/java/io/harbor/textd/core/ThreadCache.java` and `ThreadBridge.java` as they are often sources of leaks in multi-threaded environments (e.g., `ThreadLocal` holding onto classes/classloaders).\n3. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java` to see how it references plugin classes.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.2
+    }
+  ],
+  "task_complete": false
+}

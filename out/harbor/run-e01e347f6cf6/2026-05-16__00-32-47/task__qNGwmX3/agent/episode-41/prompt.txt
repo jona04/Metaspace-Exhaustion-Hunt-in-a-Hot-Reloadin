@@ -1,0 +1,41 @@
+Current Terminal Screen:
+>         workers.shutdownNow();
+>         workers.awaitTermination(5, TimeUnit.SECONDS);
+>     }
+>
+>     private static final class WorkerThreadFactory implements ThreadFactory {
+>         private final AtomicInteger sequence = new AtomicInteger(1);
+>
+>         @Override
+>         public Thread newThread(Runnable runnable) {
+>             Thread thread = new Thread(runnable);
+>             thread.setName("textd-worker-" + sequence.getAndIncrement());
+>             thread.setDaemon(true);
+>             return thread;
+>         }
+>     }
+> }
+> EOF
+root@ba9d533b8d20:/workspace/textd# ./bin/replay-check
+replay-fail unloaded-first=0 unloaded-second=0
+root@ba9d533b8d20:/workspace/textd# cat > src/main/java/io/harbor/textd/core/ThreadBridge.java <<EOF
+> package io.harbor.textd.core;
+>
+> final class ThreadBridge {
+>     private final ThreadLocal<ThreadCache> routes = ThreadLocal.withInitial(ThreadCache::new);
+>
+>     ThreadBridge() {
+>     }
+>
+>     WorkerHandle current(TimelineLedger ledger) {
+>         return routes.get().cursorFor(ledger);
+>     }
+>
+>     void clear() {
+>         ThreadCache routeState = routes.get();
+>         routeState.close();
+>         routes.remove();
+>     }
+> }
+> EOF
+root@ba9d533b8d20:/workspace/textd#

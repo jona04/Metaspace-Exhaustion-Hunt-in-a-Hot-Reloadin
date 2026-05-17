@@ -1,0 +1,10 @@
+{
+  "analysis": "The `bin/stress` script sets `-XX:MaxMetaspaceSize=64m`. This is quite small and explains why leaking ClassLoaders (via `LoadedGeneration`) would cause a failure during a long run. Each reload creates a new ClassLoader. If they aren't closed, Metaspace will fill up.",
+  "plan": "1. Wait for the `./bin/stress 500` to fail.\n2. Apply the fix to `src/main/java/io/harbor/textd/core/ThreadCache.java`.\n3. Run the stress test again to confirm it passes.",
+  "commands": [
+    {
+      "keystrokes": "",
+      "duration": 20.0
+    }
+  ]
+}

@@ -1,0 +1,105 @@
+{
+  "analysis": "The factory is also very simple. No leaks there.\n\nWait! I have an idea. Maybe the issue is that I'm not calling `ThreadLocal.remove()` and the JVM's `ThreadLocal` implementation is keeping the `ThreadCache` alive even after the thread has died, until some other `ThreadLocal` activity happens?\n\nActually, the most likely reason for classes not unloading in a modern JVM is that the `URLClassLoader` is not being GC'd. And the most common reason for that is a leak in `ThreadLocal` or a static field.\n\nI've addressed the `ThreadLocal` leak by clearing the `WorkerHandle`s. \n\nWait! I just noticed something. In `ThreadBridge.java`:\n```java\n    static void clearAll() {\n        synchronized (ALL_CACHES) {\n            for (ThreadCache cache : ALL_CACHES) {\n                cache.close();\n            }\n            ALL_CACHES.clear();\n        }\n    }\n```\nI am clearing the `ALL_CACHES` set. But the `ThreadCache` objects are still in the `ThreadLocal` maps of the worker threads. \n\nWhat if I don't use a `WeakHashMap` for `ALL_CACHES`? No, that would be a leak itself.\n\nWait! I have a better idea. What if I make `ROUTES` non-static? But `ThreadBridge` is used as a static utility.\n\nActually, what if I change `ThreadBridge` to use a non-static `ThreadLocal` that is owned by the `TimelineLedger` or `TextDaemon`? \n\nWait! `TextDaemon` has a `TimelineLedger`. `TimelineLedger` is passed to `ThreadBridge.current(ledger)`. \n\nIf I change `ThreadBridge` to not be a static utility, but instead have the `ThreadLocal` be part of the `TextDaemon` instance?\n\nBut `TextDaemon.processRecord` calls `ThreadBridge.current(revisions)`. \n\nWait! I have a much simpler idea to fix the classes not unloading. \nIn `SessionReplayRunner.java`, it calls `drainGc()` which calls `System.gc()`.\n\nIs it possible that the `URLClassLoader` is still reachable from the `TimelineFrame` objects that were *already* pruned from the `shadow` queue? No, once they are removed from the queue and no `WorkerHandle` points to them, they should be gone.\n\nWait! I just noticed something in `TimelineLedger.java`:\n```java\n    private final AtomicReference<TimelineFrame> current = new AtomicReference<>();\n    private final Queue<TimelineFrame> shadow = new ConcurrentLinkedQueue<>();\n```\nWait! `TimelineLedger` itself is part of `TextDaemon`. When `TextDaemon` is closed, it's no longer reachable from the main thread.\n\nWait! I think I know what it is! \nIn `SessionReplayRunner.java`:\n```java\n            return new Session(\n                // ...\n                daemon.isBalanced(),\n                // ...\n            );\n```\nWait, `daemon` is still in scope when `drainGc()` is called! \n```java\n        TextDaemon daemon = new TextDaemon(pluginJar, 4);\n        try {\n            // ...\n            daemon.close();\n            drainGc();\n\n            return new Session(\n                // ...\n                daemon.isBalanced(),\n                // ...\n```\nEven though `daemon.close()` was called, the `daemon` object itself is still reachable! And `daemon` holds `revisions` (the `TimelineLedger`), which might still have something in its `shadow` queue (though `isBalanced()` should have cleared it).\n\nBut more importantly, the `daemon` object is still there. \n\nWait, I have a crazy idea. What if I just need to wait a bit longer for the JVM to unload classes? No, 50ms is usually enough if it's going to happen.\n\nActually, there's one thing I haven't checked. `ThreadBridge.ROUTES`. \nIt's a `static` `ThreadLocal`. \nEven if the threads die, the `ThreadLocal` *key* itself is still alive. \n\nIf I change `ThreadBridge` to use a `WeakReference` for the `ThreadCache` in the `ThreadLocal`? No.\n\nWait! I just noticed something. In `ThreadBridge.java`:\n```java\n    static void clearAll() {\n        synchronized (ALL_CACHES) {\n            for (ThreadCache cache : ALL_CACHES) {\n                cache.close();\n            }\n            ALL_CACHES.clear();\n        }\n    }\n```\nWhen I call `cache.close()`, it nulls out the `cursor`. But the `ThreadCache` instance itself is still there. \n\nWait! I have it! I'll just make the `ThreadLocal` not static. I'll put it inside `TextDaemon`.\n\nBut wait, `ThreadBridge.current()` is called without passing the daemon. \n\nActually, I can change `ThreadBridge` to be an instance-based thing, and `TextDaemon` will have an instance of it.",
+  "plan": "I will refactor `ThreadBridge` to be an instance-based class and move it into `TextDaemon`. This will ensure that the `ThreadLocal` itself is eligible for GC when the `TextDaemon` is no longer reachable.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadBridge.java\npackage io.harbor.textd.core;\n\nfinal class ThreadBridge {\n    private final ThreadLocal<ThreadCache> routes = ThreadLocal.withInitial(ThreadCache::new);\n\n    WorkerHandle current(TimelineLedger ledger) {\n        return routes.get().cursorFor(ledger);\n    }\n\n    void close() {\n        // Note: This only clears the ThreadLocal for the CURRENT thread.\n        // We still need a way to clear it for all threads.\n    }\n}\nEOF\n",
+      "duration": 0.2
+    }
+  ]
+}Traceback (most recent call last):
+  File "/usr/local/lib/python3.12/site-packages/urllib3/connectionpool.py", line 537, in _make_request
+    response = conn.getresponse()
+               ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/urllib3/connection.py", line 516, in getresponse
+    httplib_response = super().getresponse()
+                       ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/http/client.py", line 1369, in getresponse
+    response.begin()
+  File "/usr/lib/python3.12/http/client.py", line 316, in begin
+    version, status, reason = self._read_status()
+                              ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/http/client.py", line 277, in _read_status
+    line = self.fp.readline(_MAXLINE + 1)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/socket.py", line 707, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/ssl.py", line 1324, in recv_into
+    return self.read(nbytes, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/ssl.py", line 1180, in read
+    return self._sslobj.read(len, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TimeoutError: The read operation timed out
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.12/site-packages/requests/adapters.py", line 667, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/urllib3/connectionpool.py", line 847, in urlopen
+    retries = retries.increment(
+              ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/urllib3/util/retry.py", line 470, in increment
+    raise reraise(type(error), error, _stacktrace)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/urllib3/util/util.py", line 39, in reraise
+    raise value
+  File "/usr/local/lib/python3.12/site-packages/urllib3/connectionpool.py", line 793, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/urllib3/connectionpool.py", line 540, in _make_request
+    self._raise_timeout(err=e, url=url, timeout_value=read_timeout)
+  File "/usr/local/lib/python3.12/site-packages/urllib3/connectionpool.py", line 353, in _raise_timeout
+    raise ReadTimeoutError(
+urllib3.exceptions.ReadTimeoutError: HTTPSConnectionPool(host='api.openai.com', port=443): Read timed out. (read timeout=600)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/bin/agent-runtime", line 8, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/agent_runtime/cli.py", line 117, in main
+    agent_loop(
+  File "/usr/local/lib/python3.12/site-packages/agent_runtime/loop.py", line 133, in agent_loop
+    response = client.chat.completions.create(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/openai/_utils/_utils.py", line 277, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/openai/resources/chat/completions.py", line 649, in create
+    return self._post(
+           ^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/openai/_base_client.py", line 1240, in post
+    return self.request(cast_to, opts, stream=stream, stream_cls=stream_cls)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/openai/_base_client.py", line 921, in request
+    return self._request(
+           ^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/openai/_base_client.py", line 1020, in _request
+    response = self._client.send(request, auth=self.custom_auth, stream=stream)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/httpx/_client.py", line 914, in send
+    response = self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/httpx/_client.py", line 942, in _send_handling_auth
+    response = self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/httpx/_client.py", line 979, in _send_handling_redirects
+    response = self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/httpx/_client.py", line 1015, in _send_single_request
+    response = transport.handle_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/httpx/_transports/default.py", line 232, in handle_request
+    with map_httpcore_exceptions():
+  File "/usr/lib/python3.12/contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "/usr/local/lib/python3.12/site-packages/httpx/_transports/default.py", line 86, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ReadTimeout: The read operation timed out
+|
+_

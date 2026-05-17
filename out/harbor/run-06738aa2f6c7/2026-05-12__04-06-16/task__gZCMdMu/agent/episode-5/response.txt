@@ -1,0 +1,14 @@
+{
+  "analysis": "I've identified a potential cause for the Metaspace leak:\n1. `ThreadBridge` uses a `ThreadLocal<ThreadCache>`. \n2. `ThreadCache` likely holds references to `WorkerHandle`s.\n3. `WorkerHandle` holds a `TimelineFrame`, which holds a `LoadedGeneration`, which holds a `URLClassLoader`.\n4. If `ThreadCache` does not properly release old `WorkerHandle`s when a new generation is installed, the old `ClassLoader`s will never be garbage collected.\n\nLet's look at `ThreadCache.java` and `TimelineFrame.java` to see how they handle the transition between generations.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/ThreadCache.java`.\n2. Examine `src/main/java/io/harbor/textd/core/TimelineFrame.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    }
+  ]
+}

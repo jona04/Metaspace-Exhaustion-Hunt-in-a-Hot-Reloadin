@@ -1,0 +1,14 @@
+{
+  "analysis": "The project is a Java-based text processing daemon. Based on the directory structure and the task description, the 'long refresh run' likely refers to the 'stress' test or 'integration' suite in `bin/`, which probably uses `HotReloadStressRunner.java` or `HotReloadIntegrationRunner.java`. The issue involves 'processor swaps', which suggests that the system reloads plugins or processors dynamically. The classes `ThreadCache.java`, `ThreadBridge.java`, and `WorkerHandle.java` in `src/main/java/io/harbor/textd/core` are prime suspects for resource leaks during these swaps.",
+  "plan": "1. Run the stress test to reproduce the failure.\n2. Examine the code responsible for 'swaps' and 'reloads', specifically `TextDaemon.java` and the classes in the `core` package.\n3. Look for thread local leaks or unclosed resources in `ThreadCache` or `WorkerHandle`.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 5.0
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.5
+    }
+  ]
+}

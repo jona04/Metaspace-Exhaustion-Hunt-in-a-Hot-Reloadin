@@ -1,0 +1,15 @@
+{
+  "analysis": "The problem is exactly as suspected. `ThreadCache.java` replaces the `cursor` (a `WorkerHandle`) without calling `close()` on it. \n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n\nWhen `WorkerHandle` is created, it calls `frame.pin()`, which increments the pin count on the `TimelineFrame`. When `WorkerHandle.close()` is called, it calls `frame.unpin()`. \n\n`TimelineFrame` only closes the `LoadedGeneration` (which closes the `URLClassLoader`) when the pin count reaches 0 and it has been 'cooled'. \n\nSince `ThreadCache` leaks `WorkerHandle` instances without closing them, the pin count never reaches 0, the `URLClassLoader` is never closed, and the Metaspace is never reclaimed, leading to `OutOfMemoryError: Metaspace`.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to call `cursor.close()` before creating a new one.\n2. Verify the fix by running the stress test again.",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

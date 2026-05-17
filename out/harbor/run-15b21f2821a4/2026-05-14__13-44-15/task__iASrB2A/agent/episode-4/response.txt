@@ -1,0 +1,18 @@
+{
+  "analysis": "I've analyzed `TimelineLedger` and `TimelineFrame`. \n\nIn `TimelineLedger`:\n- `install` creates a new `TimelineFrame` and sets it as current.\n- The previous frame is added to `shadow` and `cool()` is called.\n- `pruneShadow` removes frames where `isDrained()` is true.\n\nIn `TimelineFrame`:\n- `pins` starts at 1.\n- `cool()` decrements the pins (the initial 1).\n- `pin()` increments pins.\n- `unpin()` decrements pins and calls `closeLoadedGeneration()` if `pins` reaches 0 and `cooled` is true.\n- `isDrained()` returns `closed.get()`, which is set in `closeLoadedGeneration()`.\n\nThe issue might be in how `ThreadBridge` and `ThreadCache` manage the pins. If a thread keeps a pin to an old generation indefinitely, it will never be closed.",
+  "plan": "I will examine `src/main/java/io/harbor/textd/core/ThreadBridge.java`, `src/main/java/io/harbor/textd/core/ThreadCache.java`, and `src/main/java/io/harbor/textd/core/WorkerHandle.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    }
+  ]
+}

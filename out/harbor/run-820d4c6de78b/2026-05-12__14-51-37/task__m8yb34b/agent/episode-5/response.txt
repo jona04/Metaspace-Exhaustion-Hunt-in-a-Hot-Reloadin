@@ -1,0 +1,19 @@
+{
+  "analysis": "I've identified a clear leak. \n\n1. `ThreadBridge` uses a `ThreadLocal<ThreadCache> ROUTES`. \n2. `ThreadCache` holds a `WorkerHandle cursor`. \n3. `WorkerHandle` is created with a `TimelineFrame` (which contains the loaded plugin classes and classloader).\n4. In `ThreadCache.cursorFor`, if the current frame doesn't match the cursor's frame, a new `WorkerHandle` is created and assigned to `cursor`. \n5. **Crucially**, the old `cursor` (which holds a reference to the old `TimelineFrame` and thus the old ClassLoader) is simply overwritten without being closed or cleared from the `ThreadLocal` of the worker thread.\n6. Even if it was closed, the reference in `cursor` is replaced by the new one, but the worker thread still holds the `ThreadCache` in its `ThreadLocal`. \n\nWait, the `ThreadCache` itself is kept in the `ThreadLocal`. When `cursor` is updated to a new `WorkerHandle`, the old `WorkerHandle` is no longer referenced by `ThreadCache`. If nothing else references it, it should be eligible for GC.\n\nHowever, `TimelineLedger` has a `shadow` queue and `pruneShadow()` which removes frames that are 'drained'.\n\nLet's look at `TimelineFrame` and `WorkerHandle` and `LoadedGeneration`.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/TimelineFrame.java`.\n2. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java`.\n3. Examine `src/main/java/io/harbor/textd/core/LoadedGeneration.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

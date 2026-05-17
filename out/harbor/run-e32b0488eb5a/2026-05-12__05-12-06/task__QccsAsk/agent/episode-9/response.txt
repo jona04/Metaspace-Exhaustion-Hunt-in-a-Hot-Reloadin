@@ -1,0 +1,14 @@
+{
+  "analysis": "The logic seems to be:\n1. `TimelineLedger` creates a `TimelineFrame` for each new generation.\n2. `TimelineFrame` wraps a `LoadedGeneration` which has a `URLClassLoader`.\n3. `WorkerHandle` pins a `TimelineFrame` when it's created.\n4. `TimelineFrame` has a pin count. When it reaches 0 and is 'cooled' (no longer the current generation), it closes the `LoadedGeneration`, which closes the `URLClassLoader`.\n\nIn `ThreadCache.java`, when a new `WorkerHandle` is created because the revision changed, the old `WorkerHandle` is just dropped and NOT closed.\n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame); // Old cursor is leaked here!\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n\nBecause the old `WorkerHandle` is not closed, `frame.unpin()` is never called for the old frame. This means the pin count of the old `TimelineFrame` never reaches 0, so `closeLoadedGeneration()` is never called, and the `URLClassLoader` is never closed. This explains the Metaspace leak.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before creating a new one.\n2. Verify the fix by running `./bin/stress 500`.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 15.0
+    }
+  ]
+}

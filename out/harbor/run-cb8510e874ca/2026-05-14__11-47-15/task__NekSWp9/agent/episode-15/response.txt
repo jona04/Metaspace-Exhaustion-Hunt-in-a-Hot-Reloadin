@@ -1,0 +1,10 @@
+{
+  "analysis": "The `SessionReplayRunner` checks if classes are unloaded after the daemon is closed. My fix ensures that old plugin generations are closed when they are no longer needed by the `ThreadCache`. When `TextDaemon.close()` is called, it shuts down the worker threads, which should trigger the cleanup of `ThreadLocal`s, and thus the last `WorkerHandle` in each thread should be closed if the `ThreadCache.close()` was called. Wait, `ThreadBridge.clear()` is never called, so `ThreadCache.close()` is never called. However, when the thread dies, the `ThreadLocal` value becomes eligible for GC. If the `ThreadCache` is GC'd, it doesn't automatically call `close()` unless there's a finalizer or something, which there isn't.",
+  "plan": "I should ensure that `ThreadCache.close()` is called when a thread is finished with it, or at least when the daemon is closed. But `ThreadLocal` doesn't provide a hook for thread termination. However, the threads are created by `WorkerThreadFactory`. I could potentially use a different approach. But actually, the most important thing is that *during* the lifetime of the daemon, old generations are reclaimed. When the daemon is closed, we want everything reclaimed.",
+  "commands": [
+    {
+      "keystrokes": "./bin/replay-check\n",
+      "duration": 5.0
+    }
+  ]
+}

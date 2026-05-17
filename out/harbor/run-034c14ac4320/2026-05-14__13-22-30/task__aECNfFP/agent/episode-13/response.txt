@@ -1,0 +1,18 @@
+{
+  "analysis": "Wait, I put the `if (!daemon.isBalanced())` check *after* the `try-with-resources` block, so `daemon` is no longer in scope. I need to move it inside the block, just before it closes.",
+  "plan": "I will fix `HotReloadStressRunner.java` by moving the balance check inside the `try` block.",
+  "commands": [
+    {
+      "keystrokes": "sed -i '/if (!daemon.isBalanced())/d' src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "sed -i '/if (generation % 3 == 0) {/,/}/ { /}/ a \\            if (!daemon.isBalanced()) { throw new IllegalStateException(\"Daemon is not balanced at generation \" + generation); } \n }' src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.1
+    }
+  ]
+}

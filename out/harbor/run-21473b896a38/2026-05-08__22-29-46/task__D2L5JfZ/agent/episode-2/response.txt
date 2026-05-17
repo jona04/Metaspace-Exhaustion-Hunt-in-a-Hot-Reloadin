@@ -1,0 +1,19 @@
+{
+  "analysis": "I found a clear leak in `WorkerState.java`. The `Scope` class in `WorkerState` implements `AutoCloseable`, and it's used in a try-with-resources block in `TextDaemon.java`. However, the `close()` method in `WorkerState.Scope` is empty! It should pop the module from the `ACTIVE_MODULES` ThreadLocal. Because it doesn't pop, every processing task adds a reference to the `PluginModule` (and thus its `ClassLoader`) into the `ThreadLocal` of the worker thread. Since the worker threads are reused, these references accumulate and prevent the ClassLoaders from being garbage collected, leading to a Metaspace OOM.",
+  "plan": "1. Fix `WorkerState.java` by implementing the `close()` method in the `Scope` class to pop the module from the `Deque`.\n2. Verify if there are any other leaks. `LoadedGeneration.close()` calls `classLoader.close()`, which is good.\n3. Run the stress test to confirm the fix.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/WorkerState.java\npackage io.harbor.textd.core;\n\nimport java.util.ArrayDeque;\nimport java.util.Deque;\n\nfinal class WorkerState {\n    private static final ThreadLocal<Deque<Object>> ACTIVE_MODULES = ThreadLocal.withInitial(ArrayDeque::new);\n\n    private WorkerState() {\n    }\n\n    static Scope attach(Object module) {\n        ACTIVE_MODULES.get().push(module);\n        return new Scope();\n    }\n\n    static final class Scope implements AutoCloseable {\n        @Override\n        public void close() {\n            ACTIVE_MODULES.get().pop();\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/build\n",
+      "duration": 2.0
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}

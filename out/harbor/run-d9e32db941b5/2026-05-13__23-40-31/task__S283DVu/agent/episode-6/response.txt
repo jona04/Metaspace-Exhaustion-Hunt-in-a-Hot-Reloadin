@@ -1,0 +1,14 @@
+{
+  "analysis": "In `LoadedGeneration.java`, I see a `ConcurrentHashMap<Long, LoadedGeneration> LIVE` that stores every `LoadedGeneration` created via `load`. However, it doesn't seem to be cleaned up anywhere in this file. Even though `LoadedGeneration` implements `AutoCloseable`, the `LIVE` map still holds a reference to it, which prevents it and its `ClassLoader` from being garbage collected. This is a classic memory leak.",
+  "plan": "I need to check where `LoadedGeneration` is used and where it's supposed to be closed. I'll look at `TimelineLedger.java` and `ThreadBridge.java` as they were mentioned in `TextDaemon.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "analysis": "The investigation revealed a classloader leak in the `textd` service. Each time a new plugin revision was installed, a new `URLClassLoader` was created. However, the `ThreadCache` in the worker threads was replacing the old `WorkerHandle` without calling its `close()` method. Since `WorkerHandle.close()` is responsible for unpinning the `TimelineFrame`, which in turn closes the `URLClassLoader` when its pin count reaches zero, the classloaders were never being garbage collected, eventually leading to `java.lang.OutOfMemoryError: Metaspace`.\n\nI modified `src/main/java/io/harbor/textd/core/ThreadCache.java` to ensure that `cursor.close()` is called before a new `WorkerHandle` is assigned to the `cursor`. This ensures that old generations are properly drained and their classloaders are closed.\n\nVerification was performed by running `./bin/stress`, which now successfully completes 500 cycles within the 64MB Metaspace limit, and by running the full `./bin/run-suite` which also passed.",
+  "plan": "The task is complete. I have fixed the leak and verified the solution.",
+  "commands": [],
+  "task_complete": true
+}

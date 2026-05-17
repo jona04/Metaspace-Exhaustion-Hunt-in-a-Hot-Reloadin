@@ -1,0 +1,44 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected after JSON object
+
+Current Terminal Screen:
+root@bf85ac6d598e:/workspace/textd# java -cp build/main-classes io.harbor.textd.cli.SessionReplayRunner build/plugins/customer-default.jar 4
+{
+  "first": {"first":"GEN-001|ALPHA>BETA>GAMMA|PIPE-18528","last":"GEN-004|ALPHA>BETA>GAMMA|PIPE-18528","start":["textd-worker-1", "textd-worker-2", "textd-worke
+r-3", "textd-worker-4"],"end":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"same_workers":true,"before_close":true,"after_close":tru
+e,"loaded_before_close":694,"loaded_after_close":1864,"unloaded_before_close":0,"unloaded_after_close":0},
+  "second": {"first":"GEN-001|ALPHA>BETA>GAMMA|PIPE-18528","last":"GEN-004|ALPHA>BETA>GAMMA|PIPE-18528","start":["textd-worker-1", "textd-worker-2", "textd-work
+er-3", "textd-worker-4"],"end":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"same_workers":true,"before_close":true,"after_close":tr
+ue,"loaded_before_close":1864,"loaded_after_close":2687,"unloaded_before_close":0,"unloaded_after_close":0}
+}
+root@bf85ac6d598e:/workspace/textd# ./bin/replay-check
+replay-fail unloaded-first=0 unloaded-second=0
+root@bf85ac6d598e:/workspace/textd# cat plugin-src/io/harbor/textd/customer/CustomerPluginFactory.java
+package io.harbor.textd.customer;
+
+import io.harbor.textd.api.PluginModule;
+import io.harbor.textd.api.PluginModuleFactory;
+
+public final class CustomerPluginFactory implements PluginModuleFactory {
+    @Override
+    public PluginModule open() {
+        return new CustomerPluginModule();
+    }
+}
+root@bf85ac6d598e:/workspace/textd# cat <<EOF > src/main/java/io/harbor/textd/core/ThreadBridge.java
+> package io.harbor.textd.core;
+>
+> final class ThreadBridge {
+>     private final ThreadLocal<ThreadCache> routes = ThreadLocal.withInitial(ThreadCache::new);
+>
+>     WorkerHandle current(TimelineLedger ledger) {
+>         return routes.get().cursorFor(ledger);
+>     }
+>
+>     void close() {
+>         // Note: This only clears the ThreadLocal for the CURRENT thread.
+>         // We still need a way to clear it for all threads.
+>     }
+> }
+> EOF
+root@bf85ac6d598e:/workspace/textd#

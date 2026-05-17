@@ -1,0 +1,171 @@
+New Terminal Output:
+
+root@dfc7e4b4db27:/workspace/textd# cat src/main/java/io/harbor/textd/cli/SessionReplayRunner.java
+package io.harbor.textd.cli;
+
+import io.harbor.textd.core.OutputFormat;
+import io.harbor.textd.core.ProcessingResult;
+import io.harbor.textd.core.TextDaemon;
+
+import java.lang.management.ClassLoadingMXBean;
+import java.lang.management.ManagementFactory;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.stream.Collectors;
+
+public final class SessionReplayRunner {
+    private static final String SAMPLE = "alpha beta gamma";
+    private static final ClassLoadingMXBean CLASS_LOADING = ManagementFactory.getClassLoadingMXBean();
+
+    private SessionReplayRunner() {
+    }
+
+    public static void main(String[] args) throws Exception {
+        Path pluginJar = Path.of(args[0]);
+        int revision = args.length > 1 ? Integer.parseInt(args[1]) : 24;
+
+        Session first = runSession(pluginJar, revision);
+        Session second = runSession(pluginJar, revision);
+
+        System.out.println("{");
+        System.out.println("  \"first\": " + first.toJson() + ",");
+        System.out.println("  \"second\": " + second.toJson());
+        System.out.println("}");
+    }
+
+    private static Session runSession(Path pluginJar, int revision) throws Exception {
+        long loadedBefore = CLASS_LOADING.getLoadedClassCount();
+        long unloadedBefore = CLASS_LOADING.getUnloadedClassCount();
+
+        TextDaemon daemon = new TextDaemon(pluginJar, 4);
+        try {
+            daemon.reload(1);
+            List<ProcessingResult> firstResults = daemon.processBatch(List.of(SAMPLE, SAMPLE, SAMPLE, SAMPLE));
+            assertOutputs(1, firstResults);
+
+            List<String> workersStart = workerThreads(firstResults);
+            List<ProcessingResult> finalResults = firstResults;
+            for (int current = 2; current <= revision; current++) {
+                daemon.reload(current);
+                finalResults = daemon.processBatch(List.of(SAMPLE, SAMPLE, SAMPLE, SAMPLE));
+                assertOutputs(current, finalResults);
+            }
+
+            List<String> workersEnd = workerThreads(finalResults);
+            boolean sameWorkers = workersStart.equals(workersEnd);
+            boolean beforeClose = daemon.isBalanced();
+            String first = firstResults.get(0).output();
+            String last = finalResults.get(0).output();
+
+            daemon.close();
+            drainGc();
+
+            return new Session(
+                first,
+                last,
+                workersStart,
+                workersEnd,
+                sameWorkers,
+                beforeClose,
+                daemon.isBalanced(),
+                loadedBefore,
+                CLASS_LOADING.getLoadedClassCount(),
+                unloadedBefore,
+                CLASS_LOADING.getUnloadedClassCount()
+            );
+        } catch (Exception exception) {
+            try {
+                daemon.close();
+            } catch (Exception closeException) {
+                exception.addSuppressed(closeException);
+            }
+            throw exception;
+        }
+    }
+
+    private static List<String> workerThreads(List<ProcessingResult> results) {
+        return results.stream()
+            .map(ProcessingResult::workerThread)
+            .sorted()
+            .collect(Collectors.toList());
+    }
+
+    private static void drainGc() throws InterruptedException {
+        for (int i = 0; i < 3; i++) {
+            System.gc();
+            Thread.sleep(50);
+        }
+    }
+
+    private static void assertOutputs(long revision, List<ProcessingResult> results) {
+        String expected = OutputFormat.expectedFor(revision, SAMPLE);
+        for (ProcessingResult result : results) {
+            if (!expected.equals(result.output())) {
+                throw new IllegalStateException("Unexpected output at revision " + revision + ": " + result.output());
+            }
+        }
+    }
+
+    private static String toJsonArray(List<String> values) {
+        return values.stream()
+            .map(value -> "\"" + value + "\"")
+            .collect(Collectors.joining(", ", "[", "]"));
+    }
+
+    private static final class Session {
+        private final String first;
+        private final String last;
+        private final List<String> start;
+        private final List<String> end;
+        private final boolean sameWorkers;
+        private final boolean beforeClose;
+        private final boolean afterClose;
+        private final long loadedBeforeClose;
+        private final long loadedAfterClose;
+        private final long unloadedBeforeClose;
+        private final long unloadedAfterClose;
+
+        private Session(
+            String first,
+            String last,
+            List<String> start,
+            List<String> end,
+            boolean sameWorkers,
+            boolean beforeClose,
+            boolean afterClose,
+            long loadedBeforeClose,
+            long loadedAfterClose,
+            long unloadedBeforeClose,
+            long unloadedAfterClose
+        ) {
+            this.first = first;
+            this.last = last;
+            this.start = start;
+            this.end = end;
+            this.sameWorkers = sameWorkers;
+            this.beforeClose = beforeClose;
+            this.afterClose = afterClose;
+            this.loadedBeforeClose = loadedBeforeClose;
+            this.loadedAfterClose = loadedAfterClose;
+            this.unloadedBeforeClose = unloadedBeforeClose;
+            this.unloadedAfterClose = unloadedAfterClose;
+        }
+
+        private String toJson() {
+            return "{"
+                + "\"first\":\"" + first + "\","
+                + "\"last\":\"" + last + "\","
+                + "\"start\":" + toJsonArray(start) + ","
+                + "\"end\":" + toJsonArray(end) + ","
+                + "\"same_workers\":" + sameWorkers + ","
+                + "\"before_close\":" + beforeClose + ","
+                + "\"after_close\":" + afterClose + ","
+                + "\"loaded_before_close\":" + loadedBeforeClose + ","
+                + "\"loaded_after_close\":" + loadedAfterClose + ","
+                + "\"unloaded_before_close\":" + unloadedBeforeClose + ","
+                + "\"unloaded_after_close\":" + unloadedAfterClose
+                + "}";
+        }
+    }
+}
+root@dfc7e4b4db27:/workspace/textd#

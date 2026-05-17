@@ -1,0 +1,6 @@
+{
+  "analysis": "The issue was identified as a Metaspace OutOfMemoryError caused by a classloader leak during 'processor swaps' (plugin reloading). Specifically, the `ThreadCache` class was failing to close the previous `WorkerHandle` when a new one was created for a new generation. This left the previous `TimelineFrame` pinned, preventing its `LoadedGeneration` (and the associated `URLClassLoader`) from being closed. I modified `src/main/java/io/harbor/textd/core/ThreadCache.java` to explicitly call `cursor.close()` before replacing the cursor with a new `WorkerHandle`. Both the stress test and the full suite now pass successfully.",
+  "plan": "I have verified the fix with the provided stress and integration tests. The daemon now survives long runs in the constrained environment.",
+  "commands": [],
+  "task_complete": true
+}

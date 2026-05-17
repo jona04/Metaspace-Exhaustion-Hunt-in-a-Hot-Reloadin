@@ -1,0 +1,10 @@
+{
+  "analysis": "Still failing. This is unexpected. If `ThreadBridge.clear()` is called on all worker threads, and each `ThreadCache.close()` calls `WorkerHandle.close()`, which calls `TimelineFrame.unpin()`, and `TimelineLedger.close()` calls `TimelineFrame.cool()`, then the pin count should reach zero and `closeLoadedGeneration()` should be called, which closes the `URLClassLoader`. Closing a `URLClassLoader` should allow its classes to be unloaded during GC.",
+  "plan": "1. Verify `ThreadBridge.clear()` is actually doing what I think it's doing.\n2. Check if there are other threads or references holding onto the classes.\n3. Re-examine `TimelineFrame.java` and `LoadedGeneration.java`.\n4. Check if the number of worker threads in `TextDaemon` is always exactly `workerCount`. Yes, it's a fixed thread pool.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    }
+  ]
+}

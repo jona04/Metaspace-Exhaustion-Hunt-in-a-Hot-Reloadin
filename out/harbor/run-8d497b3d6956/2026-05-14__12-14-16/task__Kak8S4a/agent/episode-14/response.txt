@@ -1,0 +1,10 @@
+{
+  "analysis": "It seems `ThreadBridge.clear()` is never called in the current codebase. This means when the `TextDaemon` is closed, the worker threads (if they were to survive) would still hold onto their last `WorkerHandle`. However, `TextDaemon.close()` calls `workers.shutdownNow()`, which should interrupt and eventually stop the threads. Since the threads themselves are stopped, the `ThreadLocal` values should be eligible for GC.",
+  "plan": "Wait, let's look at `TextDaemon.close()` again. It shuts down the workers and calls `revisions.close()`. `revisions.close()` calls `pruneShadow()`. If the worker threads are gone, the `ThreadLocal` might still keep the `ThreadCache` alive if the thread objects themselves are not GC'd. But in this case, the main issue was the leak *during* the run, which I fixed.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.1
+    }
+  ]
+}

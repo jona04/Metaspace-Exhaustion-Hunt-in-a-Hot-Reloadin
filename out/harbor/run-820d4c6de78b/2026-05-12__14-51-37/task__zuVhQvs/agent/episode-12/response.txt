@@ -1,0 +1,6 @@
+{
+  "analysis": "The investigation revealed a ClassLoader leak in the `textd` daemon. Specifically, in `ThreadCache.java`, when a new plugin generation was loaded, the existing `WorkerHandle` (which held a pin on the old `TimelineFrame`) was replaced without being closed. This prevented the reference count on the old `TimelineFrame` from reaching zero, which in turn prevented the `URLClassLoader` for that generation from being closed. Under the constrained Metaspace limit (64m), repeated reloads eventually exhausted the Metaspace.\n\nI have modified `src/main/java/io/harbor/textd/core/ThreadCache.java` to call `cursor.close()` when a revision mismatch is detected, ensuring that old generations can be properly unloaded. The fix was verified by successfully running the stress test and the full integration suite.",
+  "plan": "Task is complete. The fix has been implemented and verified.",
+  "commands": [],
+  "task_complete": true
+}

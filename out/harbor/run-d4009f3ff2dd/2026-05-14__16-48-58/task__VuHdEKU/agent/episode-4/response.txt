@@ -1,0 +1,14 @@
+{
+  "analysis": "I have examined the core classes of the `textd` service. `TimelineLedger` manages revisions using `TimelineFrame` objects. Old frames are moved to a `shadow` queue and pruned when they are 'drained'. `ThreadBridge` uses a `ThreadLocal` to cache `WorkerHandle`s. I suspect that these cached handles are pinning old `TimelineFrame`s, preventing them from being drained and reclaimed. I need to examine `ThreadCache.java` and `TimelineFrame.java` to confirm this.",
+  "plan": "I will read the contents of `src/main/java/io/harbor/textd/core/ThreadCache.java` and `src/main/java/io/harbor/textd/core/TimelineFrame.java` to understand how `WorkerHandle`s are cached and how `TimelineFrame`s are pinned and drained.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    }
+  ]
+}

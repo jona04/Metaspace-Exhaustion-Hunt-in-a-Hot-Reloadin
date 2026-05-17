@@ -1,0 +1,11 @@
+{
+  "analysis": "The `stress-ok cycles=10` output indicates that 10 cycles passed successfully. The issue is likely to manifest with more cycles, as the default is 500 and the Metaspace is limited to 64MB. Hot reloading in Java often causes Metaspace leaks if the ClassLoader for the old plugin version isn't garbage collected. This usually happens because some reference to a class from that ClassLoader is still held somewhere (e.g., in a thread pool, a cache, or a static field).",
+  "plan": "1. Run the stress test with more cycles to trigger the failure. I'll try 100 cycles.\n2. Examine `TextDaemon.java` and `LoadedGeneration.java` to see how they handle reloads and if they close old ClassLoaders or clear references.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 100\n",
+      "duration": 15.0
+    }
+  ],
+  "task_complete": false
+}

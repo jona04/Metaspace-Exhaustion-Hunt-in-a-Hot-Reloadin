@@ -1,0 +1,10 @@
+{
+  "analysis": "Still failing! Why? \n\nAh, `FixedThreadPool` threads don't exit until the pool is shut down. My `finally` block in `WorkerThreadFactory` will only run when the thread actually exits. `workers.shutdownNow()` is called in `daemon.close()`, and `workers.awaitTermination()` follows. So the threads *should* be exiting and calling `ThreadBridge.clear()`.\n\nWait, I see another potential issue. `SessionReplayRunner` calls `daemon.close()` and then `drainGc()`. If the threads take a little while to exit, `drainGc()` might run before they've called `ThreadBridge.clear()`.\n\nBut there's a bigger problem. The `ThreadLocal` is in the *worker thread*. But what about the *main thread* that calls `daemon.process(SAMPLE)`? `HotReloadStressRunner` and `SessionReplayRunner` both call `daemon.process(SAMPLE)` or `daemon.processBatch(...)`. \n\nWait, `daemon.process` calls `processBatch`, which submits tasks to workers. So the main thread doesn't call `processRecord`? Let's check `TextDaemon.process` again.",
+  "plan": "Check `TextDaemon.java`'s `process` and `processBatch` methods.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.1
+    }
+  ]
+}

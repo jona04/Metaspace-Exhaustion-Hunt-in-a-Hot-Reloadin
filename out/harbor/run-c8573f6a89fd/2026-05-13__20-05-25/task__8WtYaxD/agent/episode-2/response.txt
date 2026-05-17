@@ -1,0 +1,11 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with a constrained `-XX:MaxMetaspaceSize=64m`. This confirms that the 'repeated processor swaps' are likely causing a Metaspace leak, probably due to classloaders not being garbage collected when plugins are reloaded.",
+  "plan": "1. Run the stress test to confirm it fails with an `OutOfMemoryError: Metaspace`.\n2. Analyze the code in `HotReloadStressRunner.java` and `TextDaemon.java` to see how it loads and discards plugins.\n3. Look for common Metaspace leak causes: static references to classes loaded by child classloaders, unclosed resources, or threads still running code from old classloaders.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 20\n",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}

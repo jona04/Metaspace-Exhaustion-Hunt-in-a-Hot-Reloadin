@@ -1,0 +1,6 @@
+{
+  "analysis": "The investigation revealed a resource leak in the `ThreadCache` class. Specifically, when a new plugin revision was loaded, the `cursorFor` method would create a new `WorkerHandle` without closing the previous one. Each `WorkerHandle` pins a `TimelineFrame`, and since the old handles were never closed, the frames (and their associated `URLClassLoader` instances) were never released. This led to Metaspace exhaustion during long runs with frequent reloads. I modified `ThreadCache.java` to properly close the old `WorkerHandle` before replacing it, and verified the fix with both the integration suite and an extended stress test.",
+  "plan": "The task is complete. I have identified the leak, implemented the fix, and verified it with the provided stress tools.",
+  "commands": [],
+  "task_complete": true
+}

@@ -1,0 +1,10 @@
+{
+  "analysis": "In `processBatch`, if `records.size()` is less than `workerCount`, some threads in the pool will not be used and will keep their old `WorkerHandle` in their `ThreadLocal`. This will keep old frames pinned indefinitely (until those threads are used again or the daemon is closed).\n\nThe task says: \"Old plugin generations must be fully reclaimed by the runtime once sessions close.\"\n\nIf by \"sessions close\" it means the end of `processBatch`, then we should probably make sure all worker threads release their old generations.\n\nBut wait, the `ThreadLocal` is inside the worker threads. If we want all worker threads to release their old generations, we would need to run a task on each of them.\n\nHowever, another way to look at it is: the frame should be unpinned as soon as it's no longer the current frame and no thread is *currently* using it for processing.\n\nIn the current design, a thread \"uses\" a frame by holding it in its `ThreadCache`. It keeps it pinned even when it's idle.\n\nIf we want the frame to be reclaimed even if some threads are idle, we should change how pinning works. Instead of the `ThreadCache` holding a pin, maybe the pin should only be held during the `process` call.\n\nBut `WorkerHandle` is created once per generation per thread to cache the `TextProcessor`. If we unpin after every `process` call, we'd need to re-pin before every `process` call.\n\nLet's look at `WorkerHandle` again.",
+  "plan": "Examine `WorkerHandle.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    }
+  ]
+}

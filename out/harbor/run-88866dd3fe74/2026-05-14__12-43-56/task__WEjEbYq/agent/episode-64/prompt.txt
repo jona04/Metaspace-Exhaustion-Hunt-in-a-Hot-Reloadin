@@ -1,0 +1,26 @@
+New Terminal Output:
+ EOF
+root@71fd5a51cd9b:/workspace/textd# cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF
+> package io.harbor.textd.core;
+>
+> final class ThreadCache implements AutoCloseable {
+>     private WorkerHandle cursor;
+>
+>     WorkerHandle cursorFor(TimelineLedger ledger) {
+>         if (cursor != null) {
+>             cursor.close();
+>         }
+>         cursor = new WorkerHandle(ledger.current());
+>         return cursor;
+>     }
+>
+>     @Override
+>     public void close() {
+>         if (cursor != null) {
+>             cursor.close();
+>             cursor = null;
+>         }
+>     }
+> }
+> EOF
+root@71fd5a51cd9b:/workspace/textd#

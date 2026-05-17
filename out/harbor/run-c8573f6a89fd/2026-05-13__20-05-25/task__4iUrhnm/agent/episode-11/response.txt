@@ -1,0 +1,14 @@
+{
+  "analysis": "Here's how the system works:\n1. `TimelineLedger` keeps track of the current `TimelineFrame` and a `shadow` queue of old frames.\n2. When a new revision is installed, the old frame is added to `shadow` and `cool()`ed.\n3. `ThreadBridge` uses a `ThreadLocal<ThreadCache>` to store a `WorkerHandle` for each thread.\n4. `ThreadCache.cursorFor` checks if the current `WorkerHandle` matches the current `TimelineFrame`. If not, it creates a new `WorkerHandle` for the new frame.\n\nThe leak is likely because the old `WorkerHandle` (and the `TimelineFrame` it references) is never explicitly closed when it's replaced in `ThreadCache.cursorFor`. Even though `TimelineLedger.pruneShadow()` removes 'drained' frames, a frame is only 'drained' if all `WorkerHandle`s referencing it are closed.\n\nLet's check `WorkerHandle.java` and `TimelineFrame.java`.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java`.\n2. Examine `src/main/java/io/harbor/textd/core/TimelineFrame.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "analysis": "The investigation revealed a resource leak in `ThreadCache.java`. Specifically, when a new plugin generation was installed, the `ThreadCache` would create a new `WorkerHandle` for the worker threads but failed to close the previous one. Since `WorkerHandle` holds a pin on the `TimelineFrame`, and closing it is what triggers the unpinning and eventual closure of the `URLClassLoader` in `LoadedGeneration`, the old classloaders were never being garbage collected. This caused the Metaspace to fill up during long runs with repeated processor swaps, especially under the 64MB constraint. Adding `cursor.close()` before overwriting the cursor in `ThreadCache.java` resolved the leak. The fix was verified by successfully running the 500-cycle stress test and the full integration suite.",
+  "plan": "The task is complete. I have fixed the leak and verified the solution with the provided test suites.",
+  "task_complete": true,
+  "commands": []
+}

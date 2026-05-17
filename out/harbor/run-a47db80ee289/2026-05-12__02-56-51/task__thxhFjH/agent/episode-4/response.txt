@@ -1,0 +1,15 @@
+{
+  "analysis": "The `GenerationRegistry` maintains an `active` lease and a `retired` queue. When a new generation is activated, the old one is added to the `retired` queue and `retire()` is called on it. `sweepRetired()` removes leases that are closed. `LoadedGeneration.close()` closes the `PluginModule` and the `URLClassLoader`.\n\nI need to check `GenerationLease` to see how it handles the closing of the `LoadedGeneration` and if it's being kept alive by active workers.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/GenerationLease.java`.\n2. Examine `src/main/java/io/harbor/textd/core/TextDaemon.java` to see how it acquires and releases leases.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/GenerationLease.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

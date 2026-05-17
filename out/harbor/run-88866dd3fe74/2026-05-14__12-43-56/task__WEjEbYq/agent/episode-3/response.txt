@@ -1,0 +1,14 @@
+{
+  "analysis": "`TimelineLedger` keeps track of the current `TimelineFrame` and a `shadow` queue of older frames. `TimelineFrame` has `pin()` and `unpin()` methods (implied by `WorkerHandle`), and `isDrained()` which likely checks if the pin count is zero. `ThreadBridge` uses a `ThreadLocal<ThreadCache>` to store `WorkerHandle`s. `WorkerHandle` pins the frame when created and unpins it when closed.",
+  "plan": "I need to check `ThreadCache.java` and `TimelineFrame.java` to see how the handles are cached and how the pin count is managed. The issue might be that `WorkerHandle`s are not being closed or replaced correctly in the `ThreadCache`, keeping the `TimelineFrame` pinned and preventing it from being drained and removed from the `shadow` queue.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    }
+  ]
+}

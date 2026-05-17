@@ -1,0 +1,128 @@
+{
+    "litellm_trace_id": "c6d463ba-1440-40ea-8738-d0d71ce51f28",
+    "litellm_call_id": "e4644738-8351-45ba-9aa4-c242ae35839a",
+    "input": [
+        {
+            "role": "user",
+            "content": "You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.\n\nFormat your response as JSON with the following structure:\n\n{\n  \"analysis\": \"Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?\",\n  \"plan\": \"Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.\",\n  \"commands\": [\n    {\n      \"keystrokes\": \"ls -la\\n\",\n      \"duration\": 0.1\n    },\n    {\n      \"keystrokes\": \"cd project\\n\",\n      \"duration\": 0.1\n    }\n  ],\n  \"task_complete\": true\n}\n\nRequired fields:\n- \"analysis\": Your analysis of the current situation\n- \"plan\": Your plan for the next steps\n- \"commands\": Array of command objects to execute\n\nOptional fields:\n- \"task_complete\": Boolean indicating if the task is complete (defaults to false if not present)\n\nCommand object structure:\n- \"keystrokes\": String containing the exact keystrokes to send to the terminal (required)\n- \"duration\": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)\n\nIMPORTANT: The text inside \"keystrokes\" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:\n- You must end every command with a newline (\\n) or it will not execute.\n- For special key sequences, use tmux-style escape sequences:\n  - C-c for Ctrl+C\n  - C-d for Ctrl+D\n\nThe \"duration\" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.\n\nIt is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {\"keystrokes\": \"\", \"duration\": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.\n\nImportant notes:\n- Each command's keystrokes are sent exactly as written to the terminal\n- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command\n- Extra text before or after the JSON will generate warnings but be tolerated\n- The JSON must be valid - use proper escaping for quotes and special characters within strings\n- Commands array can be empty if you want to wait without taking action\n\nTask Description:\nOur `textd` service still falls over during a long refresh run in the constrained CI profile. Short checks on a fresh start look normal, but the full validation does not survive repeated processor swaps.\n\nGet the daemon through the long run without changing the deterministic text-processing results from the shipped revisions. Old plugin generations must be fully reclaimed by the runtime once sessions close.\n\n\nCurrent terminal state:\nCurrent Terminal Screen:\nroot@976423ee9aea:/workspace/textd#\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+        },
+        {
+            "role": "assistant",
+            "content": "{\n  \"analysis\": \"I am in the /workspace/textd directory. I need to investigate the codebase to understand how the `textd` service handles plugin generations and processor swaps, as there is a resource reclamation issue during long runs.\",\n  \"plan\": \"I will start by listing the files in the directory to get an overview of the project structure.\",\n  \"commands\": [\n    {\n      \"keystrokes\": \"ls -R\\n\",\n      \"duration\": 0.5\n    }\n  ]\n}"
+        },
+        {
+            "role": "user",
+            "content": "New Terminal Output:\nroot@976423ee9aea:/workspace/textd# ls -R\n.:\nbin  build  plugin-src  src\n\n./bin:\nbuild  integration  replay-check  run-suite  stress\n\n./build:\nmain-classes  plugin-classes  plugins\n\n./build/main-classes:\n\n./build/plugin-classes:\n\n./build/plugins:\n\n./plugin-src:\nio\n\n./plugin-src/io:\nharbor\n\n./plugin-src/io/harbor:\ntextd\n\n./plugin-src/io/harbor/textd:\ncustomer\n\n./plugin-src/io/harbor/textd/customer:\nCustomerPluginFactory.java  CustomerPluginModule.java  PipelineProcessor.java  PipelineStages.java\n\n./src:\nmain\n\n./src/main:\njava\n\n./src/main/java:\nio\n\n./src/main/java/io:\nharbor\n\n./src/main/java/io/harbor:\ntextd\n\n./src/main/java/io/harbor/textd:\napi  cli  core\n\n./src/main/java/io/harbor/textd/api:\nPluginModule.java  PluginModuleFactory.java  TextProcessor.java\n\n./src/main/java/io/harbor/textd/cli:\nHotReloadIntegrationRunner.java  HotReloadStressRunner.java  RuntimeDigestRunner.java  SessionReplayRunner.java\n\n./src/main/java/io/harbor/textd/core:\nLoadedGeneration.java  ProcessingResult.java  ThreadBridge.java  TimelineFrame.java   WorkerHandle.java\nOutputFormat.java      TextDaemon.java        ThreadCache.java   TimelineLedger.java\nroot@976423ee9aea:/workspace/textd#\n"
+        }
+    ],
+    "litellm_params": {
+        "acompletion": true,
+        "api_key": "sk-iMXL8pailRFmZSXVgZmQCQ",
+        "force_timeout": 600,
+        "verbose": false,
+        "custom_llm_provider": "litellm_proxy",
+        "api_base": "https://litellm.vetto-labs.dev",
+        "litellm_call_id": "e4644738-8351-45ba-9aa4-c242ae35839a",
+        "model_alias_map": {},
+        "completion_call_id": "None",
+        "aembedding": "None",
+        "metadata": "None",
+        "model_info": "None",
+        "proxy_server_request": "None",
+        "preset_cache_key": "None",
+        "no-log": "None",
+        "stream_response": {},
+        "input_cost_per_token": "None",
+        "input_cost_per_second": "None",
+        "output_cost_per_token": "None",
+        "output_cost_per_second": "None",
+        "cost_per_query": "None",
+        "cooldown_time": "None",
+        "text_completion": "None",
+        "azure_ad_token_provider": "None",
+        "user_continue_message": "None",
+        "base_model": "None",
+        "litellm_trace_id": "None",
+        "litellm_session_id": "None",
+        "hf_model_name": "None",
+        "custom_prompt_dict": {},
+        "litellm_metadata": "None",
+        "disable_add_transform_inline_image_block": "None",
+        "drop_params": true,
+        "prompt_id": "None",
+        "prompt_variables": "None",
+        "async_call": "None",
+        "ssl_verify": "None",
+        "merge_reasoning_content_in_choices": "None",
+        "api_version": "None",
+        "max_retries": "None",
+        "use_litellm_proxy": false,
+        "litellm_request_debug": false,
+        "azure_username": "None",
+        "azure_ad_token": "None",
+        "client_id": "None",
+        "timeout": 600.0,
+        "client_secret": "None",
+        "tenant_id": "None",
+        "azure_password": "None",
+        "rpm": "None",
+        "azure_scope": "None",
+        "tpm": "None"
+    },
+    "applied_guardrails": [],
+    "model": "vertex_ai/gemini-3-flash-preview",
+    "messages": [
+        {
+            "role": "user",
+            "content": "You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.\n\nFormat your response as JSON with the following structure:\n\n{\n  \"analysis\": \"Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?\",\n  \"plan\": \"Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.\",\n  \"commands\": [\n    {\n      \"keystrokes\": \"ls -la\\n\",\n      \"duration\": 0.1\n    },\n    {\n      \"keystrokes\": \"cd project\\n\",\n      \"duration\": 0.1\n    }\n  ],\n  \"task_complete\": true\n}\n\nRequired fields:\n- \"analysis\": Your analysis of the current situation\n- \"plan\": Your plan for the next steps\n- \"commands\": Array of command objects to execute\n\nOptional fields:\n- \"task_complete\": Boolean indicating if the task is complete (defaults to false if not present)\n\nCommand object structure:\n- \"keystrokes\": String containing the exact keystrokes to send to the terminal (required)\n- \"duration\": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)\n\nIMPORTANT: The text inside \"keystrokes\" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:\n- You must end every command with a newline (\\n) or it will not execute.\n- For special key sequences, use tmux-style escape sequences:\n  - C-c for Ctrl+C\n  - C-d for Ctrl+D\n\nThe \"duration\" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.\n\nIt is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {\"keystrokes\": \"\", \"duration\": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.\n\nImportant notes:\n- Each command's keystrokes are sent exactly as written to the terminal\n- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command\n- Extra text before or after the JSON will generate warnings but be tolerated\n- The JSON must be valid - use proper escaping for quotes and special characters within strings\n- Commands array can be empty if you want to wait without taking action\n\nTask Description:\nOur `textd` service still falls over during a long refresh run in the constrained CI profile. Short checks on a fresh start look normal, but the full validation does not survive repeated processor swaps.\n\nGet the daemon through the long run without changing the deterministic text-processing results from the shipped revisions. Old plugin generations must be fully reclaimed by the runtime once sessions close.\n\n\nCurrent terminal state:\nCurrent Terminal Screen:\nroot@976423ee9aea:/workspace/textd#\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+        },
+        {
+            "role": "assistant",
+            "content": "{\n  \"analysis\": \"I am in the /workspace/textd directory. I need to investigate the codebase to understand how the `textd` service handles plugin generations and processor swaps, as there is a resource reclamation issue during long runs.\",\n  \"plan\": \"I will start by listing the files in the directory to get an overview of the project structure.\",\n  \"commands\": [\n    {\n      \"keystrokes\": \"ls -R\\n\",\n      \"duration\": 0.5\n    }\n  ]\n}"
+        },
+        {
+            "role": "user",
+            "content": "New Terminal Output:\nroot@976423ee9aea:/workspace/textd# ls -R\n.:\nbin  build  plugin-src  src\n\n./bin:\nbuild  integration  replay-check  run-suite  stress\n\n./build:\nmain-classes  plugin-classes  plugins\n\n./build/main-classes:\n\n./build/plugin-classes:\n\n./build/plugins:\n\n./plugin-src:\nio\n\n./plugin-src/io:\nharbor\n\n./plugin-src/io/harbor:\ntextd\n\n./plugin-src/io/harbor/textd:\ncustomer\n\n./plugin-src/io/harbor/textd/customer:\nCustomerPluginFactory.java  CustomerPluginModule.java  PipelineProcessor.java  PipelineStages.java\n\n./src:\nmain\n\n./src/main:\njava\n\n./src/main/java:\nio\n\n./src/main/java/io:\nharbor\n\n./src/main/java/io/harbor:\ntextd\n\n./src/main/java/io/harbor/textd:\napi  cli  core\n\n./src/main/java/io/harbor/textd/api:\nPluginModule.java  PluginModuleFactory.java  TextProcessor.java\n\n./src/main/java/io/harbor/textd/cli:\nHotReloadIntegrationRunner.java  HotReloadStressRunner.java  RuntimeDigestRunner.java  SessionReplayRunner.java\n\n./src/main/java/io/harbor/textd/core:\nLoadedGeneration.java  ProcessingResult.java  ThreadBridge.java  TimelineFrame.java   WorkerHandle.java\nOutputFormat.java      TextDaemon.java        ThreadCache.java   TimelineLedger.java\nroot@976423ee9aea:/workspace/textd#\n"
+        }
+    ],
+    "optional_params": {
+        "temperature": 0.7,
+        "extra_body": {}
+    },
+    "start_time": "2026-05-14 11:47:40.762057",
+    "stream": false,
+    "user": "None",
+    "call_type": "acompletion",
+    "completion_start_time": "None",
+    "standard_callback_dynamic_params": {},
+    "stream_options": "None",
+    "temperature": 0.7,
+    "extra_body": {},
+    "custom_llm_provider": "litellm_proxy",
+    "additional_args": {
+        "complete_input_dict": {
+            "model": "vertex_ai/gemini-3-flash-preview",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.\n\nFormat your response as JSON with the following structure:\n\n{\n  \"analysis\": \"Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?\",\n  \"plan\": \"Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.\",\n  \"commands\": [\n    {\n      \"keystrokes\": \"ls -la\\n\",\n      \"duration\": 0.1\n    },\n    {\n      \"keystrokes\": \"cd project\\n\",\n      \"duration\": 0.1\n    }\n  ],\n  \"task_complete\": true\n}\n\nRequired fields:\n- \"analysis\": Your analysis of the current situation\n- \"plan\": Your plan for the next steps\n- \"commands\": Array of command objects to execute\n\nOptional fields:\n- \"task_complete\": Boolean indicating if the task is complete (defaults to false if not present)\n\nCommand object structure:\n- \"keystrokes\": String containing the exact keystrokes to send to the terminal (required)\n- \"duration\": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)\n\nIMPORTANT: The text inside \"keystrokes\" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:\n- You must end every command with a newline (\\n) or it will not execute.\n- For special key sequences, use tmux-style escape sequences:\n  - C-c for Ctrl+C\n  - C-d for Ctrl+D\n\nThe \"duration\" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.\n\nIt is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {\"keystrokes\": \"\", \"duration\": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.\n\nImportant notes:\n- Each command's keystrokes are sent exactly as written to the terminal\n- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command\n- Extra text before or after the JSON will generate warnings but be tolerated\n- The JSON must be valid - use proper escaping for quotes and special characters within strings\n- Commands array can be empty if you want to wait without taking action\n\nTask Description:\nOur `textd` service still falls over during a long refresh run in the constrained CI profile. Short checks on a fresh start look normal, but the full validation does not survive repeated processor swaps.\n\nGet the daemon through the long run without changing the deterministic text-processing results from the shipped revisions. Old plugin generations must be fully reclaimed by the runtime once sessions close.\n\n\nCurrent terminal state:\nCurrent Terminal Screen:\nroot@976423ee9aea:/workspace/textd#\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+                },
+                {
+                    "role": "assistant",
+                    "content": "{\n  \"analysis\": \"I am in the /workspace/textd directory. I need to investigate the codebase to understand how the `textd` service handles plugin generations and processor swaps, as there is a resource reclamation issue during long runs.\",\n  \"plan\": \"I will start by listing the files in the directory to get an overview of the project structure.\",\n  \"commands\": [\n    {\n      \"keystrokes\": \"ls -R\\n\",\n      \"duration\": 0.5\n    }\n  ]\n}"
+                },
+                {
+                    "role": "user",
+                    "content": "New Terminal Output:\nroot@976423ee9aea:/workspace/textd# ls -R\n.:\nbin  build  plugin-src  src\n\n./bin:\nbuild  integration  replay-check  run-suite  stress\n\n./build:\nmain-classes  plugin-classes  plugins\n\n./build/main-classes:\n\n./build/plugin-classes:\n\n./build/plugins:\n\n./plugin-src:\nio\n\n./plugin-src/io:\nharbor\n\n./plugin-src/io/harbor:\ntextd\n\n./plugin-src/io/harbor/textd:\ncustomer\n\n./plugin-src/io/harbor/textd/customer:\nCustomerPluginFactory.java  CustomerPluginModule.java  PipelineProcessor.java  PipelineStages.java\n\n./src:\nmain\n\n./src/main:\njava\n\n./src/main/java:\nio\n\n./src/main/java/io:\nharbor\n\n./src/main/java/io/harbor:\ntextd\n\n./src/main/java/io/harbor/textd:\napi  cli  core\n\n./src/main/java/io/harbor/textd/api:\nPluginModule.java  PluginModuleFactory.java  TextProcessor.java\n\n./src/main/java/io/harbor/textd/cli:\nHotReloadIntegrationRunner.java  HotReloadStressRunner.java  RuntimeDigestRunner.java  SessionReplayRunner.java\n\n./src/main/java/io/harbor/textd/core:\nLoadedGeneration.java  ProcessingResult.java  ThreadBridge.java  TimelineFrame.java   WorkerHandle.java\nOutputFormat.java      TextDaemon.java        ThreadCache.java   TimelineLedger.java\nroot@976423ee9aea:/workspace/textd#\n"
+                }
+            ],
+            "temperature": 0.7,
+            "extra_body": {}
+        }
+    },
+    "log_event_type": "post_api_call",
+    "api_call_start_time": "2026-05-14 11:47:40.763545",
+    "llm_api_duration_ms": 3646.3709999999996,
+    "original_response": "{\"id\": \"XLYFap6LMZHgz9MP4vv6yAc\", \"choices\": [{\"finish_reason\": \"stop\", \"index\": 0, \"logprobs\": null, \"message\": {\"content\": \"{\\n  \\\"analysis\\\": \\\"The project is a Java-based text processing daemon with a plugin architecture. Based on the file structure, it uses custom class loading or generation management (likely for hot-reloading plugins). The issue involves old plugin generations not being reclaimed by the runtime, which suggests a memory leak, probably due to references being held to old ClassLoaders or plugin instances.\\\",\\n  \\\"plan\\\": \\\"I will examine the core logic for plugin management, specifically `TextDaemon.java` and `LoadedGeneration.java`, to understand how generations are tracked and whether they are properly dereferenced. I'll also check the stress test script to see how the failure is reproduced.\\\",\\n  \\\"commands\\\": [\\n    {\\n      \\\"keystrokes\\\": \\\"cat src/main/java/io/harbor/textd/core/TextDaemon.java\\\\n\\\",\\n      \\\"duration\\\": 0.5\\n    },\\n    {\\n      \\\"keystrokes\\\": \\\"cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\\\\n\\\",\\n      \\\"duration\\\": 0.5\\n    }\\n  ]\\n}\", \"refusal\": null, \"role\": \"assistant\", \"annotations\": null, \"audio\": null, \"function_call\": null, \"tool_calls\": null, \"images\": [], \"thinking_blocks\": [], \"provider_specific_fields\": {\"thought_signatures\": [\"AY89a1/9nz1impwPllkhB8DatwgirBT11hr+YyDW4tI57pCS7Xbs5imyeBGOSBO2lQqGIZwszjPHq85jEdNnj65K3gXG+pZA4csMCfAt0qKL3n4S2UUqaPZVVjfKX5Aepa3Z9/Ff1WgELSuX3oA+7XMIPTbf1922ZjXaRDnQJPzb9lXB37fVB5FFDjo5RKPou1vqG08UiKZCUC2RHhRjoefFdqtut8iGLu0XJ7aBs4U7FkP4VWXoVnSkRpIlCj5/7yfi8dRENtUV/nLBipbIthPh1XYHYux2SQ3HXDb2WdgCo+MAIU+sbSIs6wcQ5DZ+7cwk1cDepmYsXdeKunmGJIErxPgpIcQJcivkAAmkSJO2TB9jrp9enHSeqThmDPOQraSxzmkM5tKxSGwr3GIrsWDMli15GLWnqvOEJTV/yYZJ5UM2ox2/xw38omiyI73KVsWOGPVbTLRTa8U3JC9bA6IHJPTd2DTsOVUwbZixcTc0AwNdCxKUt7R0TCzd6bwh32ZAUkv6xa7OOlWsW3gXjzVu00lU94UgKrpTL9EmTu0thBdOySO9Qwo7wxT7vjY11wmpXbeODOsgqx9VzbZ6pLziuU2KhasEpcjb5Nm5JHAJ3S+vbCs1UULP6JcF94DLfu04PJj7VkJ4cY1cBDhVOVc8/RZ4wIAmKa+NHiVwfzvuN/gwDcgDuUuAsz7qaJiLP30BdtYYPYeJIfCzNb9xcNy7JxpP4b6+tH2pW1KVr7iI5fjnSydazd+xZHI6mFzI/zJ6mJJsNMGtrgPKzc+7sw3/fX3JeIQ6CAd81LTbOClTQLXt7Y9XGEtItcI9KS4WrHap9FnYggFuhwh+3CkUZDK+kQeQ6KafHKUf189ZKcGjlTTDQSC+Og17r247t+f/G3dBI5tEJzH8bQW9ZAmOVUhGxdLVPXVknZhUdWfYO6Gw2tSU1hbAYXhMnO2dJ6WthP28Ly/CULI8JwDKWU3SLAtZ/EghNnuIl7O1U3o8JkuWGWqAwTd1Jk71hmmXaaVPt5VR3tsfJit4F3HGYjsNeLtguaFpLuZqB3N+d8mRpk5ssxwNj2P3aAf/CShkg3KK1VqffhcvBdwGdcPpZ61Z2DXPKBvEAvtECBWu6V37OO4Bb8KZk1MP7QxlTwfY9rgDOS5OVAEnel12v5zhCY67Ts8Q8GB9x65HS/g9q/764dxiBPxexlMCUdJaX14i38d/HWJI4r/RAGpVHr/ea5lLu5BGyfpXhFHJdzS6n+D5G+HBusiIbxy/tvNWquH+N9xFRv2afMA=\"]}}}], \"created\": 1778759260, \"model\": \"vertex_ai/gemini-3-flash-preview\", \"object\": \"chat.completion\", \"service_tier\": null, \"system_fingerprint\": null, \"usage\": {\"completion_tokens\": 485, \"prompt_tokens\": 1335, \"total_tokens\": 1820, \"completion_tokens_details\": {\"accepted_prediction_tokens\": null, \"audio_tokens\": null, \"reasoning_tokens\": 238, \"rejected_prediction_tokens\": null, \"text_tokens\": 247}, \"prompt_tokens_details\": {\"audio_tokens\": null, \"cached_tokens\": null, \"text_tokens\": 1335}}, \"vertex_ai_grounding_metadata\": [], \"vertex_ai_url_context_metadata\": [], \"vertex_ai_safety_results\": [], \"vertex_ai_citation_metadata\": []}",
+    "api_key_sha256": "10332311db2e14996009238eb4d9d10cd2157d0930154af971c9d00ed0b0bf8d"
+}

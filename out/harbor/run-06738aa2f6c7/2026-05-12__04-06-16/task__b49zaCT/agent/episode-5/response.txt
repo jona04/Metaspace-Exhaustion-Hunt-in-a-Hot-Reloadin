@@ -1,0 +1,15 @@
+{
+  "analysis": "I've identified the leak. In `ThreadCache.java`:\n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame); // LEAK: old cursor not closed\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n\nThe `WorkerHandle` constructor calls `frame.pin()`, and `WorkerHandle.close()` calls `frame.unpin()`. If `cursor` is replaced without being closed, the old `frame` remains pinned. A pinned frame likely prevents the `LoadedGeneration` (and its `ClassLoader`) from being released.\n\nI need to modify `ThreadCache.java` to call `cursor.close()` before replacing it.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the existing cursor if it doesn't match the new frame.\n2. Rebuild and run the stress test to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/cursor.close();\\n            cursor = new WorkerHandle(frame);/' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

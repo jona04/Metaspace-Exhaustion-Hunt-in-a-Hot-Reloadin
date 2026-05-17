@@ -1,0 +1,10 @@
+{
+  "analysis": "I've identified the leak. In `ThreadCache.java`, when a `WorkerHandle` is replaced because the revision has changed, the old `WorkerHandle` is not closed. `WorkerHandle` pins the `TimelineFrame`, and `TimelineFrame` only closes its `LoadedGeneration` (which includes the `URLClassLoader`) when its pin count reaches zero and it has been \"cooled\".\n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n\nWhen `!cursor.matches(frame)` is true, a new `WorkerHandle` is created and assigned to `cursor`, but the old `cursor` is lost without being closed. This means the old `TimelineFrame` remains pinned by the old `WorkerHandle` that is now unreachable. Since it's pinned, it's never closed, and its `ClassLoader` is never closed, leading to a Metaspace leak.",
+  "plan": "I will modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before creating a new one.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    }
+  ]
+}

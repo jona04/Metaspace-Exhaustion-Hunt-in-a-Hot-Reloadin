@@ -1,0 +1,19 @@
+{
+  "analysis": "I found a potential leak. `ThreadBridge` uses a `ThreadLocal<ThreadCache>`. The `ThreadCache` holds a `WorkerHandle`, which in turn likely holds a reference to the loaded plugin (and its ClassLoader). When a new generation of the plugin is loaded, `ThreadCache.cursorFor` creates a new `WorkerHandle` if the current one doesn't match the new frame. However, the old `WorkerHandle` is never closed in that case, and more importantly, the `ThreadLocal` itself is never cleared unless `ThreadBridge.clear()` is called. In `TextDaemon.java`, I don't see any calls to `ThreadBridge.clear()`. Also, when `cursorFor` replaces the `cursor`, it should probably close the old one.",
+  "plan": "1. Check `WorkerHandle.java` to see what `close()` does and how it references the plugin.\n2. Check `TimelineLedger.java` and `TimelineFrame.java` to see how they manage ClassLoaders.\n3. Verify if `ThreadCache.cursorFor` should close the old `cursor` before replacing it.\n4. Check if `TextDaemon` should be clearing `ThreadBridge` at some point, or if the leak is simply the unclosed `WorkerHandle`s within the `ThreadLocal`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.2
+    }
+  ],
+  "task_complete": false
+}

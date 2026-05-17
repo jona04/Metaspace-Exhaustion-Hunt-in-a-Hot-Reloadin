@@ -1,0 +1,6 @@
+{
+  "analysis": "The task was to resolve a failure in the `textd` service during long refresh runs. The failure was identified as a `java.lang.OutOfMemoryError: Metaspace`, which indicated a classloader leak. Upon investigation, I found that `ThreadCache.java` was failing to close the old `WorkerHandle` when a new plugin generation was installed. Since `WorkerHandle` pins the `TimelineFrame`, and the frame holds the `URLClassLoader`, this prevented the garbage collection of old class metadata. I have fixed this by ensuring `cursor.close()` is called before replacing the cursor in `ThreadCache.java`. Both the stress test (500 cycles) and the integration suite now pass successfully.",
+  "plan": "The issue is resolved and verified. I will now signal task completion.",
+  "commands": [],
+  "task_complete": true
+}

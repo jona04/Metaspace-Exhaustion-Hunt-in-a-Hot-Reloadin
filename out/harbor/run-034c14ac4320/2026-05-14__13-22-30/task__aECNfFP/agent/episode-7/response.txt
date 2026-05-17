@@ -1,0 +1,10 @@
+{
+  "analysis": "In `ThreadCache.java`, when `cursorFor` is called, if the `cursor` doesn't match the new frame, it just overwrites `cursor` with a new `WorkerHandle`:\n\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\n\nCrucially, it **does not call `close()` on the old `cursor`**. This means the old `WorkerHandle` is never closed, which means `frame.unpin()` is never called for the old frame. Since `TimelineFrame` only closes its `LoadedGeneration` when its pin count reaches zero, this causes a leak of generations and their classloaders.",
+  "plan": "I will fix the leak in `ThreadCache.java` by calling `cursor.close()` before creating a new `WorkerHandle`. I also noticed that the `ThreadLocal` is never cleared, but if I fix `ThreadCache` to properly unpin frames when they are replaced, it should be enough to allow the frames to be closed. However, the last `WorkerHandle` will still be pinned by the `ThreadLocal` of each worker thread. This might be okay as long as it's only the *current* generation. But wait, if the daemon is closed, we should probably clear the `ThreadLocal` too.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/cursor.close(); cursor = new WorkerHandle(frame);/' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ]
+}

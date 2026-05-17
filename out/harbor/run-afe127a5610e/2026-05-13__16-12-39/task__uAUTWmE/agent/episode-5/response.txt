@@ -1,0 +1,19 @@
+{
+  "analysis": "The `TextDaemon` uses a `TimelineLedger` to manage revisions and `ThreadBridge` to bind workers to a specific revision. \nIn `processRecord`, it calls `ThreadBridge.current(revisions)` to get a `WorkerHandle`.\n\nLet's look at `TimelineLedger.java` and `ThreadBridge.java` to see how they manage generations and if they are leaking classloaders or not properly cleaning up old generations.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/TimelineLedger.java`.\n2. Examine `src/main/java/io/harbor/textd/core/ThreadBridge.java`.\n3. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

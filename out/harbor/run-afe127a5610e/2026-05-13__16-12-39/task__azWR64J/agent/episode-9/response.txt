@@ -1,0 +1,15 @@
+{
+  "analysis": "Yes, `WorkerHandle` calls `frame.pin()` in its constructor and `frame.unpin()` in its `close()` method. \n\nIn `ThreadCache.java`, when `cursor` is replaced because the revision changed, `cursor.close()` is never called. This means the old `TimelineFrame` remains pinned indefinitely, preventing its classloader from being closed and GC'd. This causes the Metaspace leak.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to call `cursor.close()` before replacing it with a new `WorkerHandle`.\n2. Run the stress test again to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/cursor.close(); cursor = new WorkerHandle(frame);/g' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

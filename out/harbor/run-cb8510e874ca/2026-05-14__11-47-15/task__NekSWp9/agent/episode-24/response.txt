@@ -1,0 +1,10 @@
+{
+  "analysis": "There are about 192 stages + some other classes in the plugin JAR. Total classes per generation is around 200. Each class takes some amount of Metaspace. If we have 200 generations, that's 40,000 classes. In 64MB of Metaspace, that would be very tight if they weren't being unloaded. So the fact that 200 cycles pass means unloading IS happening during the run. But `replay-check` says 0 classes were unloaded *after* `daemon.close()`.",
+  "plan": "Wait, I might have a theory. `CLASS_LOADING.getUnloadedClassCount()` might not be updated immediately, even after `System.gc()`. Or maybe some other reference is keeping the classes alive. Let's look at `SessionReplayRunner.java`'s `runSession` method again. It calls `daemon.close()` and then `drainGc()`. If `daemon.close()` doesn't wait for the threads to actually die, the `ThreadLocal` might still be reachable.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.1
+    }
+  ]
+}

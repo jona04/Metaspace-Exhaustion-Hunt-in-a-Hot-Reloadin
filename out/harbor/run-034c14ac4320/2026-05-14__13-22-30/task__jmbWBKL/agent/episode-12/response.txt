@@ -1,0 +1,10 @@
+{
+  "analysis": "`SessionReplayRunner` checks `daemon.isBalanced()`. \nIn `TimelineLedger`:\n```java\n    boolean isBalanced() {\n        pruneShadow();\n        return shadow.isEmpty();\n    }\n```\nAnd `pruneShadow()`:\n```java\n    private void pruneShadow() {\n        shadow.removeIf(TimelineFrame::isDrained);\n    }\n```\nAnd `isDrained()` returns `closed.get()`. \nA frame is closed when its `pins` reach 0 and it's been `cooled`.\n\nMy fix in `ThreadCache` ensures that when a new generation is loaded, the old `WorkerHandle` is closed, which calls `unpin()`. This should allow the old `TimelineFrame` to be drained and removed from the shadow queue, making the ledger balanced again.\n\nHowever, I noticed that `TextDaemon.close()` shuts down the workers but doesn't necessarily wait for the threads to actually finish and their `ThreadLocal` variables to be cleared. But it does call `workers.awaitTermination(5, TimeUnit.SECONDS)`. When the threads terminate, their `ThreadLocal` map is cleared, but the `ThreadCache`'s `close()` method is not called. \n\nWait, if the thread terminates, does it call `close()` on its `ThreadLocal` values? No, Java's `ThreadLocal` doesn't do that. But if the `WorkerHandle` is not closed, the `TimelineFrame`'s `pins` will not reach 0. \n\nIn `SessionReplayRunner`, `daemon.close()` is called, then `drainGc()`, then it checks `daemon.isBalanced()`. \nIf the threads are terminated, but their `WorkerHandle`s were never closed, the `pins` count will still be positive! This will keep the `TimelineFrame` from being closed, and thus `isBalanced()` will return `false`.\n\nLet's verify this by running the replay check.",
+  "plan": "Run `bin/replay-check` to see if it passes.",
+  "commands": [
+    {
+      "keystrokes": "bin/replay-check\n",
+      "duration": 5.0
+    }
+  ]
+}

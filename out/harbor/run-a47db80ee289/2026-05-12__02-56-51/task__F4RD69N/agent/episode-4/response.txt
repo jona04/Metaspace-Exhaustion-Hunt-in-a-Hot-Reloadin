@@ -1,0 +1,19 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with a restricted `-XX:MaxMetaspaceSize=64m`. This is a strong hint that the 'soak' failure is a Metaspace leak caused by repeated class loading during processor refreshes. The script also points to `build/plugins/customer-default.jar`. I need to see how `HotReloadStressRunner` and `GenerationRegistry` handle the loading and unloading of these plugins.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/GenerationRegistry.java` to see how it stores and discards generations.\n2. Examine `src/main/java/io/harbor/textd/core/LoadedGeneration.java` to see how it manages its ClassLoader.\n3. Run the stress test and monitor for OutOfMemoryError: Metaspace.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/GenerationRegistry.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/stress 50\n",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}

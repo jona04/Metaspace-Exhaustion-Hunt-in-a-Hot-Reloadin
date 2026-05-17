@@ -1,0 +1,14 @@
+{
+  "analysis": "The code uses a `URLClassLoader` for each generation in `LoadedGeneration`. When `close()` is called on `LoadedGeneration`, it closes both the `module` and the `classLoader`. This should normally allow the classes to be unloaded.\n\nHowever, the `TextDaemon` uses a `ThreadBridge` and `TimelineLedger` to manage these generations. If references to the `LoadedGeneration` or classes from its `ClassLoader` are leaked (e.g., in a `ThreadLocal`), the `ClassLoader` won't be GC'd, leading to a Metaspace leak.\n\nLet's look at `ThreadBridge.java` and `TimelineLedger.java`.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/ThreadBridge.java` to see how it caches or stores `WorkerHandle` or `LoadedGeneration`.\n2. Examine `src/main/java/io/harbor/textd/core/TimelineLedger.java` to see how it manages the lifecycle of generations.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.3
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.3
+    }
+  ]
+}

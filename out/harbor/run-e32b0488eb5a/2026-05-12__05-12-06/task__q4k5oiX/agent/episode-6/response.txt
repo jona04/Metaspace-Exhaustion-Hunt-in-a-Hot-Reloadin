@@ -1,0 +1,19 @@
+{
+  "analysis": "The logic in `TimelineFrame` confirms that `unpin()` must be called to allow the `LoadedGeneration` to be closed. When `TimelineLedger` installs a new revision, it calls `cool()` on the old one, which decrements the pin count. If the `WorkerHandle`s in `ThreadCache` also decrement their pins by calling `close()`, the pin count will eventually reach zero, and the generation will be closed. Currently, `ThreadCache` is failing to call `close()` on the old `WorkerHandle` when it replaces it with a new one.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to call `cursor.close()` if it's not null and doesn't match the current frame.\n2. Rebuild and run the stress test.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/if (!cursor.matches(frame)) {/if (!cursor.matches(frame)) { cursor.close();/' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

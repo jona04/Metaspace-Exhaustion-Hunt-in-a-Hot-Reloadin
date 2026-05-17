@@ -1,0 +1,15 @@
+{
+  "analysis": "I've identified a few things:\n1. `ThreadBridge` uses a `ThreadLocal<ThreadCache>`. \n2. `ThreadCache` holds a `WorkerHandle cursor`.\n3. `WorkerHandle` pins a `TimelineFrame` and holds a `TextProcessor` (which comes from the plugin's classloader).\n4. In `ThreadCache.cursorFor`, if the revision doesn't match, a new `WorkerHandle` is created and assigned to `cursor`, but the old `cursor` is never closed.\n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame); // <--- Old cursor is not closed here!\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n\n5. `WorkerHandle.close()` calls `frame.unpin()`. \n6. `TimelineLedger.pruneShadow()` removes frames that are 'drained'. A frame is likely drained when its pin count reaches zero after it has been 'cooled'.\n\nIf the old `WorkerHandle` is not closed, the `TimelineFrame` remains pinned, which means it won't be drained, and the `LoadedGeneration` (which contains the classloader) won't be released. This explains the Metaspace OOM.",
+  "plan": "1. Verify `TimelineFrame.java` and `LoadedGeneration.java` to confirm how they handle pinning and classloading.\n2. Fix `ThreadCache.java` to close the old cursor before replacing it.\n3. Verify if there are other places where `WorkerHandle` or `TimelineFrame` might be leaked.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

@@ -1,0 +1,14 @@
+{
+  "analysis": "In `TextDaemon.java`, `processRecord` calls `ThreadBridge.current(revisions)` to get a `WorkerHandle`. \nIn `WorkerHandle.java`, it pins a `TimelineFrame`. It has an `AutoCloseable` interface but I don't see `processRecord` closing it.\n\nWait, look at `processRecord` in `TextDaemon.java`:\n```java\n    private ProcessingResult processRecord(\n        String record,\n        CountDownLatch ready,\n        CountDownLatch release\n    ) throws Exception {\n        ready.countDown();\n        if (!release.await(5, TimeUnit.SECONDS)) {\n            throw new IllegalStateException(\"Request release timed out\");\n        }\n\n        WorkerHandle binding = ThreadBridge.current(revisions);\n        return binding.process(record);\n    }\n```\nIt gets a `WorkerHandle` from `ThreadBridge.current(revisions)` but never calls `close()` on it. If `WorkerHandle.close()` is responsible for unpinning the frame, and the frame keeps the ClassLoader alive, then this is a likely leak.\n\nLet's check `ThreadBridge.java` and `ThreadCache.java`.",
+  "plan": "I will examine `ThreadBridge.java` and `ThreadCache.java` to see how `WorkerHandle` is managed.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ]
+}

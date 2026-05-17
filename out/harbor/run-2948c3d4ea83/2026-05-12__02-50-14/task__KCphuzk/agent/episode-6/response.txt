@@ -1,0 +1,19 @@
+{
+  "analysis": "I found the leak! \n\nIn `WorkerBindings.current(registry)`:\n```java\n    static DispatchBinding current(GenerationRegistry registry) {\n        GenerationLease activeLease = registry.active();\n        DispatchBinding binding = ACTIVE.get();\n        if (binding == null) {\n            DispatchBinding created = new DispatchBinding(activeLease);\n            ACTIVE.set(created);\n            return created;\n        }\n\n        if (!binding.matches(activeLease)) {\n            DispatchBinding replacement = new DispatchBinding(activeLease);\n            ACTIVE.set(replacement);\n            return replacement;\n        }\n\n        return binding;\n    }\n```\nWhen `binding.matches(activeLease)` is false, a new `DispatchBinding` is created and set to the `ThreadLocal`. However, the old `binding` is never closed! `DispatchBinding` holds a reference to a `GenerationLease` (via `lease.retain()`), which prevents the `GenerationLease` from ever reaching a reference count of 0, which in turn prevents the `URLClassLoader` from being closed.\n\nSince the workers are part of a `FixedThreadPool` and use `ThreadLocal` for their bindings, as long as the worker threads stay alive, they will keep holding onto the *previous* `DispatchBinding` if it's replaced, because `ACTIVE.set(replacement)` just overwrites the reference in the `ThreadLocal` map without closing the previous value.\n\nActually, it's even worse: if a worker thread is reused, it keeps its current `DispatchBinding`. When a reload happens, `current()` sees the generation mismatch, creates a new `DispatchBinding` (retaining the new lease), and replaces the old one in the `ThreadLocal` without calling `close()` on the old one. The old `DispatchBinding` (and its lease) is now leaked.\n\nTo fix this, `WorkerBindings.current` should close the old binding if it's being replaced.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/WorkerBindings.java` to close the old binding when replacing it.\n2. Run `./bin/stress` again to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "sed -i '18i\\            binding.close();' src/main/java/io/harbor/textd/core/WorkerBindings.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerBindings.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

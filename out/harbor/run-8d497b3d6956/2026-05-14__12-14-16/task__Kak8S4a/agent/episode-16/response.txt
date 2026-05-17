@@ -1,0 +1,14 @@
+{
+  "analysis": "The `HotReloadStressRunner` creates a single `TextDaemon` and reloads it many times. My fix in `ThreadCache` addresses the leak during these reloads. When the `TextDaemon` is closed at the end of the `try-with-resources` block, it will shut down the worker threads.",
+  "plan": "I'll do one more check on `TimelineLedger.java` and `TimelineFrame.java` to ensure that `isDrained` and `pruneShadow` are working as expected.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    }
+  ]
+}

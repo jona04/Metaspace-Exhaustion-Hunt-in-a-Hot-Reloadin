@@ -1,0 +1,19 @@
+{
+  "analysis": "In `TextDaemon.java`, `processRecord` calls `ThreadBridge.current(revisions)`. This suggests that the current worker thread is being bound to a version of the plugin through `ThreadBridge`. The `TimelineLedger` likely manages the generations of the plugin. The `Metaspace` OOM suggests that when a new generation is installed, the old classes (from previous generations) are not being unloaded.",
+  "plan": "1. Examine `ThreadBridge.java` and `TimelineLedger.java` to see how generations are managed and if there's a leak in how they are cached in threads.\n2. Check `ThreadCache.java` as it was mentioned in the file list and is likely used by `ThreadBridge`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

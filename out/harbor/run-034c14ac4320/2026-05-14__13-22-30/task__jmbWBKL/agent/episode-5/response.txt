@@ -1,0 +1,10 @@
+{
+  "analysis": "The `TimelineFrame` uses a reference counting mechanism (`pins`). \n1. When created, `pins` starts at 1.\n2. `pin()` increments `pins`.\n3. `cool()` decrements `pins` (representing the ledger itself releasing its reference).\n4. `unpin()` decrements `pins`. If `pins` reaches 0 and `cooled` is true, it closes the `LoadedGeneration`.\n\nIn `WorkerHandle` constructor, it calls `frame.pin()`. In `WorkerHandle.close()`, it calls `frame.unpin()`.\n\nIn `ThreadCache.cursorFor`:\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\nWhen `!cursor.matches(frame)`, a new `WorkerHandle` is created, but the old `cursor` is never closed. This means the old `WorkerHandle` never calls `frame.unpin()`, so the `pins` count never reaches 0, and the `LoadedGeneration` (and its `ClassLoader`) is never closed.",
+  "plan": "I need to fix `ThreadCache.java` to close the old `cursor` before replacing it with a new one.",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.1
+    }
+  ]
+}

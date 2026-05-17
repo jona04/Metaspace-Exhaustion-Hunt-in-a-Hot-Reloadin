@@ -1,0 +1,10 @@
+{
+  "analysis": "I don't see anything obviously wrong in the plugin code that would prevent the class loader from being GC'd. The `STAGES` list is a static field in `PipelineStages`, which is loaded by the plugin's `URLClassLoader`. When the `URLClassLoader` is eligible for GC, all classes it loaded, including `PipelineStages`, and their static fields should be eligible for GC as well.",
+  "plan": "Wait, I might have found something. In `LoadedGeneration.java`:\n```java\n    static LoadedGeneration load(Path pluginJar, long generation) throws Exception {\n        URLClassLoader classLoader = new URLClassLoader(new URL[] {pluginJar.toUri().toURL()}, PluginModuleFactory.class.getClassLoader());\n        Class<?> factoryType = classLoader.loadClass(FACTORY_CLASS);\n        PluginModuleFactory factory = (PluginModuleFactory) factoryType.getDeclaredConstructor().newInstance();\n        return new LoadedGeneration(generation, classLoader, factory.open());\n    }\n```\nThe `classLoader` has `PluginModuleFactory.class.getClassLoader()` as its parent. This is the App ClassLoader. This is correct.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.1
+    }
+  ]
+}

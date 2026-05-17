@@ -1,0 +1,6 @@
+{
+  "analysis": "The task was to fix a service crash during long runs caused by repeated processor swaps in a constrained environment. I identified a Metaspace exhaustion issue caused by a class loader leak. The root cause was in `ThreadCache.java`, where an old `WorkerHandle` (and its associated `TimelineFrame` and class loader) was not being closed when a new generation was loaded. I implemented a fix by calling `cursor.close()` before replacing the cursor. I verified the fix by running a 500-cycle stress test and the full integration suite, both of which passed.",
+  "plan": "The fix has been verified and the suite passes. Task is complete.",
+  "commands": [],
+  "task_complete": true
+}

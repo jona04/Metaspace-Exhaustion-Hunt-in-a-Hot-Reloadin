@@ -1,0 +1,126 @@
+Previous response had warnings:
+WARNINGS: - Command 1 should end with newline when followed by another command. Otherwise the two commands will be concatenated together on the same line.
+
+New Terminal Output:
+
+root@1d381b4ca4f2:/workspace/textd# ./bin/stress 500
+Exception in thread "main" java.lang.NoClassDefFoundError: Could not initialize class io.harbor.textd.customer.PipelineStages
+        at io.harbor.textd.customer.PipelineProcessor.process(PipelineProcessor.java:22)
+        at io.harbor.textd.core.DispatchBinding.process(DispatchBinding.java:21)
+        at io.harbor.textd.core.TextDaemon.processRecord(TextDaemon.java:80)
+        at io.harbor.textd.core.TextDaemon.lambda$processBatch$0(TextDaemon.java:43)
+        at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+        at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
+        at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+        at java.base/java.lang.Thread.run(Thread.java:840)
+Caused by: java.lang.ExceptionInInitializerError: Exception java.lang.OutOfMemoryError: Metaspace [in thread "textd-worker-2"]
+        at io.harbor.textd.customer.PipelineStages.<clinit>(PipelineStages.java:10)
+        at io.harbor.textd.customer.PipelineProcessor.process(PipelineProcessor.java:22)
+        at io.harbor.textd.core.DispatchBinding.process(DispatchBinding.java:21)
+        at io.harbor.textd.core.TextDaemon.processRecord(TextDaemon.java:80)
+        at io.harbor.textd.core.TextDaemon.lambda$processBatch$0(TextDaemon.java:43)
+        at io.harbor.textd.core.TextDaemon$$Lambda$1/0x00007a9f71001c58.call(Unknown Source)
+        ... 4 more
+root@1d381b4ca4f2:/workspace/textd# cat src/main/java/io/harbor/textd/core/TextDaemon.java
+package io.harbor.textd.core;
+
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+public final class TextDaemon implements AutoCloseable {
+    private final ExecutorService workers;
+    private final GenerationRegistry generations;
+    private final int workerCount;
+
+    public TextDaemon(Path pluginJar, int workerCount) {
+        this.generations = new GenerationRegistry(pluginJar);
+        this.workers = Executors.newFixedThreadPool(workerCount, new WorkerThreadFactory());
+        this.workerCount = workerCount;
+    }
+
+    public void reload(long generation) throws Exception {
+        generations.activate(generation);
+    }
+
+    public ProcessingResult process(String record) throws Exception {
+        return processBatch(List.of(record)).get(0);
+    }
+
+    public int pendingRetirements() {
+        return generations.pendingRetirements();
+    }
+
+    public List<ProcessingResult> processBatch(List<String> records) throws Exception {
+        CountDownLatch ready = new CountDownLatch(records.size());
+        CountDownLatch release = new CountDownLatch(1);
+        List<Future<ProcessingResult>> futures = new ArrayList<>();
+        for (String record : records) {
+            futures.add(workers.submit(() -> processRecord(record, ready, release)));
+        }
+
+        if (!ready.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Workers did not become ready");
+        }
+        release.countDown();
+
+        List<ProcessingResult> results = new ArrayList<>(records.size());
+        for (Future<ProcessingResult> future : futures) {
+            try {
+                results.add(future.get());
+            } catch (ExecutionException exception) {
+                Throwable cause = exception.getCause();
+                if (cause instanceof Exception checked) {
+                    throw checked;
+                }
+                if (cause instanceof Error error) {
+                    throw error;
+                }
+                throw new RuntimeException(cause);
+            }
+        }
+        return results;
+    }
+
+    private ProcessingResult processRecord(
+        String record,
+        CountDownLatch ready,
+        CountDownLatch release
+    ) throws Exception {
+        ready.countDown();
+        if (!release.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Request release timed out");
+        }
+
+        DispatchBinding binding = WorkerBindings.current(generations);
+        return binding.process(record);
+    }
+
+    @Override
+    public void close() throws Exception {
+        generations.close();
+        workers.shutdownNow();
+        workers.awaitTermination(5, TimeUnit.SECONDS);
+    }
+
+    private static final class WorkerThreadFactory implements ThreadFactory {
+        private final AtomicInteger sequence = new AtomicInteger(1);
+
+        @Override
+        public Thread newThread(Runnable runnable) {
+            Thread thread = new Thread(runnable);
+            thread.setName("textd-worker-" + sequence.getAndIncrement());
+            thread.setDaemon(true);
+            return thread;
+        }
+    }
+}
+root@1d381b4ca4f2:/workspace/textd#

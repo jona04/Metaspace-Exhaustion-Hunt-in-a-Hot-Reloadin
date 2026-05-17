@@ -1,0 +1,47 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected after JSON object
+
+New Terminal Output:
+
+root@bf85ac6d598e:/workspace/textd# ./bin/replay-check
+replay-fail unloaded-first=0 unloaded-second=0
+root@bf85ac6d598e:/workspace/textd# cat <<EOF > src/main/java/io/harbor/textd/core/WorkerHandle.java
+> package io.harbor.textd.core;
+>
+> import io.harbor.textd.api.TextProcessor;
+>
+> final class WorkerHandle implements AutoCloseable {
+>     private TimelineFrame frame;
+>     private final long revision;
+>     private TextProcessor processor;
+>
+>     WorkerHandle(TimelineFrame frame) {
+>         this.frame = frame.pin();
+>         this.revision = frame.revision();
+>         this.processor = frame.module().processorFor(revision);
+>     }
+>
+>     boolean matches(TimelineFrame frame) {
+>         return revision == frame.revision();
+>     }
+>
+>     ProcessingResult process(String record) {
+>         TextProcessor p = processor;
+>         if (p == null) {
+>             throw new IllegalStateException("WorkerHandle is closed");
+>         }
+>         String output = p.process(record);
+>         return new ProcessingResult(revision, output, Thread.currentThread().getName());
+>     }
+>
+>     @Override
+>     public void close() {
+>         if (frame != null) {
+>             frame.unpin();
+>             frame = null;
+>         }
+>         processor = null;
+>     }
+> }
+> EOF
+root@bf85ac6d598e:/workspace/textd#

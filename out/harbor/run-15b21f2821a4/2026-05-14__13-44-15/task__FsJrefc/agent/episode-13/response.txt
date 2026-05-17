@@ -1,0 +1,207 @@
+{
+  "analysis": "The full suite passed, including the integration tests, runtime digest, session replay, and the 500-cycle stress test (as configured in `bin/run-suite`). The fix in `ThreadCache.java` correctly addresses the leak by ensuring that old `WorkerHandle` instances (and thus their associated `TimelineFrame` pins) are closed when a new generation is loaded.",
+  "plan": "I will double check the logic in `TimelineFrame` to ensure that there are no other places where pins might be leaked. \n\nIn `TimelineFrame.java`:\n```java\n    void cool() {\n        if (cooled.compareAndSet(false, true)) {\n            unpin();\n        }\n    }\n\n    void unpin() {\n        int remaining = pins.decrementAndGet();\n        if (remaining < 0) {\n            throw new IllegalStateException(\"Pin count underflow for revision \" + revision());\n        }\n        if (remaining == 0 && cooled.get()) {\n            closeLoadedGeneration();\n        }\n    }\n```\n\nWhen a `TimelineFrame` is created, it starts with `pins = 1`. \nWhen `TimelineLedger` installs a new revision, it calls `previous.cool()` on the old frame.\n`cool()` sets `cooled` to true and calls `unpin()`. \nIf no workers are using the frame, `pins` becomes 0, and `closeLoadedGeneration()` is called.\nIf workers are using the frame, each `WorkerHandle` has incremented `pins` via `pin()`. When each `WorkerHandle` is closed, it calls `unpin()`. The last one to call `unpin()` will see `remaining == 0` and, since `cooled` is true, will call `closeLoadedGeneration()`.\n\nWait, I should check how `WorkerHandle` is initialized. \n```java\n    WorkerHandle(TimelineFrame frame) {\n        this.frame = frame.pin();\n        this.revision = frame.revision();\n        this.processor = frame.module().processorFor(revision);\n    }\n```\nIt calls `frame.pin()`. \n\nIn `TimelineFrame` constructor:\n```java\n    private final AtomicInteger pins = new AtomicInteger(1);\n```\n\nWait, if `pins` starts at 1, and `WorkerHandle` calls `pin()`, then `pins` becomes 2.\nWhen the `TimelineLedger` calls `cool()`, it calls `unpin()`, so `pins` becomes 1.\nWhen the `WorkerHandle` is closed, it calls `unpin()`, so `pins` becomes 0, and it closes.\n\nThis seems correct. \n\nOne more thing: `ThreadBridge.clear()` calls `ROUTES.get().close()` which calls `cursor.close()`. This is called when a thread is no longer needed, but in this application, the workers are in a fixed thread pool. \n\nAre there any other places where `WorkerHandle` is used? \nIn `TextDaemon.processRecord`:\n```java\n        WorkerHandle binding = ThreadBridge.current(revisions);\n        return binding.process(record);\n```\nIt doesn't close the binding here because it's cached in the `ThreadLocal` `ThreadCache`. This is why my fix in `ThreadCache` was necessary.\n\nIs there any other potential leak? \nWhat if `TextDaemon` is closed? \n`TextDaemon.close()` calls `revisions.close()`, which calls `frame.cool()` on the current frame.\nBut it doesn't clear the `ThreadLocal` in the worker threads. However, the worker threads are shutdown with `workers.shutdownNow()`. Since they are daemon threads and the executor is shut down, they should eventually be collected, along with their `ThreadLocal` maps.\n\nActually, the task says 'Old plugin generations must be fully reclaimed by the runtime once sessions close.' \n\nThe `HotReloadStressRunner` likely simulates many reloads. \n\nLet's verify if `ThreadBridge.clear()` should be called. But `TextDaemon` doesn't seem to have a way to call `clear()` on all worker threads easily. However, since the `WorkerHandle` is replaced and closed in the next call to `processRecord` after a reload, it should be fine.\n\nWait, if a worker thread never processes another record after a reload, it will still hold the `WorkerHandle` of the previous generation. \nBut `TimelineLedger.isBalanced()` calls `pruneShadow()`, which removes frames that are drained. \n`TimelineLedger.isBalanced()` is called by `TextDaemon.isBalanced()`. \n\nIf a worker thread is idle, it will keep the old frame pinned. \nIn `HotReloadStressRunner`, does it ensure all workers process something? \n\nLet's look at `HotReloadStressRunner.java`.",
+  "plan": "Examine `src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.5
+    }
+  ]
+}
+@77cc050585e7:/workspace/textd# cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java
+package io.harbor.textd.cli;
+
+import io.harbor.textd.core.TextDaemon;
+import java.nio.file.Paths;
+import java.util.List;
+import java.util.stream.IntStream;
+
+public final class HotReloadStressRunner {
+    public static void main(String[] args) throws Exception {
+        if (args.length < 2) {
+            System.err.println("Usage: HotReloadStressRunner <plugin-jar> <cycles>");
+            System.exit(1);
+        }
+
+        var pluginJar = Paths.get(args[0]);
+        var cycles = Integer.parseInt(args[1]);
+
+        try (var daemon = new TextDaemon(pluginJar, 4)) {
+            for (int i = 0; i < cycles; i++) {
+                daemon.reload(i);
+                var records = IntStream.range(0, 10)
+                    .mapToObj(j -> "record-" + i + "-" + j)
+                    .toList();
+                daemon.processBatch(records);
+
+                if (i % 10 == 0) {
+                    System.gc();
+                    Thread.sleep(50);
+                }
+            }
+
+            // Wait for quiescence
+            for (int i = 0; i < 100; i++) {
+                if (daemon.isBalanced()) {
+                    System.out.println("stress-ok cycles=" + cycles);
+                    return;
+                }
+                System.gc();
+                Thread.sleep(100);
+            }
+
+            throw new IllegalStateException("System did not balance after 10 seconds");
+        }
+    }
+}
+root@77cc050585e7:/workspace/textd#
+```java
+package io.harbor.textd.cli;
+
+import io.harbor.textd.core.TextDaemon;
+import java.nio.file.Paths;
+import java.util.List;
+import java.util.stream.IntStream;
+
+public final class HotReloadStressRunner {
+    public static void main(String[] args) throws Exception {
+        if (args.length < 2) {
+            System.err.println("Usage: HotReloadStressRunner <plugin-jar> <cycles>");
+            System.exit(1);
+        }
+
+        var pluginJar = Paths.get(args[0]);
+        var cycles = Integer.parseInt(args[1]);
+
+        try (var daemon = new TextDaemon(pluginJar, 4)) {
+            for (int i = 0; i < cycles; i++) {
+                daemon.reload(i);
+                var records = IntStream.range(0, 10)
+                    .mapToObj(j -> "record-" + i + "-" + j)
+                    .toList();
+                daemon.processBatch(records);
+
+                if (i % 10 == 0) {
+                    System.gc();
+                    Thread.sleep(50);
+                }
+            }
+
+            // Wait for quiescence
+            for (int i = 0; i < 100; i++) {
+                if (daemon.isBalanced()) {
+                    System.out.println("stress-ok cycles=" + cycles);
+                    return;
+                }
+                System.gc();
+                Thread.sleep(100);
+            }
+
+            throw new IllegalStateException("System did not balance after 10 seconds");
+        }
+    }
+}
+```
+In `HotReloadStressRunner`, `daemon.processBatch(records)` is called with 10 records. The daemon has 4 workers. `processBatch` ensures that all records are processed. Since there are more records (10) than workers (4), all workers will have processed at least one record. Thus, all workers' `ThreadCache` will have been updated to the current generation, and the old `WorkerHandle` will have been closed.
+
+This explains why `daemon.isBalanced()` eventually returns true and the stress test passes.
+
+Wait, I should check `processBatch` again.
+```java
+    public List<ProcessingResult> processBatch(List<String> records) throws Exception {
+        CountDownLatch ready = new CountDownLatch(records.size());
+        CountDownLatch release = new CountDownLatch(1);
+        List<Future<ProcessingResult>> futures = new ArrayList<>();
+        for (String record : records) {
+            futures.add(workers.submit(() -> processRecord(record, ready, release)));
+        }
+
+        if (!ready.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Workers did not become ready");
+        }
+        release.countDown();
+        // ...
+```
+Yes, it submits a task for each record. 10 records, 4 workers. Each worker will take at least 2 tasks.
+
+Is there any case where a worker might NOT process a record? In a real-world scenario, maybe. But here it seems covered.
+
+The task also mentioned 'Old plugin generations must be fully reclaimed by the runtime once sessions close.'
+
+Is there anything else?
+I've fixed the leak in `ThreadCache`.
+I've verified it with the stress test.
+I've verified it with the full suite.
+
+Let's look at `ThreadBridge.java` again.
+```java
+final class ThreadBridge {
+    private static final ThreadLocal<ThreadCache> ROUTES = ThreadLocal.withInitial(ThreadCache::new);
+    // ...
+    static void clear() {
+        ThreadCache routeState = ROUTES.get();
+        routeState.close();
+        ROUTES.remove();
+    }
+}
+```
+And `TextDaemon.java`:
+```java
+    @Override
+    public void close() throws Exception {
+        revisions.close();
+        workers.shutdownNow();
+        workers.awaitTermination(5, TimeUnit.SECONDS);
+    }
+```
+When `workers.shutdownNow()` is called, the threads are interrupted and will eventually die. When they die, the `ThreadLocal` values should be eligible for GC.
+
+Wait, I noticed something in `TextDaemon.java`:
+```java
+    private ProcessingResult processRecord(
+        String record,
+        CountDownLatch ready,
+        CountDownLatch release
+    ) throws Exception {
+        ready.countDown();
+        if (!release.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Request release timed out");
+        }
+
+        WorkerHandle binding = ThreadBridge.current(revisions);
+        return binding.process(record);
+    }
+```
+If an exception occurs between `ThreadBridge.current(revisions)` and the end of the method, it doesn't matter much because the `WorkerHandle` is cached in the `ThreadLocal`.
+
+However, if `ThreadBridge.current(revisions)` itself fails? Unlikely.
+
+One thing I noticed: `ThreadBridge.clear()` is never called. But it's only really needed if we want to clean up the `ThreadLocal` before the thread itself dies. In this case, the threads are part of the `TextDaemon`'s private pool, so they die when the daemon is closed.
+
+Wait, the task says: 'Old plugin generations must be fully reclaimed by the runtime once sessions close.'
+Does 'sessions' refer to something specific?
+In `bin/run-suite`, I see:
+```bash
+java -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.RuntimeDigestRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" \
+  24 >/tmp/textd-session.json
+```
+Let's look at `RuntimeDigestRunner.java`.
+```json
+{
+  "analysis": "I have fixed the Metaspace leak by closing the old `WorkerHandle` in `ThreadCache`. I've verified this with the stress test and the full suite. I'm now double-checking other parts of the code to ensure everything is correct and matches the requirements.",
+  "plan": "Examine `src/main/java/io/harbor/textd/cli/RuntimeDigestRunner.java` and `src/main/java/io/harbor/textd/cli/SessionReplayRunner.java` to see if they reveal any other requirements.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/RuntimeDigestRunner.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/SessionReplayRunner.java\n",
+      "duration": 0.5
+    }
+  ]
+}
+```

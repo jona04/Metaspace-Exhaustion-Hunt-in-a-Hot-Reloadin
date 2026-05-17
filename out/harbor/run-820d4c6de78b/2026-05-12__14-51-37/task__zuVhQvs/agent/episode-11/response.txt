@@ -1,0 +1,6 @@
+{
+  "analysis": "The `run-suite` command returned `suite-ok`. This confirms that the fix is correct, does not change deterministic results (as validated by the integration and digest runners), and survives the long refresh run (stress test).",
+  "plan": "I have identified the leak in `ThreadCache.java` where old `WorkerHandle` instances (and thus `TimelineFrame` pins) were not being released during a processor swap. I have fixed this by calling `cursor.close()` before creating a new `WorkerHandle`. The fix has been verified with both the stress test and the full test suite.",
+  "commands": [],
+  "task_complete": true
+}

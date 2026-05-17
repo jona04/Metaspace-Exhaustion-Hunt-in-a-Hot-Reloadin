@@ -1,0 +1,10 @@
+{
+  "analysis": "The `HotReloadStressRunner` reloads the daemon in a loop and processes samples. This matches the description of the problem. My previous analysis of `ThreadCache.java` seems correct: the old `WorkerHandle` is not closed when a new one is created, leading to unpinned `TimelineFrame`s never being unpinned and thus their `LoadedGeneration` (and `URLClassLoader`) never being closed.\n\nLet's look at `ThreadCache.java` again to be sure.",
+  "plan": "I will read `src/main/java/io/harbor/textd/core/ThreadCache.java` again.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ]
+}_

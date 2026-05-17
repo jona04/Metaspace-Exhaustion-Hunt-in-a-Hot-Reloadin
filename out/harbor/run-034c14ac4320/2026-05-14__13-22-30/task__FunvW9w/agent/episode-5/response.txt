@@ -1,0 +1,10 @@
+{
+  "analysis": "The `bin/stress` script runs `io.harbor.textd.cli.HotReloadStressRunner` with a limited Metaspace size (64MB). This confirms that the issue is likely related to class loading/unloading, which affects Metaspace. If old plugin generations are not being reclaimed, the Metaspace will eventually fill up and cause an `OutOfMemoryError`.",
+  "plan": "I will run the stress test and observe if it fails with an `OutOfMemoryError`. I'll also look at the source code of `HotReloadStressRunner` and the core classes like `TextDaemon.java` and `LoadedGeneration.java` to understand how plugins are loaded and unloaded.",
+  "commands": [
+    {
+      "keystrokes": "bin/stress 10\n",
+      "duration": 5.0
+    }
+  ]
+}

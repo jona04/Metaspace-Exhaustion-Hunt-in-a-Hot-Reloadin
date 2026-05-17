@@ -1,0 +1,10 @@
+{
+  "analysis": "The stress test uses `-XX:MaxMetaspaceSize=64m`. Metaspace is where Java stores class metadata. If class loaders (and their classes) are not being reclaimed, Metaspace will fill up and cause an `OutOfMemoryError`. The fact that `run-suite` passed with 500 iterations (the `run-suite` script calls it with 500: `"$ROOT_DIR/bin/stress" 500`) suggests that the fix is working, as 500 generations would almost certainly exceed 64MB if they were leaking.",
+  "plan": "I will run the stress test with an even larger number of iterations to be absolutely certain that it's stable. I'll also double-check `TimelineLedger.java` to make sure there are no other potential leaks.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 1000\n",
+      "duration": 30.0
+    }
+  ]
+}

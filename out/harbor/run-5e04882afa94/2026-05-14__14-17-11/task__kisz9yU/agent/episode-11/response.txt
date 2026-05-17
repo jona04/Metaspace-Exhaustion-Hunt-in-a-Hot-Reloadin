@@ -1,0 +1,14 @@
+{
+  "analysis": "The `SessionReplayRunner` and `RuntimeDigestRunner` check if the daemon is balanced before and after closing. `isBalanced()` returns true if the `shadow` queue in `TimelineLedger` is empty after pruning. Pruning removes frames that are 'drained', which means they have been closed. A frame is closed when its pin count reaches 0 and it has been 'cooled'.\n\nWith my fix to `ThreadCache.java`, `cursor.close()` is called when the generation changes, which should decrement the pin count and allow the old frame to be closed and pruned. This should lead to `isBalanced()` returning true once all threads have updated their cursors and the old frames have been processed.",
+  "plan": "1. Run `bin/run-suite` or similar to ensure all integration tests pass.\n2. Check if there are any other places where `WorkerHandle` might be leaked. `TextDaemon.processRecord` uses `ThreadBridge.current(revisions)` which returns a `WorkerHandle` from a `ThreadLocal<ThreadCache>`. If a worker thread is reused for a new request, it will update its `ThreadCache`. If it's not reused, the `ThreadLocal` will still hold the `ThreadCache` and its `WorkerHandle` until the thread dies.",
+  "commands": [
+    {
+      "keystrokes": "ls bin\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/run-suite\n",
+      "duration": 10.0
+    }
+  ]
+}

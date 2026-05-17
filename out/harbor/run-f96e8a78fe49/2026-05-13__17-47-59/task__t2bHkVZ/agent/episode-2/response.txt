@@ -1,0 +1,15 @@
+{
+  "analysis": "The `HotReloadStressRunner` repeatedly calls `daemon.reload(generation)` and processes text. This matches the 'processor swap' description. The daemon is used within a try-with-resources block, implying it's `AutoCloseable`. The failure happens during a 'long refresh run', which likely means after many generations, it either crashes or starts producing wrong output (though the task says 'falls over', which usually means crash or OOM).",
+  "plan": "1. Check `TextDaemon.java` to see how `reload` and `process` are implemented, specifically looking for resource leaks or improper cleanup during reloads.\n2. Look for build files to understand how to run this stress test and reproduce the failure.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

@@ -1,0 +1,10 @@
+{
+  "analysis": "I've successfully reproduced the `OutOfMemoryError: Metaspace`. This confirms that `ClassLoader`s are being leaked. As suspected, the `ThreadCache` is likely holding onto old `WorkerHandle`s, which in turn pin old `TimelineFrame`s, preventing them from being closed and their `ClassLoader`s from being garbage collected.",
+  "plan": "I will now apply the fix to `src/main/java/io/harbor/textd/core/ThreadCache.java`. I will modify `cursorFor` to close the existing `cursor` if it doesn't match the new frame.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    }
+  ]
+}

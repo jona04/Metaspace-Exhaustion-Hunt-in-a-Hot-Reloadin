@@ -1,0 +1,35 @@
+New Terminal Output:
+
+root@f71bd1e69418:/workspace/textd# grep -B 10 -A 20 "return new Session" src/main/java/io/harbor/textd/cli/SessionReplayRunner.java
+
+            List<String> workersEnd = workerThreads(finalResults);
+            boolean sameWorkers = workersStart.equals(workersEnd);
+            boolean beforeClose = daemon.isBalanced();
+            String first = firstResults.get(0).output();
+            String last = finalResults.get(0).output();
+
+            daemon.close();
+            drainGc();
+
+            return new Session(
+                first,
+                last,
+                workersStart,
+                workersEnd,
+                sameWorkers,
+                beforeClose,
+                daemon.isBalanced(),
+                loadedBefore,
+                CLASS_LOADING.getLoadedClassCount(),
+                unloadedBefore,
+                CLASS_LOADING.getUnloadedClassCount()
+            );
+        } catch (Exception exception) {
+            try {
+                daemon.close();
+            } catch (Exception closeException) {
+                exception.addSuppressed(closeException);
+            }
+            throw exception;
+        }
+root@f71bd1e69418:/workspace/textd#

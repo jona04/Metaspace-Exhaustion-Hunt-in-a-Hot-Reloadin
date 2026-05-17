@@ -1,0 +1,10 @@
+{
+  "analysis": "The `isBalanced()` method is used in `SessionReplayRunner` and `RuntimeDigestRunner`. If it passes, it means the shadow queue is empty, which confirms that old generations are being reclaimed.\n\nSince `run-suite` passed, and it includes these runners, it means `isBalanced()` returned true at the end of those runs.\n\nI want to double check `ThreadBridge.java`. It has a `clear()` method:\n\n```java\n    static void clear() {\n        ThreadCache routeState = ROUTES.get();\n        routeState.close();\n        ROUTES.remove();\n    }\n```\n\nIs `clear()` called anywhere? If not, the `ThreadLocal` might keep the last `WorkerHandle` (and thus the last `TimelineFrame` and its `URLClassLoader`) alive until the worker thread dies. In `TextDaemon`, the workers are in a fixed thread pool that is only shut down when the daemon is closed.",
+  "plan": "I will search for usage of `ThreadBridge.clear()`.",
+  "commands": [
+    {
+      "keystrokes": "grep -r \"ThreadBridge.clear\" .\n",
+      "duration": 0.1
+    }
+  ]
+}_

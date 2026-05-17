@@ -1,0 +1,11 @@
+{
+  "analysis": "`ThreadBridge` uses a `ThreadLocal<ThreadCache>`. The `current` method calls `ROUTES.get().cursorFor(ledger)`. If `cursorFor` creates and caches something for each generation and doesn't clean it up, that's a leak. Also, `clear()` is available but I didn't see it being called in `TextDaemon.java`.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/ThreadCache.java`.\n2. Examine `src/main/java/io/harbor/textd/core/TimelineLedger.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

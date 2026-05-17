@@ -1,0 +1,19 @@
+{
+  "analysis": "I've identified a potential issue. \n\n1. `ThreadBridge` uses a `ThreadLocal<ThreadCache>`.\n2. `ThreadCache` holds a `WorkerHandle`.\n3. `ThreadCache.cursorFor(ledger)` creates a new `WorkerHandle` if the current one doesn't match the `ledger.current()` frame.\n4. However, when a new `WorkerHandle` is created in `cursorFor`, the old `cursor` is NOT closed. This could lead to resource leaks if `WorkerHandle` or the objects it holds (like `TimelineFrame`) need to be closed or released.\n5. `TimelineFrame` has a `cool()` method and an `isDrained()` method, which suggests it tracks active users.\n6. `TimelineLedger.pruneShadow()` removes frames that are 'drained'. If `WorkerHandle` doesn't release its reference to the frame, it might never be drained.",
+  "plan": "1. Examine `WorkerHandle.java` and `TimelineFrame.java` to see how they manage references to the plugin/generation.\n2. Check if `WorkerHandle` should be closed when it's replaced in `ThreadCache.cursorFor`.\n3. Try to run the stress test to confirm it fails.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "bin/stress\n",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}

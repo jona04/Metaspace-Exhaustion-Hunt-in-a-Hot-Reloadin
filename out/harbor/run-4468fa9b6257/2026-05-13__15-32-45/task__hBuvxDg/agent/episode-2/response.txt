@@ -1,0 +1,15 @@
+{
+  "analysis": "The `bin/stress` script runs the JVM with a constrained `-XX:MaxMetaspaceSize=64m`. The `HotReloadStressRunner` performs many cycles of `daemon.reload(generation)`. If classes or ClassLoaders are leaked during each reload, the Metaspace will eventually fill up, causing a crash. This matches the 'constrained CI profile' and 'processor swaps' description.\n\nI need to investigate how `TextDaemon.reload()` and the plugin loading are implemented to see if ClassLoaders or threads are being leaked.",
+  "plan": "1. Run the stress test to confirm the failure.\n2. Examine `src/main/java/io/harbor/textd/core/TextDaemon.java` to see how `reload` is implemented.\n3. Examine `src/main/java/io/harbor/textd/core/LoadedGeneration.java` and `WorkerHandle.java` as they likely manage the lifecycle of a reload.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 100\n",
+      "duration": 5.0
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

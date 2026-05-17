@@ -1,0 +1,6 @@
+{
+  "analysis": "The problem was identified as a Metaspace leak in the `textd` service. During repeated processor swaps (reloads), the `ThreadCache` was creating new `WorkerHandle` objects without closing the previous ones. Each `WorkerHandle` holds a 'pin' on a `TimelineFrame`, which in turn prevents the associated `LoadedGeneration` (and its classloader) from being closed and garbage collected. This caused the Metaspace to fill up, especially under the constrained 64MB limit set in the CI profile.\n\nI have modified `src/main/java/io/harbor/textd/core/ThreadCache.java` to ensure that the old `WorkerHandle` is closed before a new one is created when a generation swap occurs. This allows the pin count to reach zero, triggering the cleanup of the old classloader.\n\nVerification:\n- The `./bin/stress 500` run, which previously failed or hung, now completes successfully with 'stress-ok'.\n- The `./bin/integration` tests pass, confirming deterministic results are preserved.",
+  "plan": "The task is complete. I have fixed the leak and verified it with the provided stress and integration scripts.",
+  "commands": [],
+  "task_complete": true
+}

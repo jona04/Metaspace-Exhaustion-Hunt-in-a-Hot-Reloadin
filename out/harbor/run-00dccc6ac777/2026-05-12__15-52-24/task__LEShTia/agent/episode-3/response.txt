@@ -1,0 +1,15 @@
+{
+  "analysis": "The stress test failed with `java.lang.OutOfMemoryError: Metaspace`. This confirms my suspicion that classloaders are leaking during hot-reloads. The stack trace shows the crash happens during `PipelineStages.<clinit>`, which is part of the plugin code. This suggests that new classes are being loaded in every swap, and old ones are not being unloaded.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/TextDaemon.java` to see how it handles plugin swaps and class loading.\n2. Examine `src/main/java/io/harbor/textd/core/ThreadCache.java` and `ThreadBridge.java` as they might be holding references to objects from old classloaders.\n3. Look for where `URLClassLoader` (or similar) is created and if it's being properly closed or if references to it are leaked.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

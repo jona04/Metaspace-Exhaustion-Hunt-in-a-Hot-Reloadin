@@ -1,0 +1,11 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with a restricted `-XX:MaxMetaspaceSize=64m`. This is a strong hint that the 'refresh' mechanism might be leaking ClassLoaders or other Metaspace-resident objects, causing an `OutOfMemoryError: Metaspace` during the soak. The `bin/run-suite` script runs integration tests, a lifecycle probe, and then the stress test.",
+  "plan": "1. Run the stress test to confirm it fails and see the error message.\n2. Examine `GenerationRegistry.java` and `LoadedGeneration.java` to see how ClassLoaders are managed during a refresh.\n3. Check if ClassLoaders are being properly closed or if references are being leaked.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 100\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

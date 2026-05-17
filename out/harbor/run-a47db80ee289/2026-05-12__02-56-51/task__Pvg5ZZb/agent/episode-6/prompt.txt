@@ -1,0 +1,68 @@
+New Terminal Output:
+
+root@fdec75227c26:/workspace/textd# cat src/main/java/io/harbor/textd/core/WorkerBindings.java
+package io.harbor.textd.core;
+
+final class WorkerBindings {
+    private static final ThreadLocal<DispatchBinding> ACTIVE = new ThreadLocal<>();
+
+    private WorkerBindings() {
+    }
+
+    static DispatchBinding current(GenerationRegistry registry) {
+        GenerationLease activeLease = registry.active();
+        DispatchBinding binding = ACTIVE.get();
+        if (binding == null) {
+            DispatchBinding created = new DispatchBinding(activeLease);
+            ACTIVE.set(created);
+            return created;
+        }
+
+        if (!binding.matches(activeLease)) {
+            DispatchBinding replacement = new DispatchBinding(activeLease);
+            ACTIVE.set(replacement);
+            return replacement;
+        }
+
+        return binding;
+    }
+
+    static void releaseCurrent() {
+        DispatchBinding binding = ACTIVE.get();
+        if (binding != null) {
+            binding.close();
+            ACTIVE.remove();
+        }
+    }
+}
+root@fdec75227c26:/workspace/textd# cat src/main/java/io/harbor/textd/core/DispatchBinding.java
+package io.harbor.textd.core;
+
+import io.harbor.textd.api.TextProcessor;
+
+final class DispatchBinding implements AutoCloseable {
+    private final GenerationLease lease;
+    private final long generation;
+    private final TextProcessor processor;
+
+    DispatchBinding(GenerationLease lease) {
+        this.lease = lease.retain();
+        this.generation = lease.generation();
+        this.processor = lease.module().processorFor(generation);
+    }
+
+    boolean matches(GenerationLease lease) {
+        return generation == lease.generation();
+    }
+
+    ProcessingResult process(String record) {
+        String output = processor.process(record);
+        return new ProcessingResult(generation, output, Thread.currentThread().getName());
+    }
+
+    @Override
+    public void close() {
+        lease.release();
+    }
+}
+root@fdec75227c26:/workspace/textd#

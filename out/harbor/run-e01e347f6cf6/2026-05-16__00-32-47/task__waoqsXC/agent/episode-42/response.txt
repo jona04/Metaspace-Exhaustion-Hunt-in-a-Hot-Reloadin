@@ -1,0 +1,18 @@
+{
+  "analysis": "I broke `ThreadBridge.java` with my `sed` command. I deleted the line that had the `return` statement because it also had the `System.out.println` on it.",
+  "plan": "I will fix `src/main/java/io/harbor/textd/core/ThreadBridge.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/ThreadBridge.java <<EOF\npackage io.harbor.textd.core;\n\nfinal class ThreadBridge {\n    private static final ThreadLocal<ThreadCache> ROUTES = ThreadLocal.withInitial(ThreadCache::new);\n\n    private ThreadBridge() {\n    }\n\n    static WorkerHandle current(TimelineLedger ledger) {\n        return ROUTES.get().cursorFor(ledger);\n    }\n\n    static void clear() {\n        ThreadCache routeState = ROUTES.get();\n        routeState.close();\n        ROUTES.remove();\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/build\n",
+      "duration": 5.0
+    },
+    {
+      "keystrokes": "./bin/replay-check\n",
+      "duration": 5.0
+    }
+  ]
+}

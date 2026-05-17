@@ -1,0 +1,23 @@
+{
+  "analysis": "The code uses a reference counting mechanism (`TimelineFrame`) to manage the lifecycle of `LoadedGeneration` (which contains the `URLClassLoader`). \n\n1. `TimelineFrame` starts with `pins = 1`.\n2. When a new generation is installed in `TimelineLedger`, the previous `TimelineFrame` is cooled (`previous.cool()`). `cool()` calls `unpin()`, which decrements `pins` to 0 (if no one else pinned it).\n3. When `pins` reaches 0 and `cooled` is true, `closeLoadedGeneration()` is called, which closes the `URLClassLoader`.\n4. `WorkerHandle` pins the frame in its constructor and should unpin it in `close()`.\n\nHowever, in `ThreadCache.cursorFor`:\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame); // <--- OLD cursor is lost here!\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\nThe old `cursor` is replaced by a new one without calling `cursor.close()`. This means the `TimelineFrame` associated with the old `cursor` stays pinned indefinitely (or until the thread dies, but these are long-lived worker threads). Since it's pinned, `pins` never reaches 0, and the `ClassLoader` is never closed. This causes the Metaspace leak.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to call `cursor.close()` before replacing it with a new `WorkerHandle`.\n2. Rebuild the project.\n3. Run the stress test with 1000 cycles to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "sed -i '13i\\            cursor.close();' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "./bin/build\n",
+      "duration": 2.0
+    },
+    {
+      "keystrokes": "./bin/stress 1000\n",
+      "duration": 15.0
+    }
+  ],
+  "task_complete": false
+}

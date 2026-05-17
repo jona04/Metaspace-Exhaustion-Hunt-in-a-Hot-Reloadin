@@ -1,0 +1,24 @@
+New Terminal Output:
+
+root@f71bd1e69418:/workspace/textd# ls -l bin/
+total 20
+-rwxr-xr-x 1 root root 742 May  8 22:17 build
+-rwxr-xr-x 1 root root 322 May  8 22:17 integration
+-rwxr-xr-x 1 root root 867 May 14 02:53 replay-check
+-rwxr-xr-x 1 root root 610 May 12 15:44 run-suite
+-rwxr-xr-x 1 root root 342 May 13 18:11 stress
+root@f71bd1e69418:/workspace/textd# cat bin/stress
+#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+if [[ "${TEXTD_SKIP_BUILD:-0}" != "1" ]]; then
+  "$ROOT_DIR/bin/build"
+fi
+
+java -XX:MaxMetaspaceSize=64m -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.HotReloadStressRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" \
+  "${1:-50}"
+root@f71bd1e69418:/workspace/textd#

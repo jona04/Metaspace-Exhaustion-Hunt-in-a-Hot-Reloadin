@@ -1,0 +1,14 @@
+{
+  "analysis": "The `HotReloadStressRunner` uses a `try-with-resources` block for the `TextDaemon`. When the daemon is closed, it calls `revisions.close()`, which should eventually unpin and close all frames. However, the worker threads in the daemon's fixed thread pool still hold `ThreadLocal` references via `ThreadBridge`. Since the daemon's `close()` method calls `workers.shutdownNow()`, the worker threads should terminate, which should also clean up their `ThreadLocal` variables (eventually). \n\nIn the fixed code, each time a new generation is loaded and a worker thread processes a record, it will see the new generation, close the old `WorkerHandle` (unpinning the old frame), and create a new one. This ensures that old generations are reclaimed as soon as they are no longer the current generation and no workers are actively using them.\n\nThe `isBalanced()` check in `TextDaemon` and `TimelineLedger` can be used to verify that all shadow frames have been drained. `bin/stress` doesn't seem to use it, but `bin/integration` might.",
+  "plan": "I will check `bin/integration` and its corresponding runner to see if there are more thorough checks.",
+  "commands": [
+    {
+      "keystrokes": "cat bin/integration\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadIntegrationRunner.java\n",
+      "duration": 0.2
+    }
+  ]
+}

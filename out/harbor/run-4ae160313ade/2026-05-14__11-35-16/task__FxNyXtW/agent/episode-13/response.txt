@@ -1,0 +1,14 @@
+{
+  "analysis": "The integration test actually worked, I might have just missed the output or it was delayed. The output shows the baseline (revision 1) and current (revision 12) results. The output format matches what is expected. \n\nI should check if there's anything else needed. The task mentioned: \"Old plugin generations must be fully reclaimed by the runtime once sessions close.\" and \"Get the daemon through the long run without changing the deterministic text-processing results from the shipped revisions.\"\n\nI have fixed the leak where old generations were kept pinned indefinitely. I should also check `TimelineLedger.isBalanced()` to ensure that all shadow generations are indeed removed.",
+  "plan": "I will create a small test script to verify that `isBalanced()` returns true after a few reloads and processing runs, which would confirm that shadow frames are being pruned.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/cli/BalanceCheck.java\npackage io.harbor.textd.cli;\n\nimport io.harbor.textd.core.TextDaemon;\nimport java.nio.file.Path;\n\npublic class BalanceCheck {\n    public static void main(String[] args) throws Exception {\n        Path pluginJar = Path.of(args[0]);\n        try (TextDaemon daemon = new TextDaemon(pluginJar, 1)) {\n            for (int i = 1; i <= 5; i++) {\n                daemon.reload(i);\n                daemon.process(\"test\");\n            }\n            System.out.println(\"Is balanced: \" + daemon.isBalanced());\n            // Give it a bit of time or another process call if needed, \n            // although in this single-threaded case it should be immediate.\n            daemon.process(\"test\");\n            System.out.println(\"Is balanced after more processing: \" + daemon.isBalanced());\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/build && java -cp build/main-classes io.harbor.textd.cli.BalanceCheck build/plugins/customer-default.jar\n",
+      "duration": 5.0
+    }
+  ]
+}

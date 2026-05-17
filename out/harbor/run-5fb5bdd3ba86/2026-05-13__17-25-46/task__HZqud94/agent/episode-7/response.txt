@@ -1,0 +1,18 @@
+{
+  "analysis": "The code uses a `ThreadLocal<ThreadCache>` in `ThreadBridge`. `ThreadCache` holds a `WorkerHandle`, which in turn holds a `TimelineFrame`. When `TimelineLedger.install(revision)` is called, a new `TimelineFrame` is created and the old one is moved to the `shadow` queue. \n\nIn `ThreadCache.cursorFor(ledger)`, if the current `cursor` doesn't match the new frame, it creates a new `WorkerHandle` for the new frame. However, the old `WorkerHandle` (and thus the old `TimelineFrame` and its `LoadedGeneration`/`ClassLoader`) is replaced but never explicitly closed or cleared in a way that ensures the `TimelineFrame` becomes 'drained'.\n\nWait, I need to see `TimelineFrame.java` and `WorkerHandle.java` to see what `isDrained()` and `cool()` do, and how they interact with the `WorkerHandle`.",
+  "plan": "I will examine `TimelineFrame.java`, `WorkerHandle.java`, and `LoadedGeneration.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.5
+    }
+  ]
+}

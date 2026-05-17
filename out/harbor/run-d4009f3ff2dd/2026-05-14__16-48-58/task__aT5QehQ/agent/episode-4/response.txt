@@ -1,0 +1,14 @@
+{
+  "analysis": "In `TextDaemon.processRecord`, `WorkerHandle binding = ThreadBridge.current(revisions);` is called to get a worker handle. The `WorkerHandle` constructor calls `frame.pin()`. However, I don't see `binding.close()` being called anywhere in `processRecord`. If `binding.close()` is not called, the frame will never be unpinned, and thus old generations will never be reclaimed.",
+  "plan": "I will check `src/main/java/io/harbor/textd/core/ThreadBridge.java` and `src/main/java/io/harbor/textd/core/ThreadCache.java` to see how handles are managed and if they are supposed to be closed by the caller or if they are cached and reused.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    }
+  ]
+}

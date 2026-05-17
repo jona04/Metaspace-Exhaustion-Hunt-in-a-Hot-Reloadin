@@ -1,0 +1,40 @@
+New Terminal Output:
+
+root@574485af7992:/workspace/textd# cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java
+package io.harbor.textd.cli;
+
+import io.harbor.textd.core.OutputFormat;
+import io.harbor.textd.core.ProcessingResult;
+import io.harbor.textd.core.TextDaemon;
+
+import java.nio.file.Path;
+import java.util.List;
+
+public final class HotReloadStressRunner {
+    private static final String SAMPLE = "alpha beta gamma";
+
+    private HotReloadStressRunner() {
+    }
+
+    public static void main(String[] args) throws Exception {
+        Path pluginJar = Path.of(args[0]);
+        int cycles = args.length > 1 ? Integer.parseInt(args[1]) : 500;
+
+        try (TextDaemon daemon = new TextDaemon(pluginJar, 2)) {
+            for (int generation = 1; generation <= cycles; generation++) {
+                daemon.reload(generation);
+                List<ProcessingResult> results = daemon.processBatch(List.of(SAMPLE, SAMPLE));
+                String expected = OutputFormat.expectedFor(generation, SAMPLE);
+                for (ProcessingResult result : results) {
+                    if (!expected.equals(result.output())) {
+                        throw new IllegalStateException("Unexpected output at generation " + generation + ": " + result.output());
+                    }
+                }
+            }
+        }
+
+        System.out.println("stress-ok cycles=" + cycles);
+    }
+}
+root@574485af7992:/workspace/textd# ./bin/stress 1000
+

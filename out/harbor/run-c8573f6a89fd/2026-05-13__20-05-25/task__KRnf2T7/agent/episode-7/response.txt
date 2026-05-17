@@ -1,0 +1,15 @@
+{
+  "analysis": "In `TimelineLedger.java`, the `pruneShadow` method removes `TimelineFrame` objects from the `shadow` queue if they are 'drained' (`TimelineFrame::isDrained`). \n\nIn `ThreadCache.java`, when a new `WorkerHandle` is created (because the frame changed), the old `cursor` is simply overwritten: \n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\nIt does **not** call `cursor.close()` on the old `cursor`. \n\nI need to check `TimelineFrame.java` and `WorkerHandle.java` to see what `isDrained()` does and how `WorkerHandle` interacts with the frame's reference count.",
+  "plan": "Examine `TimelineFrame.java` and `WorkerHandle.java` to understand the reference counting or draining mechanism.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.2
+    }
+  ],
+  "task_complete": false
+}

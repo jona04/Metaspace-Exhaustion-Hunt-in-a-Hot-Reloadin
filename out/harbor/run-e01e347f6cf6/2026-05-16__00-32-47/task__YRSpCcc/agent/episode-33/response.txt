@@ -1,0 +1,18 @@
+{
+  "analysis": "I've refactored `ThreadBridge` to be instance-based and integrated it into `TextDaemon`. This should eliminate any potential leaks from a static `ThreadLocal` and ensure that all `WorkerHandle`s are closed when the daemon is closed.",
+  "plan": "I will now rebuild and run the tests again. If it still shows 0 unloads, I will have to investigate if there's something else keeping the classloader alive.",
+  "commands": [
+    {
+      "keystrokes": "./bin/build\n",
+      "duration": 5.0
+    },
+    {
+      "keystrokes": "java -cp build/main-classes io.harbor.textd.cli.SessionReplayRunner build/plugins/customer-default.jar 4\n",
+      "duration": 5.0
+    },
+    {
+      "keystrokes": "./bin/replay-check\n",
+      "duration": 5.0
+    }
+  ]
+}

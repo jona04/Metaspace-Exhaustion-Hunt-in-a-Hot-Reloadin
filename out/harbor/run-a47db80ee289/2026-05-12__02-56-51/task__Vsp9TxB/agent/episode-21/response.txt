@@ -1,0 +1,6 @@
+{
+  "analysis": "The investigation revealed a resource leak in the `WorkerBindings` class. Specifically, when a worker thread detected a new generation of the text processor, it would create a new `DispatchBinding` and replace the old one in its `ThreadLocal` storage without calling `close()` on the previous binding. Since `DispatchBinding` holds a reference-counted lease on the `LoadedGeneration` (and its `URLClassLoader`), this failure to close the binding prevented the old generations from being decommissioned and their class loaders from being closed. This led to a Metaspace exhaustion under the constrained CI environment. I have modified `WorkerBindings.java` to properly close the old binding before replacing it.",
+  "plan": "The fix has been verified by running the full test suite, including the 500-cycle stress test with a tight 64MB Metaspace limit, which now passes successfully.",
+  "commands": [],
+  "task_complete": true
+}

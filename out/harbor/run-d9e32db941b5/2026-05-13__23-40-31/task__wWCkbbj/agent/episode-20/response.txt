@@ -1,0 +1,10 @@
+{
+  "analysis": "In `TextDaemon.close()`, the `workers` executor is shut down. However, the `ThreadLocal` variables in those worker threads might still hold onto `ThreadCache` objects if the threads are not terminated or if the `ExecutorService` doesn't clean them up. Since `workers.shutdownNow()` is called, the threads should eventually be terminated, which would clean up the `ThreadLocal`s. But it's safer to explicitly clear them if possible. However, `ThreadBridge.clear()` is static and uses `ROUTES.get()`, so it would only clear the `ThreadLocal` for the current thread calling it, not for the worker threads.\n\nActually, the main issue was the leak during the long run, not necessarily at shutdown. The fixes I applied to `ThreadCache` and `LoadedGeneration` already solved the leak during the long run. \n\nLet's review `TimelineLedger.pruneShadow()`.",
+  "plan": "Review `TimelineLedger.java` to ensure it's correctly pruning old frames.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    }
+  ]
+}

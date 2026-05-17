@@ -1,0 +1,6 @@
+{
+  "analysis": "The investigation revealed a Metaspace memory leak caused by unclosed ClassLoaders. When the `TextDaemon` reloaded a new version of the plugin, the `ThreadCache` (stored in a `ThreadLocal`) was replacing its `WorkerHandle` without closing the previous one. Since the `WorkerHandle` holds a 'pin' on a `TimelineFrame`, which in turn prevents its `URLClassLoader` from being closed, the classes from older revisions were never unloaded. \n\nI modified `ThreadCache.java` to properly call `close()` on the existing `WorkerHandle` before creating a new one for the next generation. This allows the reference count to drop to zero, triggers the closing of the `URLClassLoader`, and enables Metaspace reclamation. Both the 200-cycle stress test and the full `run-suite` (500 cycles) now pass within the constrained 64MB Metaspace limit.",
+  "plan": "The fix is verified and the suite passes. No further actions are required.",
+  "commands": [],
+  "task_complete": true
+}

@@ -1,0 +1,11 @@
+{
+  "analysis": "The stress test failed with `java.lang.OutOfMemoryError: Metaspace` at cycle ~200-500 (implied, as 100 passed and the default 500 failed). This confirms that repeated hot reloads are leaking class metadata. The stack trace shows the failure occurring during class loading when `PipelineProcessor.process` calls `PipelineStages`. This happens inside `TextDaemon.processRecord` which is executed by a thread pool.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/TextDaemon.java` to see how it manages plugin refreshes and its thread pool.\n2. Examine `src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java` to see how it triggers the refresh.\n3. Identify if the `TextDaemon` is holding onto old `LoadedGeneration` objects or if the `ThreadPoolExecutor` is keeping old ClassLoaders alive via thread locals or simply by not being refreshed.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

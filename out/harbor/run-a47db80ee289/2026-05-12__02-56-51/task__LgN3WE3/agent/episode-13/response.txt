@@ -1,0 +1,6 @@
+{
+  "analysis": "The investigation revealed a resource leak in `WorkerBindings.java`. When a new processor generation was activated, the `ThreadLocal` storage for worker threads would replace the old `DispatchBinding` with a new one without closing the old one. This prevented the reference count on the previous `GenerationLease` from reaching zero, which in turn kept the `URLClassLoader` for that generation open. Over many refreshes, these leaked class loaders exhausted the Metaspace (constrained to 64MB in the stress test), leading to `OutOfMemoryError: Metaspace`.\n\nI fixed this by ensuring that `binding.close()` is called on the old binding before it is replaced in the `ThreadLocal`. Subsequent stress tests and the full suite confirmed that the leak is resolved and the service now survives the full refresh sequence.",
+  "plan": "The task is complete. I have verified the fix with both the reproduction stress test and the full integration suite.",
+  "commands": [],
+  "task_complete": true
+}

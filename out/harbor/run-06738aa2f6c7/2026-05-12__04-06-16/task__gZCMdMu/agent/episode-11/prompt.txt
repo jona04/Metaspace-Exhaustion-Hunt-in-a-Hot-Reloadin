@@ -1,0 +1,35 @@
+Current terminal state:
+New Terminal Output:
+
+root@d80515733951:/workspace/textd# cat src/main/java/io/harbor/textd/core/ThreadCache.java
+package io.harbor.textd.core;
+
+final class ThreadCache implements AutoCloseable {
+    private WorkerHandle cursor;
+
+    WorkerHandle cursorFor(TimelineLedger ledger) {
+        TimelineFrame frame = ledger.current();
+        if (cursor != null && !cursor.matches(frame)) {
+            cursor.close();
+            cursor = null;
+        }
+
+        if (cursor == null) {
+            cursor = new WorkerHandle(frame);
+        }
+
+        return cursor;
+    }
+
+    @Override
+    public void close() {
+        if (cursor != null) {
+            cursor.close();
+            cursor = null;
+        }
+    }
+}
+root@d80515733951:/workspace/textd#
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

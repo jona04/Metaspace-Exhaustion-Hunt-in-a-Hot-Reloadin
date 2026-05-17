@@ -1,0 +1,10 @@
+{
+  "analysis": "I've found a potential issue in `ThreadCache.java`. In the `cursorFor` method:\n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n\nWhen `cursor.matches(frame)` is false, a new `WorkerHandle` is created and assigned to `cursor`, but the old `cursor` is never closed! `WorkerHandle.close()` is responsible for unpinning the `TimelineFrame`. If it's not called, the pin count will never reach zero (when `cooled` is true), and the `LoadedGeneration` will never be closed/reclaimed.\n\nAlso, I should verify the behavior of the tests to confirm this is indeed the problem.",
+  "plan": "I will run the stress tests to see if I can reproduce the issue. Then I will fix `ThreadCache.java` by closing the old cursor before creating a new one.",
+  "commands": [
+    {
+      "keystrokes": "./bin/run-suite\n",
+      "duration": 5.0
+    }
+  ]
+}

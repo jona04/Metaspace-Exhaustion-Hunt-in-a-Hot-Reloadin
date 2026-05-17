@@ -1,0 +1,10 @@
+{
+  "analysis": "The `bin/stress` script runs `io.harbor.textd.cli.HotReloadStressRunner` with a limit on Metaspace size (`-XX:MaxMetaspaceSize=64m`). This suggests that the issue might be a Metaspace leak caused by class loaders not being garbage collected. `LoadedGeneration` uses a `URLClassLoader` and implements `AutoCloseable`, closing both the module and the class loader. However, if there are still references to classes or objects from that class loader, it won't be collected.",
+  "plan": "1. Run the stress test to confirm it fails.\n2. Examine `io.harbor.textd.cli.HotReloadStressRunner` and `io.harbor.textd.core.TextDaemon` to see how generations are managed.\n3. Look for potential leaks of objects from the plugin class loader.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 100\n",
+      "duration": 5.0
+    }
+  ]
+}

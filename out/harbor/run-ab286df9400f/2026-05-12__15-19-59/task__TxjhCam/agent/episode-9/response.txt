@@ -1,0 +1,19 @@
+{
+  "analysis": "Yes, `LoadedGeneration.close()` closes the `URLClassLoader`. The leak is definitely because `ThreadCache` doesn't close the old `WorkerHandle` when it moves to a new generation.\n\nWait, I should also check if `ThreadCache` is properly cleaned up. `ThreadBridge` has a `clear()` method which calls `routeState.close()`, and `ThreadCache.close()` calls `cursor.close()`. This seems fine, but `ThreadBridge.clear()` is only called when `ROUTES.remove()` is needed. I should check if `TextDaemon` ever calls `ThreadBridge.clear()` or if the threads in the pool are ever cleaned up.\n\nIn `TextDaemon.java`, the `workers` are `Executors.newFixedThreadPool(workerCount, ...)`. When `TextDaemon.close()` is called, it calls `workers.shutdownNow()`. However, the `ThreadLocal` in `ThreadBridge` will still hold references in those worker threads until they are actually destroyed. Since they are daemon threads and the pool is shut down, this might be okay for the daemon's lifecycle, but during the 'long refresh run', the same threads are reused across many generations. The problem is definitely the replacement of `cursor` within the same thread without closing the old one.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old cursor.\n2. Rebuild and run the stress test with 200 cycles.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/if (!cursor.matches(frame)) {/if (!cursor.matches(frame)) {\\n            cursor.close();/' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/stress 200\n",
+      "duration": 20.0
+    }
+  ],
+  "task_complete": false
+}

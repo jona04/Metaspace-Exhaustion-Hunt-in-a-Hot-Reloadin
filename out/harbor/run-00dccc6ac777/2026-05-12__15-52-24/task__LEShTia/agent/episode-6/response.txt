@@ -1,0 +1,15 @@
+{
+  "analysis": "The analysis is confirmed. `TimelineFrame` uses a reference-counting mechanism (`pins`). When a frame is replaced in `TimelineLedger`, `cool()` is called, which decrements the pin count. When the pin count reaches 0, `LoadedGeneration.close()` is called, which closes the `URLClassLoader`. \n\nIn `ThreadCache.cursorFor`, when a new `WorkerHandle` is created for a new frame, the old `WorkerHandle` is forgotten without being closed. Since `WorkerHandle.close()` is what calls `frame.unpin()`, the pin count never reaches 0 for old frames, so the `URLClassLoader` is never closed, leading to the Metaspace OOM.\n\nI need to modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before assigning a new one.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the existing `cursor` if it's not null and doesn't match the new frame.\n2. Rebuild the project.\n3. Run the stress test again to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

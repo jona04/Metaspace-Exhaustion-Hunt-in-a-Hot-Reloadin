@@ -1,0 +1,15 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with a very tight `-XX:MaxMetaspaceSize=64m`. Metaspace is where Java stores class metadata. Since the runner performs many `daemon.reload(generation)` calls (which likely involves loading new classes via a new ClassLoader for each generation), and the task mentions 'constrained CI profile', the crash is almost certainly an `OutOfMemoryError: Metaspace`. This usually happens because old ClassLoaders are not being garbage collected, often due to lingering references in threads or static caches.",
+  "plan": "1. Examine `TextDaemon.java` to see how `reload` is implemented and how it handles ClassLoaders.\n2. Examine `ThreadCache.java` and `ThreadBridge.java` as they were identified earlier and are common places for ThreadLocal leaks or thread-pool related leaks that keep ClassLoaders alive.\n3. Run the stress test to confirm it fails.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 20\n",
+      "duration": 5.0
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

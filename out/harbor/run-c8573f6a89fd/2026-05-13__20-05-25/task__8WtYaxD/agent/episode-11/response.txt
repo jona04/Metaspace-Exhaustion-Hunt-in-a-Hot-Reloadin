@@ -1,0 +1,15 @@
+{
+  "analysis": "The leak is confirmed: \n1. `WorkerHandle` calls `frame.pin()` in its constructor and `frame.unpin()` in its `close()` method.\n2. `TimelineFrame` tracks pins. When pins reach 0 and it's 'cooled', it closes the `LoadedGeneration`.\n3. `LoadedGeneration.close()` closes the `URLClassLoader`.\n4. `ThreadCache.cursorFor` creates a new `WorkerHandle` when the revision changes but never calls `close()` on the old `WorkerHandle`. \n\nBecause the old `WorkerHandle` is never closed, `frame.unpin()` is never called for that handle. This means the pin count never reaches zero, so `closeLoadedGeneration()` is never called, the `URLClassLoader` remains open, and the classes (and Metaspace) are never released.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before creating a new one.\n2. Verify the fix by running the stress test with a large number of cycles (e.g., 500).",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 15.0
+    }
+  ],
+  "task_complete": false
+}

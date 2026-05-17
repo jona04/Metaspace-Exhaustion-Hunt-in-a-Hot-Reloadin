@@ -1,0 +1,10 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with a limited Metaspace size (64m). This is a strong hint that the issue is related to classloader leaking, causing `java.lang.OutOfMemoryError: Metaspace`. `LoadedGeneration` uses `URLClassLoader` and correctly calls `close()` on it. However, if any references to classes loaded by this classloader are held elsewhere, the classloader won't be GC'd.",
+  "plan": "I will run the stress test to confirm it fails. Then I will examine `TextDaemon.java` and `HotReloadStressRunner.java` to see how generations are managed and if they are properly closed and dereferenced.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 20\n",
+      "duration": 10.0
+    }
+  ]
+}

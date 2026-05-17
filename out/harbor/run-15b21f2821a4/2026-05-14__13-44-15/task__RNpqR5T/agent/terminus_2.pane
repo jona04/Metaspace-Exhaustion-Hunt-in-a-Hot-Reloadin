@@ -1,0 +1,823 @@
+asciinema rec --stdin /logs/agent/recording.cast
+[?2004hroot@7c6870e4830b:/workspace/textd# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@7c6870e4830b:/workspace/textd# clear
+[?2004l[H[J[3J[?2004hroot@7c6870e4830b:/workspace/textd# ls -R
+[?2004l.:
+[0m[01;34mbin[0m  [01;34mbuild[0m  [01;34mplugin-src[0m  [01;34msrc[0m
+
+./bin:
+[01;32mbuild[0m  [01;32mintegration[0m  [01;32mreplay-check[0m  [01;32mrun-suite[0m  [01;32mstress[0m
+
+./build:
+[01;34mmain-classes[0m  [01;34mplugin-classes[0m  [01;34mplugins[0m
+
+./build/main-classes:
+
+./build/plugin-classes:
+
+./build/plugins:
+
+./plugin-src:
+[01;34mio[0m
+
+./plugin-src/io:
+[01;34mharbor[0m
+
+./plugin-src/io/harbor:
+[01;34mtextd[0m
+
+./plugin-src/io/harbor/textd:
+[01;34mcustomer[0m
+
+./plugin-src/io/harbor/textd/customer:
+CustomerPluginFactory.java  CustomerPluginModule.java  PipelineProcessor.java  PipelineStages.java
+
+./src:
+[01;34mmain[0m
+
+./src/main:
+[01;34mjava[0m
+
+./src/main/java:
+[01;34mio[0m
+
+./src/main/java/io:
+[01;34mharbor[0m
+
+./src/main/java/io/harbor:
+[01;34mtextd[0m
+
+./src/main/java/io/harbor/textd:
+[01;34mapi[0m  [01;34mcli[0m  [01;34mcore[0m
+
+./src/main/java/io/harbor/textd/api:
+PluginModule.java  PluginModuleFactory.java  TextProcessor.java
+
+./src/main/java/io/harbor/textd/cli:
+HotReloadIntegrationRunner.java  HotReloadStressRunner.java  RuntimeDigestRunner.java  SessionReplayRunner.java
+
+./src/main/java/io/harbor/textd/core:
+LoadedGeneration.java  ProcessingResult.java  ThreadBridge.java  TimelineFrame.java   WorkerHandle.java
+OutputFormat.java      TextDaemon.java        ThreadCache.java   TimelineLedger.java
+[?2004hroot@7c6870e4830b:/workspace/textd# cat src/main/java/io/harbor/textd/core/TextDaemon.java
+[?2004lpackage io.harbor.textd.core;
+
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+public final class TextDaemon implements AutoCloseable {
+    private final ExecutorService workers;
+    private final TimelineLedger revisions;
+    private final int workerCount;
+
+    public TextDaemon(Path pluginJar, int workerCount) {
+        this.revisions = new TimelineLedger(pluginJar);
+        this.workers = Executors.newFixedThreadPool(workerCount, new WorkerThreadFactory());
+        this.workerCount = workerCount;
+    }
+
+    public void reload(long generation) throws Exception {
+        revisions.install(generation);
+    }
+
+    public ProcessingResult process(String record) throws Exception {
+        return processBatch(List.of(record)).get(0);
+    }
+
+    public boolean isBalanced() {
+        return revisions.isBalanced();
+    }
+
+    public List<ProcessingResult> processBatch(List<String> records) throws Exception {
+        CountDownLatch ready = new CountDownLatch(records.size());
+        CountDownLatch release = new CountDownLatch(1);
+        List<Future<ProcessingResult>> futures = new ArrayList<>();
+        for (String record : records) {
+            futures.add(workers.submit(() -> processRecord(record, ready, release)));
+        }
+
+        if (!ready.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Workers did not become ready");
+        }
+        release.countDown();
+
+        List<ProcessingResult> results = new ArrayList<>(records.size());
+        for (Future<ProcessingResult> future : futures) {
+            try {
+                results.add(future.get());
+            } catch (ExecutionException exception) {
+                Throwable cause = exception.getCause();
+                if (cause instanceof Exception checked) {
+                    throw checked;
+                }
+                if (cause instanceof Error error) {
+                    throw error;
+                }
+                throw new RuntimeException(cause);
+            }
+        }
+        return results;
+    }
+
+    private ProcessingResult processRecord(
+        String record,
+        CountDownLatch ready,
+        CountDownLatch release
+    ) throws Exception {
+        ready.countDown();
+        if (!release.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Request release timed out");
+        }
+
+        WorkerHandle binding = ThreadBridge.current(revisions);
+        return binding.process(record);
+    }
+
+    @Override
+    public void close() throws Exception {
+        revisions.close();
+        workers.shutdownNow();
+        workers.awaitTermination(5, TimeUnit.SECONDS);
+    }
+
+    private static final class WorkerThreadFactory implements ThreadFactory {
+        private final AtomicInteger sequence = new AtomicInteger(1);
+
+        @Override
+        public Thread newThread(Runnable runnable) {
+            Thread thread = new Thread(runnable);
+            thread.setName("textd-worker-" + sequence.getAndIncrement());
+            thread.setDaemon(true);
+            return thread;
+        }
+    }
+}
+[?2004hroot@7c6870e4830b:/workspace/textd# cat src/main/java/io/harbor/textd/core/LoadedGeneration.java
+[?2004lpackage io.harbor.textd.core;
+
+import io.harbor.textd.api.PluginModule;
+import io.harbor.textd.api.PluginModuleFactory;
+
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Path;
+
+final class LoadedGeneration implements AutoCloseable {
+    private static final String FACTORY_CLASS = "io.harbor.textd.customer.CustomerPluginFactory";
+
+    private final long generation;
+    private final URLClassLoader classLoader;
+    private final PluginModule module;
+
+    private LoadedGeneration(long generation, URLClassLoader classLoader, PluginModule module) {
+        this.generation = generation;
+        this.classLoader = classLoader;
+        this.module = module;
+    }
+
+    static LoadedGeneration load(Path pluginJar, long generation) throws Exception {
+        URLClassLoader classLoader = new URLClassLoader(new URL[] {pluginJar.toUri().toURL()}, PluginModuleFactory.class.getClassLoader());
+        Class<?> factoryType = classLoader.loadClass(FACTORY_CLASS);
+        PluginModuleFactory factory = (PluginModuleFactory) factoryType.getDeclaredConstructor().newInstance();
+        return new LoadedGeneration(generation, classLoader, factory.open());
+    }
+
+    long generation() {
+        return generation;
+    }
+
+    PluginModule module() {
+        return module;
+    }
+
+    @Override
+    public void close() throws Exception {
+        module.close();
+        classLoader.close();
+    }
+}
+[?2004hroot@7c6870e4830b:/workspace/textd# cat src/main/java/io/harbor/textd/core/TimelineLedger.java
+[?2004lpackage io.harbor.textd.core;
+
+import java.nio.file.Path;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicReference;
+
+final class TimelineLedger {
+    private final Path pluginJar;
+    private final AtomicReference<TimelineFrame> current = new AtomicReference<>();
+    private final Queue<TimelineFrame> shadow = new ConcurrentLinkedQueue<>();
+
+    TimelineLedger(Path pluginJar) {
+        this.pluginJar = pluginJar;
+    }
+
+    void install(long revision) throws Exception {
+        TimelineFrame next = new TimelineFrame(LoadedGeneration.load(pluginJar, revision));
+        TimelineFrame previous = current.getAndSet(next);
+        if (previous != null) {
+            shadow.add(previous);
+            previous.cool();
+            pruneShadow();
+        }
+    }
+
+    TimelineFrame current() {
+        TimelineFrame frame = current.get();
+        if (frame == null) {
+            throw new IllegalStateException("No plugin generation is loaded");
+        }
+        return frame;
+    }
+
+    boolean isBalanced() {
+        pruneShadow();
+        return shadow.isEmpty();
+    }
+
+    void close() {
+        TimelineFrame frame = current.getAndSet(null);
+        if (frame != null) {
+            shadow.add(frame);
+            frame.cool();
+        }
+        pruneShadow();
+    }
+
+    private void pruneShadow() {
+        shadow.removeIf(TimelineFrame::isDrained);
+    }
+}
+[?2004hroot@7c6870e4830b:/workspace/textd# cat src/main/java/io/harbor/textd/core/ThreadBridge.java
+[?2004lpackage io.harbor.textd.core;
+
+final class ThreadBridge {
+    private static final ThreadLocal<ThreadCache> ROUTES = ThreadLocal.withInitial(ThreadCache::new);
+
+    private ThreadBridge() {
+    }
+
+    static WorkerHandle current(TimelineLedger ledger) {
+        return ROUTES.get().cursorFor(ledger);
+    }
+
+    static void clear() {
+        ThreadCache routeState = ROUTES.get();
+        routeState.close();
+        ROUTES.remove();
+    }
+}
+[?2004hroot@7c6870e4830b:/workspace/textd# cat src/main/java/io/harbor/textd/core/WorkerHandle.java
+[?2004lpackage io.harbor.textd.core;
+
+import io.harbor.textd.api.TextProcessor;
+
+final class WorkerHandle implements AutoCloseable {
+    private final TimelineFrame frame;
+    private final long revision;
+    private final TextProcessor processor;
+
+    WorkerHandle(TimelineFrame frame) {
+        this.frame = frame.pin();
+        this.revision = frame.revision();
+        this.processor = frame.module().processorFor(revision);
+    }
+
+    boolean matches(TimelineFrame frame) {
+        return revision == frame.revision();
+    }
+
+    ProcessingResult process(String record) {
+        String output = processor.process(record);
+        return new ProcessingResult(revision, output, Thread.currentThread().getName());
+    }
+
+    @Override
+    public void close() {
+        frame.unpin();
+    }
+}
+[?2004hroot@7c6870e4830b:/workspace/textd# cat src/main/java/io/harbor/textd/core/TimelineFrame.java
+[?2004lpackage io.harbor.textd.core;
+
+import io.harbor.textd.api.PluginModule;
+
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+
+final class TimelineFrame {
+    private final LoadedGeneration loadedGeneration;
+    private final AtomicInteger pins = new AtomicInteger(1);
+    private final AtomicBoolean cooled = new AtomicBoolean(false);
+    private final AtomicBoolean closed = new AtomicBoolean(false);
+
+    TimelineFrame(LoadedGeneration loadedGeneration) {
+        this.loadedGeneration = loadedGeneration;
+    }
+
+    TimelineFrame pin() {
+        while (true) {
+            int current = pins.get();
+            if (current == 0) {
+                throw new IllegalStateException("Revision " + revision() + " is already closed");
+            }
+            if (pins.compareAndSet(current, current + 1)) {
+                return this;
+            }
+        }
+    }
+
+    long revision() {
+        return loadedGeneration.generation();
+    }
+
+    PluginModule module() {
+        return loadedGeneration.module();
+    }
+
+    void cool() {
+        if (cooled.compareAndSet(false, true)) {
+            unpin();
+        }
+    }
+
+    void unpin() {
+        int remaining = pins.decrementAndGet();
+        if (remaining < 0) {
+            throw new IllegalStateException("Pin count underflow for revision " + revision());
+        }
+        if (remaining == 0 && cooled.get()) {
+            closeLoadedGeneration();
+        }
+    }
+
+    boolean isDrained() {
+        return closed.get();
+    }
+
+    private void closeLoadedGeneration() {
+        if (closed.compareAndSet(false, true)) {
+            try {
+                loadedGeneration.close();
+            } catch (Exception exception) {
+                throw new IllegalStateException("Unable to close revision " + revision(), exception);
+            }
+        }
+    }
+}
+[?2004hroot@7c6870e4830b:/workspace/textd# cat src/main/java/io/harbor/textd/core/ThreadCache.java
+[?2004lpackage io.harbor.textd.core;
+
+final class ThreadCache implements AutoCloseable {
+    private WorkerHandle cursor;
+
+    WorkerHandle cursorFor(TimelineLedger ledger) {
+        TimelineFrame frame = ledger.current();
+        if (cursor == null) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        if (!cursor.matches(frame)) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        return cursor;
+    }
+
+    @Override
+    public void close() {
+        if (cursor != null) {
+            cursor.close();
+            cursor = null;
+        }
+    }
+}
+[?2004hroot@7c6870e4830b:/workspace/textd# sed -i 's/cursor = new WorkerHandle(frame);/cursor.close(); cursor = new WorkerHandle(frame);/2' src/main/java/io/harbor/textd/core/ThreadCache.java
+[?2004l[?2004hroot@7c6870e4830b:/workspace/textd# cat src/main/java/io/harbor/textd/core/ThreadCache.java
+[?2004lpackage io.harbor.textd.core;
+
+final class ThreadCache implements AutoCloseable {
+    private WorkerHandle cursor;
+
+    WorkerHandle cursorFor(TimelineLedger ledger) {
+        TimelineFrame frame = ledger.current();
+        if (cursor == null) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        if (!cursor.matches(frame)) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        return cursor;
+    }
+
+    @Override
+    public void close() {
+        if (cursor != null) {
+            cursor.close();
+            cursor = null;
+        }
+    }
+}
+[?2004hroot@7c6870e4830b:/workspace/textd# cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF
+[?2004l[?2004h> package io.harbor.textd.core;
+[?2004l[?2004h> 
+[?2004l[?2004h> final class ThreadCache implements AutoCloseable {
+[?2004l[?2004h>     private WorkerHandle cursor;
+[?2004l[?2004h> 
+[?2004l[?2004h>     WorkerHandle cursorFor(TimelineLedger ledger) {
+[?2004l[?2004h>         TimelineFrame frame = ledger.current();
+[?2004l[?2004h>         if (cursor == null) {
+[?2004l[?2004h>             cursor = new WorkerHandle(frame);
+[?2004l[?2004h>             return cursor;
+[?2004l[?2004h>         }
+[?2004l[?2004h> 
+[?2004l[?2004h>         if (!cursor.matches(frame)) {
+[?2004l[?2004h>             cursor.close();
+[?2004l[?2004h>             cursor = new WorkerHandle(frame);
+[?2004l[?2004h>             return cursor;
+[?2004l[?2004h>         }
+[?2004l[?2004h> 
+[?2004l[?2004h>         return cursor;
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     @Override
+[?2004l[?2004h>     public void close() {
+[?2004l[?2004h>         if (cursor != null) {
+[?2004l[?2004h>             cursor.close();
+[?2004l[?2004h>             cursor = null;
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h> }
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@7c6870e4830b:/workspace/textd# cat src/main/java/io/harbor/textd/core/ThreadCache.java
+[?2004lpackage io.harbor.textd.core;
+
+final class ThreadCache implements AutoCloseable {
+    private WorkerHandle cursor;
+
+    WorkerHandle cursorFor(TimelineLedger ledger) {
+        TimelineFrame frame = ledger.current();
+        if (cursor == null) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        if (!cursor.matches(frame)) {
+            cursor.close();
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        return cursor;
+    }
+
+    @Override
+    public void close() {
+        if (cursor != null) {
+            cursor.close();
+            cursor = null;
+        }
+    }
+}
+[?2004hroot@7c6870e4830b:/workspace/textd# ls bin
+[?2004l[0m[01;32mbuild[0m  [01;32mintegration[0m  [01;32mreplay-check[0m  [01;32mrun-suite[0m  [01;32mstress[0m
+[?2004hroot@7c6870e4830b:/workspace/textd# ./bin/run-suite
+[?2004l./bin/build
+./bin/run-suite
+./bin/build
+ls -lR build
+./bin/stress
+suite-ok
+[?2004hroot@7c6870e4830b:/workspace/textd# ./bin/build
+[?2004l[?2004hroot@7c6870e4830b:/workspace/textd# ./bin/run-suite
+[?2004l./bin/stress
+suite-ok
+[?2004hroot@7c6870e4830b:/workspace/textd# ./bin/build
+[?2004l[?2004hroot@7c6870e4830b:/workspace/textd# ls -lR build
+[?2004lbuild:
+total 20
+drwxr-xr-x 3 root root 4096 May 14 13:46 [0m[01;34mmain-classes[0m
+-rw-r--r-- 1 root root 1166 May 14 13:46 main-sources.txt
+drwxr-xr-x 3 root root 4096 May 14 13:46 [01;34mplugin-classes[0m
+-rw-r--r-- 1 root root  308 May 14 13:46 plugin-sources.txt
+drwxr-xr-x 1 root root 4096 May 14 13:46 [01;34mplugins[0m
+
+build/main-classes:
+total 4
+drwxr-xr-x 3 root root 4096 May 14 13:46 [01;34mio[0m
+
+build/main-classes/io:
+total 4
+drwxr-xr-x 3 root root 4096 May 14 13:46 [01;34mharbor[0m
+
+build/main-classes/io/harbor:
+total 4
+drwxr-xr-x 5 root root 4096 May 14 13:46 [01;34mtextd[0m
+
+build/main-classes/io/harbor/textd:
+total 12
+drwxr-xr-x 2 root root 4096 May 14 13:46 [01;34mapi[0m
+drwxr-xr-x 2 root root 4096 May 14 13:46 [01;34mcli[0m
+drwxr-xr-x 2 root root 4096 May 14 13:46 [01;34mcore[0m
+
+build/main-classes/io/harbor/textd/api:
+total 12
+-rw-r--r-- 1 root root 298 May 14 13:46 PluginModule.class
+-rw-r--r-- 1 root root 193 May 14 13:46 PluginModuleFactory.class
+-rw-r--r-- 1 root root 186 May 14 13:46 TextProcessor.class
+
+build/main-classes/io/harbor/textd/cli:
+total 28
+-rw-r--r-- 1 root root 3036 May 14 13:46  HotReloadIntegrationRunner.class
+-rw-r--r-- 1 root root 2891 May 14 13:46  HotReloadStressRunner.class
+-rw-r--r-- 1 root root 4751 May 14 13:46  RuntimeDigestRunner.class
+-rw-r--r-- 1 root root 2006 May 14 13:46 'SessionReplayRunner$Session.class'
+-rw-r--r-- 1 root root 5512 May 14 13:46  SessionReplayRunner.class
+
+build/main-classes/io/harbor/textd/core:
+total 44
+-rw-r--r-- 1 root root 1763 May 14 13:46  LoadedGeneration.class
+-rw-r--r-- 1 root root 2341 May 14 13:46  OutputFormat.class
+-rw-r--r-- 1 root root 1481 May 14 13:46  ProcessingResult.class
+-rw-r--r-- 1 root root 1263 May 14 13:46 'TextDaemon$WorkerThreadFactory.class'
+-rw-r--r-- 1 root root 4418 May 14 13:46  TextDaemon.class
+-rw-r--r-- 1 root root 1410 May 14 13:46  ThreadBridge.class
+-rw-r--r-- 1 root root  964 May 14 13:46  ThreadCache.class
+-rw-r--r-- 1 root root 2400 May 14 13:46  TimelineFrame.class
+-rw-r--r-- 1 root root 2509 May 14 13:46  TimelineLedger.class
+-rw-r--r-- 1 root root 1437 May 14 13:46  WorkerHandle.class
+
+build/plugin-classes:
+total 4
+drwxr-xr-x 3 root root 4096 May 14 13:46 [01;34mio[0m
+
+build/plugin-classes/io:
+total 4
+drwxr-xr-x 3 root root 4096 May 14 13:46 [01;34mharbor[0m
+
+build/plugin-classes/io/harbor:
+total 4
+drwxr-xr-x 3 root root 4096 May 14 13:46 [01;34mtextd[0m
+
+build/plugin-classes/io/harbor/textd:
+total 16
+drwxr-xr-x 2 root root 16384 May 14 13:46 [01;34mcustomer[0m
+
+build/plugin-classes/io/harbor/textd/customer:
+total 804
+-rw-r--r-- 1 root root   436 May 14 13:46  CustomerPluginFactory.class
+-rw-r--r-- 1 root root   447 May 14 13:46  CustomerPluginModule.class
+-rw-r--r-- 1 root root  2415 May 14 13:46  PipelineProcessor.class
+-rw-r--r-- 1 root root   266 May 14 13:46 'PipelineStages$Stage.class'
+-rw-r--r-- 1 root root   466 May 14 13:46 'PipelineStages$Stage001.class'
+-rw-r--r-- 1 root root   466 May 14 13:46 'PipelineStages$Stage002.class'
+-rw-r--r-- 1 root root   466 May 14 13:46 'PipelineStages$Stage003.class'
+-rw-r--r-- 1 root root   466 May 14 13:46 'PipelineStages$Stage004.class'
+-rw-r--r-- 1 root root   466 May 14 13:46 'PipelineStages$Stage005.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage006.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage007.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage008.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage009.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage010.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage011.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage012.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage013.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage014.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage015.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage016.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage017.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage018.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage019.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage020.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage021.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage022.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage023.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage024.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage025.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage026.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage027.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage028.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage029.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage030.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage031.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage032.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage033.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage034.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage035.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage036.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage037.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage038.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage039.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage040.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage041.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage042.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage043.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage044.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage045.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage046.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage047.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage048.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage049.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage050.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage051.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage052.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage053.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage054.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage055.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage056.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage057.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage058.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage059.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage060.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage061.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage062.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage063.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage064.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage065.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage066.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage067.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage068.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage069.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage070.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage071.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage072.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage073.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage074.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage075.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage076.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage077.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage078.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage079.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage080.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage081.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage082.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage083.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage084.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage085.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage086.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage087.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage088.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage089.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage090.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage091.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage092.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage093.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage094.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage095.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage096.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage097.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage098.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage099.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage100.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage101.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage102.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage103.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage104.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage105.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage106.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage107.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage108.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage109.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage110.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage111.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage112.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage113.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage114.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage115.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage116.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage117.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage118.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage119.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage120.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage121.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage122.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage123.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage124.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage125.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage126.class'
+-rw-r--r-- 1 root root   467 May 14 13:46 'PipelineStages$Stage127.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage128.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage129.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage130.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage131.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage132.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage133.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage134.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage135.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage136.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage137.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage138.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage139.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage140.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage141.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage142.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage143.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage144.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage145.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage146.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage147.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage148.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage149.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage150.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage151.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage152.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage153.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage154.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage155.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage156.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage157.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage158.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage159.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage160.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage161.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage162.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage163.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage164.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage165.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage166.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage167.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage168.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage169.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage170.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage171.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage172.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage173.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage174.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage175.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage176.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage177.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage178.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage179.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage180.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage181.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage182.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage183.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage184.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage185.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage186.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage187.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage188.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage189.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage190.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage191.class'
+-rw-r--r-- 1 root root   468 May 14 13:46 'PipelineStages$Stage192.class'
+-rw-r--r-- 1 root root 18456 May 14 13:46  PipelineStages.class
+
+build/plugins:
+total 104
+-rw-r--r-- 1 root root 102634 May 14 13:46 [01;31mcustomer-default.jar[0m
+[?2004hroot@7c6870e4830b:/workspace/textd# ./bin/stress
+[?2004lstress-ok cycles=50
+[?2004hroot@7c6870e4830b:/workspace/textd# ./bin/stress
+[?2004lstress-ok cycles=50
+[?2004hroot@7c6870e4830b:/workspace/textd# ./bin/run-suite
+[?2004lsuite-ok
+[?2004hroot@7c6870e4830b:/workspace/textd# cat src/main/java/io/harbor/textd/core/ThreadCache.java
+[?2004lpackage io.harbor.textd.core;
+
+final class ThreadCache implements AutoCloseable {
+    private WorkerHandle cursor;
+
+    WorkerHandle cursorFor(TimelineLedger ledger) {
+        TimelineFrame frame = ledger.current();
+        if (cursor == null) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        if (!cursor.matches(frame)) {
+            cursor.close();
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        return cursor;
+    }
+
+    @Override
+    public void close() {
+        if (cursor != null) {
+            cursor.close();
+            cursor = null;
+        }
+    }
+}
+[?2004hroot@7c6870e4830b:/workspace/textd# 

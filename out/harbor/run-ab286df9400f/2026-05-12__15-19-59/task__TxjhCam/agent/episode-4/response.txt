@@ -1,0 +1,15 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with a constrained Metaspace size (`-XX:MaxMetaspaceSize=64m`). This strongly suggests that 'processor swaps' (hot-reloading plugins) are causing a Metaspace leak, likely due to ClassLoaders not being garbage collected. The task mentioned the service 'falls over during a long refresh run', which matches a `java.lang.OutOfMemoryError: Metaspace` scenario.",
+  "plan": "1. Run the stress test again, but this time I'll wait longer and expect it to fail with an OOM or similar.\n2. Examine `HotReloadStressRunner.java` and `TextDaemon.java` to see how plugins are loaded and if ClassLoaders are being leaked.\n3. Specifically look at `ThreadCache.java` or `ThreadBridge.java` as they might be holding references to classes or ClassLoaders from old 'generations'.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 50\n",
+      "duration": 10.0
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

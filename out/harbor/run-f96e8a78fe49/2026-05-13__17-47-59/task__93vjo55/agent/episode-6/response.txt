@@ -1,0 +1,19 @@
+{
+  "analysis": "The code uses a `ThreadLocal<ThreadCache>` in `ThreadBridge`. `ThreadCache` holds a `WorkerHandle`, which likely holds a reference to the loaded plugin (and its classloader) via `TimelineFrame`. When a reload happens, `cursorFor` creates a new `WorkerHandle` if the frame has changed. However, the old `WorkerHandle` is simply overwritten and not explicitly closed, and the `ThreadLocal` itself is only cleared if `ThreadBridge.clear()` is called. `TextDaemon` does not seem to call `ThreadBridge.clear()` anywhere.",
+  "plan": "1. Check `WorkerHandle.java` to see if it holds a reference to the classloader or the plugin classes.\n2. Check `TimelineFrame.java` and `TimelineLedger.java` to see how generations/frames are managed.\n3. The `Metaspace` leak is likely because the old `WorkerHandle` (and thus the old classloader) is kept alive by the `ThreadLocal` in each worker thread, or simply because they are not being cleared when replaced.\n4. Wait, in `ThreadCache.cursorFor`, when `cursor` is replaced, the old `cursor` is not closed. `cursor = new WorkerHandle(frame);` should probably be preceded by closing the old one.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.2
+    }
+  ],
+  "task_complete": false
+}

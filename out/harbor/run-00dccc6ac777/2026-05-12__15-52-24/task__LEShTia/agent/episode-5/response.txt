@@ -1,0 +1,15 @@
+{
+  "analysis": "I've identified a likely leak in `ThreadCache.java`. \n\nIn `ThreadCache.cursorFor(TimelineLedger ledger)`:\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame); // <--- Leak here! Old cursor is not closed.\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n`WorkerHandle` implements `AutoCloseable` and its `close()` method calls `frame.unpin()`. \n`TimelineFrame.pin()` probably increments a reference counter, and `unpin()` decrements it. \nIn `TimelineLedger.pruneShadow()`, it removes frames that are 'drained'. A frame is likely 'drained' only if its pin count reaches zero after it has been 'cooled' (marked as old).\n\nIf `cursor.close()` is never called when the cursor is replaced, the `TimelineFrame` pin count never reaches zero, so it's never removed from the `shadow` queue in `TimelineLedger`, and its `LoadedGeneration` (which likely contains the ClassLoader) is never closed/GCed.\n\nAlso, `TimelineFrame.java` should be checked to confirm this hypothesis.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/TimelineFrame.java` and `src/main/java/io/harbor/textd/core/LoadedGeneration.java`.\n2. Fix `ThreadCache.java` to close the old cursor before replacing it.\n3. Verify if there are other places where `WorkerHandle` or `TimelineFrame` might leak.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

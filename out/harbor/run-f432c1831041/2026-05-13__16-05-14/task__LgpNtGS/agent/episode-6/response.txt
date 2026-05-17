@@ -1,0 +1,23 @@
+{
+  "analysis": "The `sed` command I used was a bit too aggressive and messed up the first `if (cursor == null)` block by adding a redundant `if (cursor != null)` check inside it. While harmless, it's messy. More importantly, I need to make sure the stress test passes. The stress test is currently running.",
+  "plan": "1. Wait for the stress test to complete.\n2. Clean up `ThreadCache.java` to make it more readable and correct.\n3. Run the integration suite to ensure no regressions.",
+  "commands": [
+    {
+      "keystrokes": "",
+      "duration": 20.0
+    },
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor != null && !cursor.matches(frame)) {\n            cursor.close();\n            cursor = null;\n        }\n\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 20.0
+    },
+    {
+      "keystrokes": "./bin/run-suite\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

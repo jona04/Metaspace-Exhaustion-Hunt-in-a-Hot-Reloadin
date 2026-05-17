@@ -1,0 +1,23 @@
+{
+  "analysis": "I've reviewed the code:\n- `LoadedGeneration` creates a new `URLClassLoader` for each generation and correctly implements `close()` to close both the module and the classLoader.\n- `ThreadCache` stores a `WorkerHandle cursor`. It creates a new `WorkerHandle` if the frame doesn't match the current cursor. However, it *replaces* the `cursor` without closing the old one! \n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\n- `WorkerHandle` likely holds references to classes or objects from the `LoadedGeneration`. If the old `WorkerHandle` isn't closed, it might still be holding onto resources or references that prevent the old `ClassLoader` from being GC'd.\n- `TextDaemon` uses `ThreadBridge.current(revisions)` to get a `WorkerHandle`. I need to see `ThreadBridge.java` to see how it uses `ThreadCache`.",
+  "plan": "1. Examine `ThreadBridge.java`.\n2. Examine `WorkerHandle.java`.\n3. Examine `TimelineFrame.java` and `TimelineLedger.java` to see how generations are managed.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

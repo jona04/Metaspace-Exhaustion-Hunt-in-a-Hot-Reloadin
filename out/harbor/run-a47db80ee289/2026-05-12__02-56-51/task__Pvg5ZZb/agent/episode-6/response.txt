@@ -1,0 +1,15 @@
+{
+  "analysis": "The issue is clear now:\n1. `WorkerBindings.current(registry)` gets a `DispatchBinding` from a `ThreadLocal`.\n2. If the generation has changed, it creates a new `DispatchBinding`, which calls `lease.retain()`. \n3. However, when it replaces an old `DispatchBinding` in the `ThreadLocal` via `ACTIVE.set(replacement)`, it **never calls `close()` on the previous `DispatchBinding`**.\n4. This means the old `GenerationLease` is never released, its reference count stays above zero, the `LoadedGeneration` (and its `ClassLoader`) is never closed, and we leak Metaspace.\n\nAlso, `WorkerBindings.releaseCurrent()` is available but never called from `TextDaemon` or anywhere else that would clean up the thread-local when a worker is done or when the daemon shuts down.",
+  "plan": "1. Modify `WorkerBindings.java` to close the old `DispatchBinding` when replacing it in the `ThreadLocal`.\n2. Verify if anything else needs to call `releaseCurrent()` (though the main leak is in the replacement logic).\n3. Re-run the stress test to confirm the fix.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/ACTIVE.set(replacement);/if (binding != null) { binding.close(); } ACTIVE.set(replacement);/' src/main/java/io/harbor/textd/core/WorkerBindings.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerBindings.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

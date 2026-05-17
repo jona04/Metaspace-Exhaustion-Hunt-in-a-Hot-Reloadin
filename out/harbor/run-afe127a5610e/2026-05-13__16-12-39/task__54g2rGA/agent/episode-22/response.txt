@@ -1,0 +1,6 @@
+{
+  "analysis": "The investigation revealed a memory leak in the Metaspace caused by unclosed ClassLoaders during plugin swaps. Specifically, the `ThreadCache` class was replacing the `WorkerHandle` (which holds a pin on the `TimelineFrame` and its associated `ClassLoader`) without closing the previous one. This prevented the reference count in `TimelineFrame` from reaching zero, thereby preventing the `ClassLoader` from being closed. I modified `ThreadCache.java` to explicitly call `close()` on the old `WorkerHandle` before replacing it. This fix was verified by running the stress test (which previously failed) and the full test suite, both of which now pass.",
+  "plan": "The task is complete. I have identified the bug, implemented the fix, and verified it with the provided test scripts.",
+  "commands": [],
+  "task_complete": true
+}

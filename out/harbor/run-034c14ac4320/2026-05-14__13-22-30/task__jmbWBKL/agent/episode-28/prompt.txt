@@ -1,0 +1,42 @@
+New Terminal Output:
+
+root@d08983370c6e:/workspace/textd# ls -R plugin-src
+plugin-src:
+io
+
+plugin-src/io:
+harbor
+
+plugin-src/io/harbor:
+textd
+
+plugin-src/io/harbor/textd:
+customer
+
+plugin-src/io/harbor/textd/customer:
+CustomerPluginFactory.java  CustomerPluginModule.java  PipelineProcessor.java  PipelineStages.java
+root@d08983370c6e:/workspace/textd# cat plugin-src/io/harbor/textd/customer/CustomerPluginFactory.java
+package io.harbor.textd.customer;
+
+import io.harbor.textd.api.PluginModule;
+import io.harbor.textd.api.PluginModuleFactory;
+
+public final class CustomerPluginFactory implements PluginModuleFactory {
+    @Override
+    public PluginModule open() {
+        return new CustomerPluginModule();
+    }
+}
+root@d08983370c6e:/workspace/textd# cat plugin-src/io/harbor/textd/customer/CustomerPluginModule.java
+package io.harbor.textd.customer;
+
+import io.harbor.textd.api.PluginModule;
+import io.harbor.textd.api.TextProcessor;
+
+public final class CustomerPluginModule implements PluginModule {
+    @Override
+    public TextProcessor processorFor(long generation) {
+        return new PipelineProcessor(generation);
+    }
+}
+root@d08983370c6e:/workspace/textd#

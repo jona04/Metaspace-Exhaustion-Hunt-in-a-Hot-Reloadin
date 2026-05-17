@@ -1,0 +1,6 @@
+{
+  "analysis": "The investigation revealed a resource leak in `ThreadCache.java`. Specifically, when a worker thread encountered a new plugin revision, it would create a new `WorkerHandle` (which pins the `TimelineFrame` and its associated class loader) without closing the previous `WorkerHandle`. This prevented old class loaders from being garbage collected, leading to an `OutOfMemoryError: Metaspace` during repeated processor swaps.\n\nI have modified `src/main/java/io/harbor/textd/core/ThreadCache.java` to properly call `cursor.close()` before replacing it with a new handle. This ensures that the old `TimelineFrame` is unpinned and its class loader can be closed when no longer in use.\n\nThe fix was verified by running the stress test with 1000 cycles (which previously failed) and by running the full integration suite (`bin/run-suite`), both of which now pass successfully.",
+  "plan": "Task is complete. All tests pass and the identified leak is resolved.",
+  "commands": [],
+  "task_complete": true
+}

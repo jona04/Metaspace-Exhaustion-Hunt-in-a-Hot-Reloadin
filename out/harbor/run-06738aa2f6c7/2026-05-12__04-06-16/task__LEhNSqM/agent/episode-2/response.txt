@@ -1,0 +1,19 @@
+{
+  "analysis": "The `TextDaemon` uses a `TimelineLedger` to manage revisions and an `ExecutorService` for processing records. The `processRecord` method uses `ThreadBridge.current(revisions)` to get a `WorkerHandle`. The `HotReloadStressRunner` performs many `reload` and `process` cycles.\n\nThe issue is likely in how `TimelineLedger`, `ThreadBridge`, or `WorkerHandle` manage resources across reloads. Specifically, `ThreadBridge.current(revisions)` might be caching things in `ThreadLocal` or similar, which could lead to memory leaks or stale references if not handled correctly when `revisions.install(generation)` is called.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/TimelineLedger.java` and `src/main/java/io/harbor/textd/core/ThreadBridge.java`.\n2. Also check `src/main/java/io/harbor/textd/core/ThreadCache.java` as it was listed in the file tree and likely holds thread-local state.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

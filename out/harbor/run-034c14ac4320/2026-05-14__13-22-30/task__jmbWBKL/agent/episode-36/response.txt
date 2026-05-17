@@ -1,0 +1,10 @@
+{
+  "analysis": "The `replay-check` failed because the JSON output was preceded by \"Closing generation\" messages, making it invalid JSON. I should remove the print statement from `LoadedGeneration.java`.",
+  "plan": "Remove the print statement from `LoadedGeneration.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/LoadedGeneration.java <<EOF\npackage io.harbor.textd.core;\n\nimport io.harbor.textd.api.PluginModule;\nimport io.harbor.textd.api.PluginModuleFactory;\n\nimport java.net.URL;\nimport java.net.URLClassLoader;\nimport java.nio.file.Path;\n\nfinal class LoadedGeneration implements AutoCloseable {\n    private static final String FACTORY_CLASS = \"io.harbor.textd.customer.CustomerPluginFactory\";\n\n    private final long generation;\n    private final URLClassLoader classLoader;\n    private final PluginModule module;\n\n    private LoadedGeneration(long generation, URLClassLoader classLoader, PluginModule module) {\n        this.generation = generation;\n        this.classLoader = classLoader;\n        this.module = module;\n    }\n\n    static LoadedGeneration load(Path pluginJar, long generation) throws Exception {\n        URLClassLoader classLoader = new URLClassLoader(new URL[] {pluginJar.toUri().toURL()}, PluginModuleFactory.class.getClassLoader());\n        Class<?> factoryType = classLoader.loadClass(FACTORY_CLASS);\n        PluginModuleFactory factory = (PluginModuleFactory) factoryType.getDeclaredConstructor().newInstance();\n        return new LoadedGeneration(generation, classLoader, factory.open());\n    }\n\n    long generation() {\n        return generation;\n    }\n\n    PluginModule module() {\n        return module;\n    }\n\n    @Override\n    public void close() throws Exception {\n        module.close();\n        classLoader.close();\n    }\n}\nEOF\n",
+      "duration": 0.1
+    }
+  ]
+}

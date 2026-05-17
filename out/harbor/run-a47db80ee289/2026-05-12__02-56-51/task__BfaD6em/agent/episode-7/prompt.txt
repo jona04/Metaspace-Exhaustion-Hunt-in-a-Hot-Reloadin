@@ -1,0 +1,60 @@
+Current terminal state:
+New Terminal Output:
+
+root@d1122ea72d13:/workspace/textd# cat src/main/java/io/harbor/textd/core/GenerationRegistry.java
+package io.harbor.textd.core;
+
+import java.nio.file.Path;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicReference;
+
+final class GenerationRegistry {
+    private final Path pluginJar;
+    private final AtomicReference<GenerationLease> active = new AtomicReference<>();
+    private final Queue<GenerationLease> retired = new ConcurrentLinkedQueue<>();
+
+    GenerationRegistry(Path pluginJar) {
+        this.pluginJar = pluginJar;
+    }
+
+    void activate(long generation) throws Exception {
+        GenerationLease next = new GenerationLease(LoadedGeneration.load(pluginJar, generation));
+        GenerationLease previous = active.getAndSet(next);
+        if (previous != null) {
+            retired.add(previous);
+            previous.retire();
+            sweepRetired();
+        }
+    }
+
+    GenerationLease active() {
+        GenerationLease lease = active.get();
+        if (lease == null) {
+            throw new IllegalStateException("No plugin generation is loaded");
+        }
+        return lease;
+    }
+
+    int pendingRetirements() {
+        sweepRetired();
+        return retired.size();
+    }
+
+    void close() {
+        GenerationLease current = active.getAndSet(null);
+        if (current != null) {
+            retired.add(current);
+            current.retire();
+        }
+        sweepRetired();
+    }
+
+    private void sweepRetired() {
+        retired.removeIf(GenerationLease::isClosed);
+    }
+}
+root@d1122ea72d13:/workspace/textd#
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

@@ -1,0 +1,18 @@
+{
+  "analysis": "The `TextDaemon` uses a `ThreadPoolExecutor` and a `TimelineLedger` to manage plugin generations. The error `java.lang.OutOfMemoryError: Metaspace` confirms that classes are not being unloaded. \n\nLooking at `processRecord`:\n```java\nWorkerHandle binding = ThreadBridge.current(revisions);\nreturn binding.process(record);\n```\nIt uses `ThreadBridge.current(revisions)` to get a `WorkerHandle`. If `ThreadBridge` uses `ThreadLocal` or some form of caching that holds onto the `WorkerHandle` (and thus the class loader), it might be the cause of the leak.\n\nLet's examine `ThreadBridge.java` and `TimelineLedger.java`.",
+  "plan": "1. Read `src/main/java/io/harbor/textd/core/ThreadBridge.java`.\n2. Read `src/main/java/io/harbor/textd/core/TimelineLedger.java`.\n3. Read `src/main/java/io/harbor/textd/core/ThreadCache.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ]
+}

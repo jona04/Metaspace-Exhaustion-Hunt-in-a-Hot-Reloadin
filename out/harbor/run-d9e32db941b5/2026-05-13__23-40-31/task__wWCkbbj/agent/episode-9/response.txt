@@ -1,0 +1,10 @@
+{
+  "analysis": "Yes, `ThreadCache.cursorFor` replaces `cursor` without calling `close()` on the previous one. This is a direct cause of the leak because `WorkerHandle.close()` calls `frame.unpin()`, which is necessary for the `TimelineFrame` to reach a state where it can close the `LoadedGeneration` (and its `URLClassLoader`).",
+  "plan": "I will modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to call `cursor.close()` before replacing it. I also noticed `LoadedGeneration.LIVE` map which seems unused except for being put into. I'll check if it's used elsewhere.",
+  "commands": [
+    {
+      "keystrokes": "grep -r \"LIVE\" src\n",
+      "duration": 0.1
+    }
+  ]
+}

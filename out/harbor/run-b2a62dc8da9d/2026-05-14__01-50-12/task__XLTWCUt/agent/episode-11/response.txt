@@ -1,0 +1,10 @@
+{
+  "analysis": "In `ThreadCache.cursorFor(ledger)`, when the generation changes, a new `WorkerHandle` is created. However, the old `cursor` (which is a `WorkerHandle`) is never closed before being replaced. \n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n\nWait, I should check `WorkerHandle` too. If `WorkerHandle` pins the frame, and it's not closed, then the frame's pin count will never reach zero, and the generation will never be closed.",
+  "plan": "Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    }
+  ]
+}

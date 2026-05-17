@@ -1,0 +1,6 @@
+{
+  "analysis": "I have identified and fixed two class loader leaks that were causing the `java.lang.OutOfMemoryError: Metaspace` during long runs of the `textd` service. \n\n1. In `ThreadCache.java`, the `cursorFor` method was creating a new `WorkerHandle` when the plugin generation changed, but it was not closing the old one. Since `WorkerHandle` pins the `TimelineFrame`, the old frames were never being drained and closed, preventing the associated `URLClassLoader` from being closed.\n2. In `LoadedGeneration.java`, a static `ConcurrentHashMap` called `LIVE` was storing every `LoadedGeneration` created, but entries were never removed. This caused a permanent reference to every `URLClassLoader` ever created.\n\nAfter applying these fixes, the stress test now passes for 1000 cycles (it previously failed at 500), and all other tests pass as well.",
+  "plan": "The task is complete. I have verified the fix with the provided stress test and ensured no regressions with the integration suite.",
+  "commands": [],
+  "task_complete": true
+}

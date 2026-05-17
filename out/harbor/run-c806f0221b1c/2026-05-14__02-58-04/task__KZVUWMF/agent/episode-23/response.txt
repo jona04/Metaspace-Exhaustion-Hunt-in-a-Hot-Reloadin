@@ -1,0 +1,6 @@
+{
+  "analysis": "I have successfully identified and fixed the resource reclamation issues in the `textd` service. \n\n1.  **Metaspace Leak During Long Run**: I found that `ThreadCache.cursorFor` was creating new `WorkerHandle` instances when a plugin was reloaded but was not closing the previous `WorkerHandle`. This kept the old `TimelineFrame` pinned, preventing the `URLClassLoader` from being closed and leading to a Metaspace OOM. I fixed this by calling `cursor.close()` before replacing it.\n\n2.  **Reclamation After Close**: I found that when `TextDaemon` was closed, worker threads might still hold references to the current `WorkerHandle` in their `ThreadLocal` storage. Since `WorkerHandle.close()` was never called for these, the final generation remained pinned even after the daemon was shut down. I fixed this by submitting a `ThreadBridge.clear()` task to each worker thread during the `TextDaemon.close()` sequence.\n\nI verified the fixes using the provided stress test (running 500 cycles successfully with limited Metaspace) and the full integration suite, all of which passed.",
+  "plan": "I have already applied the fixes and verified them with the stress test and the integration suite. No further steps are needed.",
+  "commands": [],
+  "task_complete": true
+}

@@ -1,0 +1,104 @@
+{
+  "analysis": "The `replay-check` scripts and `SessionReplayRunner` check the number of unloaded classes to verify that old generations are being reclaimed. Specifically, it expects `unloaded_after_close - unloaded_before_close > 0`.\n\nIn `SessionReplayRunner.runSession`, `unloadedBefore` is captured before the `TextDaemon` is created, and `unloadedAfter` is captured after `daemon.close()` and `drainGc()`. \n\nWait, I see `unloaded_before_close` and `unloaded_after_close` in the `Session` class, but in `runSession`, I only see `unloadedBefore` being captured at the start. \n\nLet's re-examine `runSession` in `SessionReplayRunner.java`:\n```java\n    private static Session runSession(Path pluginJar, int revision) throws Exception {\n        long loadedBefore = CLASS_LOADING.getLoadedClassCount();\n        long unloadedBefore = CLASS_LOADING.getUnloadedClassCount();\n\n        TextDaemon daemon = new TextDaemon(pluginJar, 4);\n        try {\n            // ... process stuff ...\n\n            daemon.close();\n            drainGc();\n\n            return new Session(\n                // ...\n                loadedBefore,\n                CLASS_LOADING.getLoadedClassCount(),\n                unloadedBefore,\n                CLASS_LOADING.getUnloadedClassCount()\n            );\n        } // ...\n    }\n```\nAh, I see. In the `Session` constructor, the parameters are:\n1. `loadedBeforeClose` -> `loadedBefore` (from start of session)\n2. `loadedAfterClose` -> `CLASS_LOADING.getLoadedClassCount()` (after close)\n3. `unloadedBeforeClose` -> `unloadedBefore` (from start of session)\n4. `unloadedAfterClose` -> `CLASS_LOADING.getUnloadedClassCount()` (after close)\n\nSo `unloaded_after_close - unloaded_before_close` is actually the number of classes unloaded *during* the entire session, including after `daemon.close()`.\n\nThe fact that it's 0 means no classes were unloaded. This could be because the JVM hasn't actually unloaded the classes yet, or because they are still being held by something.\n\nWait, I noticed something in `ThreadBridge.java`:\n```java\n    private static final ThreadLocal<ThreadCache> ROUTES = ThreadLocal.withInitial(ThreadCache::new);\n\n    static WorkerHandle current(TimelineLedger ledger) {\n        return ROUTES.get().cursorFor(ledger);\n    }\n\n    static void clear() {\n        ThreadCache routeState = ROUTES.get();\n        routeState.close();\n        ROUTES.remove();\n    }\n```\nAnd in `TextDaemon.java`, I don't see `ThreadBridge.clear()` being called for the worker threads. The worker threads are part of a fixed thread pool:\n```java\n    public TextDaemon(Path pluginJar, int workerCount) {\n        this.revisions = new TimelineLedger(pluginJar);\n        this.workers = Executors.newFixedThreadPool(workerCount, new WorkerThreadFactory());\n        this.workerCount = workerCount;\n    }\n```\nWhen `daemon.close()` is called:\n```java\n    @Override\n    public void close() throws Exception {\n        revisions.close();\n        workers.shutdownNow();\n        workers.awaitTermination(5, TimeUnit.SECONDS);\n    }\n```\nThe worker threads are shut down. However, the `ThreadLocal` in `ThreadBridge` might still hold onto the `ThreadCache` (and thus the last `WorkerHandle` and its `TimelineFrame`) until the thread actually terminates and is GC'd. Since it's a fixed thread pool and we're calling `shutdownNow()`, the threads should terminate.\n\nBut wait! Is there any other place where `WorkerHandle` is stored? \n\nIn `ThreadCache.java`, I added `cursor.close()` when replacing the cursor. This is good. \n\nWhat about `TimelineLedger.shadow`? \n```java\n    private void pruneShadow() {\n        shadow.removeIf(TimelineFrame::isDrained);\n    }\n```\n`isDrained()` returns `closed.get()`. `closed` is set to true in `closeLoadedGeneration()`, which is called when `remaining == 0 && cooled.get()` in `unpin()`.\n\nIf the last `WorkerHandle` for a thread is still in the `ThreadLocal` of that thread, and that thread hasn't been GC'd yet, then the `TimelineFrame` will still have a pin count > 0.\n\nWait, `SessionReplayRunner` calls `daemon.close()`, which calls `workers.shutdownNow()`. This should interrupt the worker threads and they should exit. Once they exit, their `ThreadLocal` map should be eligible for GC, which should eventually release the `ThreadCache` and the `WorkerHandle`... but `unpin()` would only be called if `ThreadCache.close()` is called.\n\nDoes anything call `ThreadCache.close()` when the thread exits? No, `ThreadLocal` doesn't do that automatically for you. You have to call `remove()` or the thread must be GC'd.\n\nIn `ThreadBridge.java`, there is a `clear()` method, but nothing calls it.\n\nWait, if the threads are shut down, they stop existing. But the `ThreadLocal` value is held by the `Thread` object. If the `Thread` object is still reachable, the value is still reachable.\n\nIn `TextDaemon`, `workers` (the `ExecutorService`) is shut down. \n\nActually, even if the threads are gone, the `TimelineFrame` might still be pinned if the `WorkerHandle` wasn't closed. \n\nIn `ThreadCache.java`:\n```java\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n```\nThis `close()` is only called by `ThreadBridge.clear()`. And `ThreadBridge.clear()` is never called.\n\nWait! I should check if `ThreadBridge.clear()` should be called by the workers when they finish their task? No, they are in a pool. They should probably clear it when the daemon is closed? But the daemon doesn't have easy access to the `ThreadLocal` of its worker threads.\n\nActually, the best way to ensure the `WorkerHandle` is closed is to make sure it's closed when it's no longer needed. \n\nWait, I see what's happening. When `daemon.reload(current)` is called, it installs a new frame. The *next* time a worker processes a record, it calls `ThreadBridge.current(revisions)`, which calls `cursorFor(ledger)`. `cursorFor` sees the revision mismatch, calls `cursor.close()` (with my fix), and creates a new `WorkerHandle` for the new frame. \n\nThis means that for any thread that processes at least one record in the new revision, the old `WorkerHandle` will be closed. \n\nBut what about the *last* revision? When `daemon.close()` is called, it calls `revisions.close()`, which marks the current frame as cooled and calls `pruneShadow()`. But the worker threads still have their `WorkerHandle` for that last revision in their `ThreadLocal`. They will never call `cursorFor` again because the daemon is closing and no more records will be processed. So the last `WorkerHandle` is never closed, the last `TimelineFrame` is never unpinned, and thus never closed.\n\nTo fix this, we need the worker threads to clean up their `ThreadLocal` when they are shut down, or provide a way to clear them.\n\nWait, the `TextDaemon` uses a `WorkerThreadFactory`. We could potentially use that to track the threads, but that's complicated.\n\nAlternatively, we can change how workers execute tasks so they always clean up? No, they are in a pool.\n\nWait, look at `TextDaemon.processRecord`:\n```java\n    private ProcessingResult processRecord(\n        String record,\n        CountDownLatch ready,\n        CountDownLatch release\n    ) throws Exception {\n        ready.countDown();\n        if (!release.await(5, TimeUnit.SECONDS)) {\n            throw new IllegalStateException(\"Request release timed out\");\n        }\n\n        WorkerHandle binding = ThreadBridge.current(revisions);\n        return binding.process(record);\n    }\n```\nIt gets the `WorkerHandle` but never closes it. But it's not supposed to close it every time, because it's cached in the `ThreadLocal`. \n\nHowever, when the daemon is shut down, we want all those cached `WorkerHandle`s to be closed.\n\nIf I change `TextDaemon.close()` to also submit a cleanup task to all worker threads?\n```java\n    @Override\n    public void close() throws Exception {\n        revisions.close();\n        // Submit a cleanup task to each worker thread?\n        // But we don't know how many threads are actually in the pool and active.\n        // And shutdownNow() will interrupt them anyway.\n```\n\nWait, if `workers.shutdownNow()` is called, the threads will be interrupted. If they are waiting in the pool, they will exit.\n\nIf the threads exit, they are no longer roots for GC. If the `Thread` objects are GC'd, the `ThreadLocal` values should be eligible for GC. But the `LoadedGeneration` has a `URLClassLoader`, which is notorious for holding onto classes and preventing them from being unloaded if there's even a single leak.\n\nActually, the problem might be even simpler. The `ThreadBridge` uses a `static` `ThreadLocal`. \n```java\n    private static final ThreadLocal<ThreadCache> ROUTES = ThreadLocal.withInitial(ThreadCache::new);\n```\nStatic `ThreadLocal`s are notorious for leaks in environments where the same thread might be reused across different 'applications' or 'sessions', but here the threads are created by the `TextDaemon` itself. \n\nWait, `SessionReplayRunner` runs two sessions. \n```java\n        Session first = runSession(pluginJar, revision);\n        Session second = runSession(pluginJar, revision);\n```\nEach `runSession` creates a *new* `TextDaemon`. \n```java\n        TextDaemon daemon = new TextDaemon(pluginJar, 4);\n```\nBut the `ThreadBridge.ROUTES` is `static`! \nSo when the second session starts, if it happens to use threads with the same names (or if the same threads were somehow reused, which they shouldn't be since they are in different `ExecutorService` instances), it might still have the old `ThreadCache` from the first session.\n\nWait, even if the threads are different, the `ThreadLocal` is static. When a new thread is created in the second session, it gets a new `ThreadCache`. \n\nThe issue is that the worker threads from the *first* session are shut down, but are they GC'd? If they are not GC'd, they still hold their `ThreadLocal` values. And those `ThreadLocal` values (`ThreadCache`) hold `WorkerHandle`s, which hold `TimelineFrame`s from the first session.\n\nSince `ThreadBridge.ROUTES` is static, it lives as long as the `ThreadBridge` class, which lives as long as the main class loader. \n\nIf I make `ThreadBridge.ROUTES` non-static and pass it around? No, that's a lot of changes.\n\nHow about I call `ThreadBridge.clear()`? But I need to call it *on the worker threads*.\n\nWait, I can change `processRecord` to call `ThreadBridge.clear()` if it detects the daemon is closing? No.\n\nActually, what if I just make sure that when a `WorkerHandle` is no longer needed, it's closed? \n\nIn `TextDaemon.close()`, I can try to submit a task to all workers to call `ThreadBridge.clear()`.\n```java\n    @Override\n    public void close() throws Exception {\n        revisions.close();\n        for (int i = 0; i < workerCount; i++) {\n            workers.submit(ThreadBridge::clear);\n        }\n        workers.shutdown();\n        workers.awaitTermination(5, TimeUnit.SECONDS);\n    }\n```\nWait, `workers` is a `FixedThreadPool` with `workerCount` threads. If I submit `workerCount` tasks, each one *should* be executed by a different thread, right? Yes, if they are all idle.\n\nLet's check `TextDaemon.java` again.",
+  "plan": "I will modify `TextDaemon.java` to clear the `ThreadBridge` on all worker threads during shutdown. This should ensure that all `WorkerHandle`s are closed and their `TimelineFrame`s unpinned.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/TextDaemon.java\npackage io.harbor.textd.core;\n\nimport java.nio.file.Path;\nimport java.util.ArrayList;\nimport java.util.List;\nimport java.util.concurrent.CountDownLatch;\nimport java.util.concurrent.ExecutionException;\nimport java.util.concurrent.ExecutorService;\nimport java.util.concurrent.Executors;\nimport java.util.concurrent.Future;\nimport java.util.concurrent.ThreadFactory;\nimport java.util.concurrent.TimeUnit;\nimport java.util.concurrent.atomic.AtomicInteger;\n\npublic final class TextDaemon implements AutoCloseable {\n    private final ExecutorService workers;\n    private final TimelineLedger revisions;\n    private final int workerCount;\n\n    public TextDaemon(Path pluginJar, int workerCount) {\n        this.revisions = new TimelineLedger(pluginJar);\n        this.workers = Executors.newFixedThreadPool(workerCount, new WorkerThreadFactory());\n        this.workerCount = workerCount;\n    }\n\n    public void reload(long generation) throws Exception {\n        revisions.install(generation);\n    }\n\n    public ProcessingResult process(String record) throws Exception {\n        return processBatch(List.of(record)).get(0);\n    }\n\n    public boolean isBalanced() {\n        return revisions.isBalanced();\n    }\n\n    public List<ProcessingResult> processBatch(List<String> records) throws Exception {\n        CountDownLatch ready = new CountDownLatch(records.size());\n        CountDownLatch release = new CountDownLatch(1);\n        List<Future<ProcessingResult>> futures = new ArrayList<>();\n        for (String record : records) {\n            futures.add(workers.submit(() -> processRecord(record, ready, release)));\n        }\n\n        if (!ready.await(5, TimeUnit.SECONDS)) {\n            throw new IllegalStateException(\"Workers did not become ready\");\n        }\n        release.countDown();\n\n        List<ProcessingResult> results = new ArrayList<>(records.size());\n        for (Future<ProcessingResult> future : futures) {\n            try {\n                results.add(future.get());\n            } catch (ExecutionException exception) {\n                Throwable cause = exception.getCause();\n                if (cause instanceof Exception checked) {\n                    throw checked;\n                }\n                if (cause instanceof Error error) {\n                    throw error;\n                }\n                throw new RuntimeException(cause);\n            }\n        }\n        return results;\n    }\n\n    private ProcessingResult processRecord(\n        String record,\n        CountDownLatch ready,\n        CountDownLatch release\n    ) throws Exception {\n        ready.countDown();\n        if (!release.await(5, TimeUnit.SECONDS)) {\n            throw new IllegalStateException(\"Request release timed out\");\n        }\n\n        WorkerHandle binding = ThreadBridge.current(revisions);\n        return binding.process(record);\n    }\n\n    @Override\n    public void close() throws Exception {\n        revisions.close();\n        for (int i = 0; i < workerCount; i++) {\n            workers.submit(ThreadBridge::clear);\n        }\n        workers.shutdown();\n        if (!workers.awaitTermination(5, TimeUnit.SECONDS)) {\n            workers.shutdownNow();\n        }\n    }\n\n    private static final class WorkerThreadFactory implements ThreadFactory {\n        private final AtomicInteger sequence = new AtomicInteger(1);\n\n        @Override\n        public Thread newThread(Runnable runnable) {\n            Thread thread = new Thread(runnable);\n            thread.setName(\"textd-worker-\" + sequence.getAndIncrement());\n            thread.setDaemon(true);\n            return thread;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    }
+  ]
+}Traceback (most recent call last):
+  File "/usr/local/lib/python3.12/site-packages/urllib3/connectionpool.py", line 537, in _make_request
+    response = conn.getresponse()
+               ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/urllib3/connection.py", line 516, in getresponse
+    httplib_response = super().getresponse()
+                       ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/http/client.py", line 1369, in getresponse
+    response.begin()
+  File "/usr/lib/python3.12/http/client.py", line 316, in begin
+    version, status, reason = self._read_status()
+                              ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/http/client.py", line 277, in _read_status
+    line = self.fp.readline(_MAXLINE + 1)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/socket.py", line 707, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/ssl.py", line 1324, in recv_into
+    return self.read(nbytes, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/ssl.py", line 1180, in read
+    return self._sslobj.read(len, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TimeoutError: The read operation timed out
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.12/site-packages/requests/adapters.py", line 667, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/urllib3/connectionpool.py", line 847, in urlopen
+    retries = retries.increment(
+              ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/urllib3/util/retry.py", line 470, in increment
+    raise reraise(type(error), error, _stacktrace)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/urllib3/util/util.py", line 39, in reraise
+    raise value
+  File "/usr/local/lib/python3.12/site-packages/urllib3/connectionpool.py", line 793, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/urllib3/connectionpool.py", line 540, in _make_request
+    self._raise_timeout(err=e, url=url, timeout_value=read_timeout)
+  File "/usr/local/lib/python3.12/site-packages/urllib3/connectionpool.py", line 353, in _raise_timeout
+    raise ReadTimeoutError(
+urllib3.exceptions.ReadTimeoutError: HTTPSConnectionPool(host='api.openai.com', port=443): Read timed out. (read timeout=600)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/bin/agent-runtime", line 8, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/agent_runtime/cli.py", line 117, in main
+    agent_loop(
+  File "/usr/local/lib/python3.12/site-packages/agent_runtime/loop.py", line 133, in agent_loop
+    response = client.chat.completions.create(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/openai/_utils/_utils.py", line 277, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/openai/resources/chat/completions.py", line 649, in create
+    return self._post(
+           ^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/openai/_base_client.py", line 1240, in post
+    return self.request(cast_to, opts, stream=stream, stream_cls=stream_cls)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/openai/_base_client.py", line 921, in request
+    return self._request(
+           ^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/openai/_base_client.py", line 1020, in _request
+    response = self._client.send(request, auth=self.custom_auth, stream=stream)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/httpx/_client.py", line 914, in send
+    response = self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/httpx/_client.py", line 942, in _send_handling_auth
+    response = self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/httpx/_client.py", line 979, in _send_handling_redirects
+    response = self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/httpx/_client.py", line 1015, in _send_single_request
+    response = transport.handle_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/httpx/_transports/default.py", line 232, in handle_request
+    with map_httpcore_exceptions():
+  File "/usr/lib/python3.12/contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "/usr/local/lib/python3.12/site-packages/httpx/_transports/default.py", line 86, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ReadTimeout: The read operation timed out
+|

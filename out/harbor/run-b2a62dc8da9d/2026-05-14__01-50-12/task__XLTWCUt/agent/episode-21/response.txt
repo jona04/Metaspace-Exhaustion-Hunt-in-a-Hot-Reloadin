@@ -1,0 +1,14 @@
+{
+  "analysis": "The logic in `TimelineLedger` and `TimelineFrame` seems sound. \n- `TimelineFrame` starts with `pins = 1` (the initial pin from being the 'current' frame).\n- When `install` is called, the old frame is added to `shadow` and `cool()` is called. `cool()` unpins the initial pin.\n- If any workers have pinned the frame (via `WorkerHandle`), `pins` will be > 0. When they close their `WorkerHandle`, they call `unpin()`.\n- When `pins` reaches 0 and `cooled` is true, `closeLoadedGeneration()` is called, which closes the `URLClassLoader`.\n\nThe issue was indeed that `ThreadCache` was not closing the old `WorkerHandle`, so the pins were never released, keeping the `URLClassLoader` alive and causing Metaspace exhaustion.\n\nI should check if there's anything else in the task description I might have missed. 'Get the daemon through the long run without changing the deterministic text-processing results from the shipped revisions.'\n\nI haven't changed the processing results, only fixed a memory leak.\n\nWait, I should check if there are any other `ThreadLocal` variables that might need cleaning up. `ThreadBridge` has `ROUTES`. It is only cleared if `ThreadBridge.clear()` is called. In `TextDaemon.close()`, it doesn't call `ThreadBridge.clear()`. However, the worker threads are shut down. If the `TextDaemon` is used in a context where threads are reused (like a thread pool not owned by `TextDaemon`), this could be a problem. But here `TextDaemon` owns its `ExecutorService` and shuts it down.",
+  "plan": "I will check if there is any other place where the `ThreadLocal` might be an issue. But since the worker threads are created by the `TextDaemon` and shut down by it, they should be fine. I'll do one more check on `ThreadBridge` and `TextDaemon`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.5
+    }
+  ]
+}

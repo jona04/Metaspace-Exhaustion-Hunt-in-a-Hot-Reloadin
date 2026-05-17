@@ -1,0 +1,109 @@
+{
+  "analysis": "Everything seems correct in the API. \n\nSo why are the classes not unloading?\n\nWait! I have one more idea. In `ThreadBridge.java`:\n```java\n    private static final ThreadLocal<ThreadCache> ROUTES = ThreadLocal.withInitial(() -> {\n        ThreadCache cache = new ThreadCache();\n        synchronized (ALL_CACHES) {\n            ALL_CACHES.add(cache);\n        }\n        return cache;\n    });\n```\nWhen a thread is finished, the `ThreadCache` object is still in the `ThreadLocal` map. If the thread is not GC'd, the `ThreadCache` is not GC'd. \n\nI called `cache.close()`, which set `cursor = null`. \n\nBut wait! I'm calling `ALL_CACHES.clear()` in `clearAll()`. \n```java\n    static void clearAll() {\n        synchronized (ALL_CACHES) {\n            for (ThreadCache cache : ALL_CACHES) {\n                cache.close();\n            }\n            ALL_CACHES.clear();\n        }\n    }\n```\nThis means that after `clearAll()` is called, the `ALL_CACHES` set is empty. \n\nIf the same threads are reused for a *second* session, they will still have the *same* `ThreadCache` object in their `ThreadLocal` map (because `ThreadLocal.withInitial` is only called once per thread). \n\nBut since I removed it from `ALL_CACHES`, if a second session calls `clearAll()`, it won't see the `ThreadCache` objects from the first session's threads! \n\nWait, but the threads from the first session were shut down. So they should be GC'd. \n\nActually, the issue might be simpler. Maybe I should call `ROUTES.remove()` on the worker threads?\n\nBut wait, I have a better idea. Why not just call `ThreadBridge.clear()` at the end of each worker's life?\n\nIn `TextDaemon.java`, I can wrap the worker's execution.\n\nBut wait! I already have `after_close: true`! This means the frames *are* being closed. If the frames are closed, the `LoadedGeneration` is closed, and the `URLClassLoader` is closed. \n\nIf the classes are still not unloading, it's likely a JVM thing or a very subtle leak.\n\nWait! I just noticed something in `SessionReplayRunner.java`. It says:\n```java\nif d1 > 0 and d2 > 0:\n    print(f\"replay-ok unloaded-first={d1} unloaded-second={d2}\")\n```\nIt wants `d1 > 0`. `d1` is `unloaded_after_close - unloaded_before_close`. \n\nIf the JVM is just being lazy about unloading, maybe I should call `System.gc()` more, or just wait longer?\n\nWait! I have another idea. Is there any other reference to the `PluginModule` or `TextProcessor`?\n\nLet's check `ProcessingResult`.\n```java\npublic record ProcessingResult(long revision, String output, String workerThread) {}\n```\nIt's a record, it only holds a `long` and two `String`s. No reference to the plugin classes. \n\nWait! I see it! In `TimelineFrame.java`:\n```java\n    private final LoadedGeneration loadedGeneration;\n```\nAnd in `LoadedGeneration.java`:\n```java\n    private final URLClassLoader classLoader;\n    private final PluginModule module;\n```\nWhen `LoadedGeneration.close()` is called, it closes them, but it doesn't null them out! \n\nMaybe the `LoadedGeneration` object itself is still being held? \nNo, I nulled out the `frame` in `WorkerHandle.close()`, and `TimelineLedger` removed the frame from its `shadow` queue.\n\nWait! I found it! \nIn `TimelineLedger.java`:\n```java\n    private final AtomicReference<TimelineFrame> current = new AtomicReference<>();\n    private final Queue<TimelineFrame> shadow = new ConcurrentLinkedQueue<>();\n```\nWhen `close()` is called:\n```java\n    void close() {\n        TimelineFrame frame = current.getAndSet(null);\n        if (frame != null) {\n            shadow.add(frame);\n            frame.cool();\n        }\n        pruneShadow();\n    }\n```\nIf `pruneShadow()` doesn't remove the frame yet (because it's still pinned), it stays in `shadow`. \nThen `daemon.isBalanced()` is called, which calls `pruneShadow()`. If it's now unpinned, it's removed from `shadow`. \n\nBut wait! Does `TimelineFrame` itself hold onto the `LoadedGeneration` forever?\n```java\nfinal class TimelineFrame {\n    private final LoadedGeneration loadedGeneration;\n    // ...\n}\n```\nYes, but the `TimelineFrame` itself is no longer reachable once it's removed from `shadow` and no `WorkerHandle` points to it.\n\nWait! I have an idea. Let's make `LoadedGeneration` null out its fields on `close()` just in case.\n\nAnd `TimelineFrame` too.",
+  "plan": "I will modify `LoadedGeneration.java` and `TimelineFrame.java` to null out their fields when closed, to ensure no references remain.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/LoadedGeneration.java\npackage io.harbor.textd.core;\n\nimport io.harbor.textd.api.PluginModule;\nimport io.harbor.textd.api.PluginModuleFactory;\n\nimport java.net.URL;\nimport java.net.URLClassLoader;\nimport java.nio.file.Path;\n\nfinal class LoadedGeneration implements AutoCloseable {\n    private static final String FACTORY_CLASS = \"io.harbor.textd.customer.CustomerPluginFactory\";\n\n    private final long generation;\n    private URLClassLoader classLoader;\n    private PluginModule module;\n\n    private LoadedGeneration(long generation, URLClassLoader classLoader, PluginModule module) {\n        this.generation = generation;\n        this.classLoader = classLoader;\n        this.module = module;\n    }\n\n    static LoadedGeneration load(Path pluginJar, long generation) throws Exception {\n        URLClassLoader classLoader = new URLClassLoader(new URL[] {pluginJar.toUri().toURL()}, PluginModuleFactory.class.getClassLoader());\n        Class<?> factoryType = classLoader.loadClass(FACTORY_CLASS);\n        PluginModuleFactory factory = (PluginModuleFactory) factoryType.getDeclaredConstructor().newInstance();\n        return new LoadedGeneration(generation, classLoader, factory.open());\n    }\n\n    long generation() {\n        return generation;\n    }\n\n    PluginModule module() {\n        return module;\n    }\n\n    @Override\n    public void close() throws Exception {\n        if (module != null) {\n            module.close();\n            module = null;\n        }\n        if (classLoader != null) {\n            classLoader.close();\n            classLoader = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/TimelineFrame.java\npackage io.harbor.textd.core;\n\nimport io.harbor.textd.api.PluginModule;\n\nimport java.util.concurrent.atomic.AtomicBoolean;\nimport java.util.concurrent.atomic.AtomicInteger;\n\nfinal class TimelineFrame {\n    private LoadedGeneration loadedGeneration;\n    private final AtomicInteger pins = new AtomicInteger(1);\n    private final AtomicBoolean cooled = new AtomicBoolean(false);\n    private final AtomicBoolean closed = new AtomicBoolean(false);\n\n    TimelineFrame(LoadedGeneration loadedGeneration) {\n        this.loadedGeneration = loadedGeneration;\n    }\n\n    TimelineFrame pin() {\n        while (true) {\n            int current = pins.get();\n            if (current == 0) {\n                throw new IllegalStateException(\"Revision \" + revision() + \" is already closed\");\n            }\n            if (pins.compareAndSet(current, current + 1)) {\n                return this;\n            }\n        }\n    }\n\n    long revision() {\n        return loadedGeneration.generation();\n    }\n\n    PluginModule module() {\n        return loadedGeneration.module();\n    }\n\n    void cool() {\n        if (cooled.compareAndSet(false, true)) {\n            unpin();\n        }\n    }\n\n    void unpin() {\n        int remaining = pins.decrementAndGet();\n        if (remaining < 0) {\n            throw new IllegalStateException(\"Pin count underflow for revision \" + revision());\n        }\n        if (remaining == 0 && cooled.get()) {\n            closeLoadedGeneration();\n        }\n    }\n\n    boolean isDrained() {\n        return closed.get();\n    }\n\n    private void closeLoadedGeneration() {\n        if (closed.compareAndSet(false, true)) {\n            try {\n                loadedGeneration.close();\n                loadedGeneration = null;\n            } catch (Exception exception) {\n                throw new IllegalStateException(\"Unable to close revision \" + revision(), exception);\n            }\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    }
+  ]
+}Traceback (most recent call last):
+  File "/usr/local/lib/python3.12/site-packages/urllib3/connectionpool.py", line 537, in _make_request
+    response = conn.getresponse()
+               ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/urllib3/connection.py", line 516, in getresponse
+    httplib_response = super().getresponse()
+                       ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/http/client.py", line 1369, in getresponse
+    response.begin()
+  File "/usr/lib/python3.12/http/client.py", line 316, in begin
+    version, status, reason = self._read_status()
+                              ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/http/client.py", line 277, in _read_status
+    line = self.fp.readline(_MAXLINE + 1)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/socket.py", line 707, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/ssl.py", line 1324, in recv_into
+    return self.read(nbytes, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/ssl.py", line 1180, in read
+    return self._sslobj.read(len, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TimeoutError: The read operation timed out
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.12/site-packages/requests/adapters.py", line 667, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/urllib3/connectionpool.py", line 847, in urlopen
+    retries = retries.increment(
+              ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/urllib3/util/retry.py", line 470, in increment
+    raise reraise(type(error), error, _stacktrace)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/urllib3/util/util.py", line 39, in reraise
+    raise value
+  File "/usr/local/lib/python3.12/site-packages/urllib3/connectionpool.py", line 793, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/urllib3/connectionpool.py", line 540, in _make_request
+    self._raise_timeout(err=e, url=url, timeout_value=read_timeout)
+  File "/usr/local/lib/python3.12/site-packages/urllib3/connectionpool.py", line 353, in _raise_timeout
+    raise ReadTimeoutError(
+urllib3.exceptions.ReadTimeoutError: HTTPSConnectionPool(host='api.openai.com', port=443): Read timed out. (read timeout=600)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/bin/agent-runtime", line 8, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/agent_runtime/cli.py", line 117, in main
+    agent_loop(
+  File "/usr/local/lib/python3.12/site-packages/agent_runtime/loop.py", line 133, in agent_loop
+    response = client.chat.completions.create(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/openai/_utils/_utils.py", line 277, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/openai/resources/chat/completions.py", line 649, in create
+    return self._post(
+           ^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/openai/_base_client.py", line 1240, in post
+    return self.request(cast_to, opts, stream=stream, stream_cls=stream_cls)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/openai/_base_client.py", line 921, in request
+    return self._request(
+           ^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/openai/_base_client.py", line 1020, in _request
+    response = self._client.send(request, auth=self.custom_auth, stream=stream)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/httpx/_client.py", line 914, in send
+    response = self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/httpx/_client.py", line 942, in _send_handling_auth
+    response = self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/httpx/_client.py", line 979, in _send_handling_redirects
+    response = self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/httpx/_client.py", line 1015, in _send_single_request
+    response = transport.handle_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/httpx/_transports/default.py", line 232, in handle_request
+    with map_httpcore_exceptions():
+  File "/usr/lib/python3.12/contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "/usr/local/lib/python3.12/site-packages/httpx/_transports/default.py", line 86, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ReadTimeout: The read operation timed out
+|
+_

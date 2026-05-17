@@ -1,0 +1,6 @@
+{
+  "analysis": "The investigation revealed a Metaspace leak caused by unreleased `GenerationLease` references within `WorkerBindings`. When a new generation was activated, the `ThreadLocal` storage in `WorkerBindings` would replace the old `DispatchBinding` without calling its `close()` method. This prevented the reference count in `GenerationLease` from reaching zero, which in turn kept the `URLClassLoader` for that generation alive. Under the constrained 64MB Metaspace limit in the CI profile, this caused the soak test to fail after several refreshes.\n\nI modified `src/main/java/io/harbor/textd/core/WorkerBindings.java` to explicitly call `binding.close()` before replacing the old binding with a new one. This ensures that the previous generation's lease is released and its classloader can be garbage collected. Both the stress test (500 cycles) and the full integration suite now pass successfully.",
+  "plan": "The task is complete. I have verified the fix by running the stress test and the full test suite, both of which passed.",
+  "commands": [],
+  "task_complete": true
+}

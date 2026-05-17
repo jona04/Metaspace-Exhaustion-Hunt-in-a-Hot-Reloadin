@@ -1,0 +1,10 @@
+{
+  "analysis": "In `ThreadCache.java`, the `cursorFor` method replaces the `cursor` without closing the old one if it doesn't match the current frame.\n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame); // Old cursor is NOT closed here!\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n\nI need to check `WorkerHandle.java` to see what `close()` does and how it interacts with `TimelineFrame`'s pins.",
+  "plan": "I will read `src/main/java/io/harbor/textd/core/WorkerHandle.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    }
+  ]
+}

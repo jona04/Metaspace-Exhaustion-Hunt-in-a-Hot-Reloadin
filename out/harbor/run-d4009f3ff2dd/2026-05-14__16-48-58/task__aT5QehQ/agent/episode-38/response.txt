@@ -1,0 +1,6 @@
+{
+  "analysis": "The task is successfully completed. I have identified and fixed two main issues causing plugin generations to leak in the `textd` service:\n\n1.  **Intermediate Generation Leak**: In `ThreadCache.java`, the `cursorFor` method was overwriting the `cursor` (a `WorkerHandle`) without closing the old one when a generation mismatch occurred. Since `WorkerHandle.close()` is responsible for unpinning the plugin generation, this led to old generations staying pinned indefinitely. I fixed this by adding a call to `cursor.close()` before creating a new handle.\n\n2.  **Shutdown Leak**: Even with the first fix, the last generation remained pinned because worker threads in the fixed thread pool held a reference to it in their `ThreadLocal` `ThreadCache`. I modified `TextDaemon.close()` to ensure all worker threads execute `ThreadBridge.clear()` before the daemon finishes closing. This releases all pins held by the worker pool.\n\nI verified the fixes using the provided stress test (500 cycles with limited Metaspace) and the full test suite. The `SessionReplayRunner` now reports `before_close: true` and `after_close: true`, confirming that all generations are properly reclaimed.",
+  "plan": "I have verified the solution with the stress test and integration suite. No further actions are required.",
+  "commands": [],
+  "task_complete": true
+}

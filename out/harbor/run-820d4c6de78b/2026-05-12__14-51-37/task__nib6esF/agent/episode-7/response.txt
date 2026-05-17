@@ -1,0 +1,15 @@
+{
+  "analysis": "Confirmed. `TimelineFrame` uses a reference counting mechanism (`pins`). \n1. When `TimelineLedger` creates a new frame, it starts with 1 pin.\n2. When `TimelineLedger.install` replaces the current frame, it calls `cool()`, which decrements the pin count.\n3. `WorkerHandle` calls `pin()` (incrementing the count) and `unpin()` when closed (decrementing the count).\n4. The frame is only closed when the count reaches 0 AND it has been 'cooled'.\n\nIn `ThreadCache.java`, the old `cursor` is never closed when a new one is created. This means the old `WorkerHandle` never calls `unpin()` on its frame. Thus, the pin count never reaches 0, and the `LoadedGeneration` (and its `ClassLoader`) is never closed. This is the source of the Metaspace leak.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the existing `cursor` before replacing it.\n2. Run the stress test again to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/if (cursor != null) cursor.close(); cursor = new WorkerHandle(frame);/g' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

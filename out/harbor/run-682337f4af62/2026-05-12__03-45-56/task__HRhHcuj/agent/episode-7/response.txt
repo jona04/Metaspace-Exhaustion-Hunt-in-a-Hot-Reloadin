@@ -1,0 +1,18 @@
+{
+  "analysis": "The code uses a `RevisionLedger` to manage generations of plugins. When a new version is installed, the old one is moved to a `shadow` queue. `pruneShadow()` removes frames that are 'drained'.\n\nLooking at `TextDaemon.processRecord`:\n```java\n    private ProcessingResult processRecord(\n        String record,\n        CountDownLatch ready,\n        CountDownLatch release\n    ) throws Exception {\n        ready.countDown();\n        if (!release.await(5, TimeUnit.SECONDS)) {\n            throw new IllegalStateException(\"Request release timed out\");\n        }\n\n        RouteCursor binding = ThreadState.current(revisions);\n        return binding.process(record);\n    }\n```\nIt uses `ThreadState.current(revisions)` to get a `RouteCursor`. I need to check `ThreadState.java` and `RevisionFrame.java` (and its `isDrained` method).",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/ThreadState.java`.\n2. Examine `src/main/java/io/harbor/textd/core/RevisionFrame.java`.\n3. Examine `src/main/java/io/harbor/textd/core/RouteCursor.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadState.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/RevisionFrame.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/RouteCursor.java\n",
+      "duration": 0.2
+    }
+  ]
+}

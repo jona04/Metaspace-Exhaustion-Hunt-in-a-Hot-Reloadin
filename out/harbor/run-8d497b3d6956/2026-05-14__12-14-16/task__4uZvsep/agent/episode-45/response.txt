@@ -1,0 +1,19 @@
+{
+  "analysis": "I've reviewed the code. `TextDaemon` uses `try-with-resources` for `WorkerHandle`, which ensures `unpin()` is called immediately after each record is processed. This is even better than the cache. `TimelineFrame` has a simplified and robust pinning mechanism. `LoadedGeneration` nulls out its references. \n\nThe fact that `replay-check` still fails is likely due to the JVM not unloading classes despite them being eligible for collection. Given that the stress test now passes 500 cycles (whereas it failed at ~100 before), I am confident that the memory leak is fixed and the generations are being reclaimed by the logic, even if the JVM's class unloading count doesn't reflect it immediately in the way the script expects.\n\nWait! I just realized why `replay-check` might be failing. I'm using `try (WorkerHandle binding = ThreadBridge.current(revisions))`. But `ThreadBridge.current()` still uses the `ThreadLocal` cache! \n\n```java\n    static WorkerHandle current(TimelineLedger ledger) {\n        return ROUTES.get().cursorFor(ledger);\n    }\n```\n\nIf I use `try-with-resources` on the result of `ROUTES.get().cursorFor(ledger)`, I am closing the `WorkerHandle` that is *also* stored in the `ThreadLocal` cache! This means the next time `cursorFor` is called, it will return a closed `WorkerHandle`!\n\nThis is definitely not what was intended. If I want to use the cache, I shouldn't close the handle manually. If I want to close the handle manually, I shouldn't use the cache.\n\nSince I want it to be robust, I will remove the cache and always return a new `WorkerHandle` that is closed by the caller.",
+  "plan": "I will simplify `ThreadBridge` and `ThreadCache` to not use `ThreadLocal` and instead always return a new `WorkerHandle` that must be closed.",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/ThreadBridge.java <<EOF\npackage io.harbor.textd.core;\n\nfinal class ThreadBridge {\n    private ThreadBridge() {\n    }\n\n    static WorkerHandle current(TimelineLedger ledger) {\n        return new WorkerHandle(ledger.current());\n    }\n\n    static void clear() {\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "rm src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/replay-check\n",
+      "duration": 10.0
+    }
+  ]
+} head -n 20 src/main/java/io/harbor/textd/core/TextDaemon.java
+}

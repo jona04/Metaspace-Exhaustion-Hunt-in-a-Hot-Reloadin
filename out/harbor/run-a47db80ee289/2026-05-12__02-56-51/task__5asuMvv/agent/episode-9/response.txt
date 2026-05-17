@@ -1,0 +1,15 @@
+{
+  "analysis": "Yes, `DispatchBinding` retains the lease in its constructor and releases it in `close()`. In `WorkerBindings.current()`, when a new generation is detected, the old `DispatchBinding` is simply overwritten in the `ThreadLocal` without being closed. This means the lease is never released, and the `LoadedGeneration` (and its `URLClassLoader`) is never closed, leading to the Metaspace leak.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/WorkerBindings.java` to close the old binding before replacing it in the `ThreadLocal`.\n2. Rebuild the project.\n3. Run the stress test again to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/ACTIVE.set(replacement);/binding.close(); ACTIVE.set(replacement);/' src/main/java/io/harbor/textd/core/WorkerBindings.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerBindings.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

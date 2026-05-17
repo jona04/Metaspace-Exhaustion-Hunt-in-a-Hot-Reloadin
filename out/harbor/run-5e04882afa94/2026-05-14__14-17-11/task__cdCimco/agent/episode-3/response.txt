@@ -1,0 +1,14 @@
+{
+  "analysis": "The code uses a `ThreadLocal<ThreadCache>` to store a `WorkerHandle` for each thread. \n\nIn `TimelineLedger.java`:\n```java\n    private void pruneShadow() {\n        shadow.removeIf(TimelineFrame::isDrained);\n    }\n```\nIt prunes frames that are \"drained\". I need to see `TimelineFrame.java` and `WorkerHandle.java` to understand what \"drained\" means and how frames are closed.\n\nIn `ThreadCache.java`:\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\nWhen a new frame is loaded, `cursor` is replaced with a new `WorkerHandle(frame)`. However, the old `cursor` is NOT closed! This seems like a potential leak because `WorkerHandle` might be holding onto resources or keeping the old `TimelineFrame` active.",
+  "plan": "I will examine `src/main/java/io/harbor/textd/core/TimelineFrame.java` and `src/main/java/io/harbor/textd/core/WorkerHandle.java`. I suspect `WorkerHandle` needs to be closed when it's replaced in `ThreadCache`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    }
+  ]
+}

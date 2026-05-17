@@ -1,0 +1,15 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with a 64MB Metaspace limit. This is a very tight constraint for a Java process that performs hot reloading (loading/unloading classes). The 'soak keeps dying' symptom under 'constrained CI runtime' strongly suggests a Metaspace leak or excessive Metaspace usage during processor refreshes, leading to `OutOfMemoryError: Metaspace` or GC thrashing.",
+  "plan": "1. Examine `HotReloadStressRunner.java` to see how it performs the refresh and what it validates.\n2. Examine `GenerationRegistry.java` and `LoadedGeneration.java` to see if ClassLoaders are being properly discarded or if they are being leaked.\n3. Run the stress test and watch for memory errors.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/GenerationRegistry.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

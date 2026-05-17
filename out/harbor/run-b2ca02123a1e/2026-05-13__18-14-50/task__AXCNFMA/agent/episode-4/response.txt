@@ -1,0 +1,14 @@
+{
+  "analysis": "I have examined `TextDaemon.java` and `ThreadCache.java`. \n\nIn `ThreadCache.java`, I see a clear issue in the `cursorFor` method:\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\nWhen the `frame` (the current version of the processor) changes, a new `WorkerHandle` is created and assigned to `cursor`, but the old `cursor` is never closed. `WorkerHandle` likely holds onto resources (like a ClassLoader or specific plugin instances) that need to be released. This would explain the failure during 'repeated processor swaps' in a constrained environment.\n\nI should also check `ThreadBridge.java` to see how it uses `ThreadCache` and if it ever calls `close()`.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/ThreadBridge.java`.\n2. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java` to see what `close()` does.\n3. Fix the leak in `ThreadCache.java` by closing the old `cursor` before replacing it.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    }
+  ]
+}

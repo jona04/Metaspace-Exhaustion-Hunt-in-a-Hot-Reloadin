@@ -1,0 +1,130 @@
+New Terminal Output:
+
+root@66decc2965ed:/workspace/textd# cat <<EOF > src/main/java/io/harbor/textd/core/TimelineLedger.java
+> package io.harbor.textd.core;
+>
+> import java.nio.file.Path;
+> import java.util.Queue;
+> import java.util.concurrent.ConcurrentLinkedQueue;
+> import java.util.concurrent.atomic.AtomicReference;
+>
+> final class TimelineLedger {
+>     private final Path pluginJar;
+>     private final AtomicReference<TimelineFrame> current = new AtomicReference<>();
+>     private final Queue<TimelineFrame> shadow = new ConcurrentLinkedQueue<>();
+>
+>     TimelineLedger(Path pluginJar) {
+>         this.pluginJar = pluginJar;
+>     }
+>
+>     void install(long revision) throws Exception {
+>         TimelineFrame next = new TimelineFrame(LoadedGeneration.load(pluginJar, revision));
+>         TimelineFrame previous = current.getAndSet(next);
+>         if (previous != null) {
+>             shadow.add(previous);
+>             previous.cool();
+>             pruneShadow();
+>         }
+>     }
+>
+>     TimelineFrame current() {
+>         TimelineFrame frame = current.get();
+>         if (frame == null) {
+>             throw new IllegalStateException("No plugin generation is loaded");
+>         }
+>         return frame;
+>     }
+>
+>     TimelineFrame pinCurrent() {
+>         while (true) {
+>             TimelineFrame frame = current.get();
+>             if (frame == null) {
+>                 throw new IllegalStateException("No plugin generation is loaded");
+>             }
+>             try {
+>                 return frame.pin();
+>             } catch (IllegalStateException e) {
+>                 // frame was cooled and closed just as we were pinning it, try again
+>             }
+>         }
+>     }
+>
+>     boolean isBalanced() {
+>         pruneShadow();
+>         return shadow.isEmpty();
+>     }
+>
+>     void close() {
+>         TimelineFrame frame = current.getAndSet(null);
+>         if (frame != null) {
+>             shadow.add(frame);
+>             frame.cool();
+>         }
+>         pruneShadow();
+>     }
+>
+>     private void pruneShadow() {
+>         shadow.removeIf(TimelineFrame::isDrained);
+>     }
+> }
+> EOF
+root@66decc2965ed:/workspace/textd# cat <<EOF > src/main/java/io/harbor/textd/core/WorkerHandle.java
+> package io.harbor.textd.core;
+>
+> import io.harbor.textd.api.TextProcessor;
+>
+> final class WorkerHandle implements AutoCloseable {
+>     private final TimelineFrame frame;
+>     private final long revision;
+>     private final TextProcessor processor;
+>
+>     WorkerHandle(TimelineFrame pinnedFrame) {
+>         this.frame = pinnedFrame;
+>         this.revision = frame.revision();
+>         this.processor = frame.module().processorFor(revision);
+>     }
+>
+>     boolean matches(TimelineFrame otherFrame) {
+>         return this.frame == otherFrame;
+>     }
+>
+>     ProcessingResult process(String record) {
+>         String output = processor.process(record);
+>         return new ProcessingResult(revision, output, Thread.currentThread().getName());
+>     }
+>
+>     @Override
+>     public void close() {
+>         frame.unpin();
+>     }
+> }
+> EOF
+root@66decc2965ed:/workspace/textd# cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java
+> package io.harbor.textd.core;
+>
+> final class ThreadCache implements AutoCloseable {
+>     private WorkerHandle cursor;
+>
+>     WorkerHandle cursorFor(TimelineLedger ledger) {
+>         TimelineFrame frame = ledger.current();
+>         if (cursor != null && cursor.matches(frame)) {
+>             return cursor;
+>         }
+>
+>         if (cursor != null) {
+>             cursor.close();
+>         }
+>         cursor = new WorkerHandle(ledger.pinCurrent());
+>         return cursor;
+>     }
+>
+>     @Override
+>     public void close() {
+>         if (cursor != null) {
+>             cursor.close();
+>             cursor = null;
+>         }
+>     }
+> }
+> EOF
+root@66decc2965ed:/workspace/textd#

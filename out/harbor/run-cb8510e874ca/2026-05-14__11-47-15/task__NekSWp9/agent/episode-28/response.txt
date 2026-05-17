@@ -1,0 +1,10 @@
+{
+  "analysis": "In `runSession`:\n```java\n        long loadedBefore = CLASS_LOADING.getLoadedClassCount();\n        long unloadedBefore = CLASS_LOADING.getUnloadedClassCount();\n```\nAnd then it returns:\n```java\n            return new Session(\n                ...\n                loadedBefore,\n                CLASS_LOADING.getLoadedClassCount(),\n                unloadedBefore,\n                CLASS_LOADING.getUnloadedClassCount()\n            );\n```\nWait, the `Session` constructor is:\n```java\n        private Session(\n            String first,\n            String last,\n            List<String> start,\n            List<String> end,\n            boolean sameWorkers,\n            boolean beforeClose,\n            boolean afterClose,\n            long loadedBeforeClose,\n            long loadedAfterClose,\n            long unloadedBeforeClose,\n            long unloadedAfterClose\n        )\n```\nSo `unloadedBefore` (captured at the start of the session) is passed as `unloadedBeforeClose`, and `CLASS_LOADING.getUnloadedClassCount()` (captured at the end) is passed as `unloadedAfterClose`.",
+  "plan": "Wait, if `unloaded-first=0` it means `CLASS_LOADING.getUnloadedClassCount()` at the end is the same as `unloadedBefore` at the start. This means NO classes were unloaded during the entire session. This is very strange if the 200-cycle stress test passed. Let me re-run the stress test with 200 cycles and check the output carefully.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 200\n",
+      "duration": 30.0
+    }
+  ]
+}

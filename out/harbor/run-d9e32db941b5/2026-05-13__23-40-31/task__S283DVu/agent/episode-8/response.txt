@@ -1,0 +1,10 @@
+{
+  "analysis": "In `ThreadCache.java`, the `cursorFor` method creates a new `WorkerHandle` when the frame changes, but it doesn't close the old `cursor`. This means the old `WorkerHandle` is never closed, and the `TimelineFrame` it holds is never unpinned. This explains why `pins` never reaches zero and `closeLoadedGeneration()` is never called.",
+  "plan": "I need to check `WorkerHandle.java` to see what its `close()` method does and how it interacts with `TimelineFrame`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    }
+  ]
+}

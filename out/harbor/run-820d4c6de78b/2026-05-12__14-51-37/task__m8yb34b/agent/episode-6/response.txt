@@ -1,0 +1,15 @@
+{
+  "analysis": "The leak is exactly where I suspected. \n\n1. `TimelineFrame` uses a reference counting system (`pins`). \n2. `WorkerHandle` calls `frame.pin()` in its constructor and `frame.unpin()` in its `close()` method.\n3. In `ThreadCache.cursorFor`:\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\nWhen `!cursor.matches(frame)` is true, a new `WorkerHandle` is created and assigned to `cursor`. The old `WorkerHandle` is **never closed**. Since it's not closed, `frame.unpin()` is never called for the old frame. \n\nSince `unpin()` is never called, the `pins` count never reaches zero (or rather, the count that would trigger `closeLoadedGeneration()`), so the `LoadedGeneration` (and its `URLClassLoader`) is never closed. This keeps the classes in Metaspace forever, leading to the `OutOfMemoryError`.",
+  "plan": "I need to fix `ThreadCache.cursorFor` to close the previous cursor before replacing it. This will call `unpin()` on the old `TimelineFrame`, allowing it to be garbage collected and its `ClassLoader` to be closed.\n\nRevised `ThreadCache.java`:\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close(); // ADDED THIS\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/if (!cursor.matches(frame)) {/if (!cursor.matches(frame)) {\\n            cursor.close();/' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

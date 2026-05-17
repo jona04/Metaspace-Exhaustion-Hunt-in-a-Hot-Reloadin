@@ -1,0 +1,18 @@
+{
+  "analysis": "The workers ARE dying! I see `WORKER THREAD EXITING` 8 times (4 for the first session, 4 for the second). \n\nSo `ThreadBridge.clear()` IS being called. \nSo all pins ARE being released. \nSo `isBalanced()` is returning `true`. \nSo `URLClassLoader.close()` IS being called. \n\nSo why is the class count not decreasing?? \n\nWait! I just had a thought. Is it possible that the `unloadedClassCount` only increases when a *full* GC happens, and `System.gc()` is not enough? \n\nOr wait! I found it! I found it! I found it! \nLook at the `LoadedGeneration.load` method again. \n\n```java\n    static LoadedGeneration load(Path pluginJar, long generation) throws Exception {\n        URLClassLoader classLoader = new URLClassLoader(new URL[] {pluginJar.toUri().toURL()}, PluginModuleFactory.class.getClassLoader());\n        Class<?> factoryType = classLoader.loadClass(FACTORY_CLASS);\n        PluginModuleFactory factory = (PluginModuleFactory) factoryType.getDeclaredConstructor().newInstance();\n        return new LoadedGeneration(generation, classLoader, factory.open());\n    }\n```\n\nWait! `PluginModuleFactory.class.getClassLoader()`! \nWhat if I use `null` as the parent ClassLoader instead? \nNo, that would mean it can't find `PluginModuleFactory` or other API classes. \n\nWait! I just noticed something. `PluginModuleFactory` is an interface. When we call `factory.open()`, it returns a `PluginModule`. Both these interfaces are in the AppClassLoader. \n\nIs it possible that the *AppClassLoader* is somehow keeping a reference to the classes it has loaded? No, that's not how it works.\n\nWait! I have an idea. Let's look at `TimelineFrame.java` again. \nI'm going to add some more logging to see when `closeLoadedGeneration()` is called.",
+  "plan": "I will modify `src/main/java/io/harbor/textd/core/TimelineFrame.java` to print when it's closed.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/loadedGeneration.close();/System.out.println(\"CLOSING GENERATION \" + revision()); loadedGeneration.close();/' src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/build\n",
+      "duration": 5.0
+    },
+    {
+      "keystrokes": "java -cp build/main-classes io.harbor.textd.cli.SessionReplayRunner build/plugins/customer-default.jar 4\n",
+      "duration": 5.0
+    }
+  ]
+}

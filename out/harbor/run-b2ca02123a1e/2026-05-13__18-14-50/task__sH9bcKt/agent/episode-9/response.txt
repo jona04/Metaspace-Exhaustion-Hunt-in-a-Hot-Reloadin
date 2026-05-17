@@ -1,0 +1,11 @@
+{
+  "analysis": "Yes, `LoadedGeneration.close()` closes the `URLClassLoader`. The leak is definitely in `ThreadCache.java` where the old `WorkerHandle` (and thus the pinned `TimelineFrame`) is not being closed when a new one is created.",
+  "plan": "Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the existing `cursor` if it exists and doesn't match the new frame.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    }
+  ]
+} classroom_id=0
+}

@@ -1,0 +1,18 @@
+{
+  "analysis": "The project structure is now clear. It's a Java project with a daemon (`TextDaemon.java`) and a plugin system. The core logic for handling generations (likely related to the 'processor generations' mentioned in the task) resides in `io.harbor.textd.core`. There are also CLI tools for stress and integration testing: `HotReloadStressRunner.java` and `HotReloadIntegrationRunner.java`. The issue is a lifecycle problem during refreshes, which likely involves `GenerationRegistry`, `LoadedGeneration`, or `GenerationLease`.",
+  "plan": "1. Examine `bin/run-suite` or `bin/stress` to see how the soak test is executed and what the failure looks like.\n2. Read `src/main/java/io/harbor/textd/core/GenerationRegistry.java` and `LoadedGeneration.java` to understand how processors are rotated.\n3. Run the stress/soak test to reproduce the failure.",
+  "commands": [
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat bin/run-suite\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/build && ./bin/stress\n",
+      "duration": 5.0
+    }
+  ]
+}

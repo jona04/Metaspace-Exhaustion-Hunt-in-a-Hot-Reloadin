@@ -1,0 +1,14 @@
+{
+  "analysis": "The stress test failed with `java.lang.OutOfMemoryError: Metaspace`. This confirms my suspicion that class loaders or classes are being leaked during processor swaps (hot reloading). The `Metaspace` is exhausted because the classes from previous plugin versions are not being unloaded.",
+  "plan": "1. Investigate how the plugin is loaded and swapped in `TextDaemon.java` and `HotReloadStressRunner.java`.\n2. Look for where the class loader is created and if it's being properly released.\n3. Check if there are any static references or thread locals that might be holding onto the class loader.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.1
+    }
+  ]
+}

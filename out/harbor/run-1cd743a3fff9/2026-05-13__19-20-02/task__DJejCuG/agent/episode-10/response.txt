@@ -1,0 +1,15 @@
+{
+  "analysis": "The stress test failed with `java.lang.OutOfMemoryError: Metaspace`, confirming the leak. As analyzed earlier, the `ThreadCache` is not closing the old `WorkerHandle` when it creates a new one, which keeps the old `TimelineFrame` pinned and prevents the `LoadedGeneration` (and its `ClassLoader`) from being closed.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the existing `cursor` if it exists and doesn't match the current frame.\n2. Re-run the stress test to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

@@ -1,0 +1,15 @@
+{
+  "analysis": "The project structure reveals a Java-based daemon (`TextDaemon.java`) with a hot-reloading mechanism (`core` package with `GenerationRegistry`, `LoadedGeneration`, etc.). There are also stress and integration runners in `bin/` and `src/main/java/io/harbor/textd/cli/`. The task mentions a 'soak' failure during repeated refreshes. The `HotReloadStressRunner.java` and `bin/stress` seem like the most relevant entry points for reproducing the issue.",
+  "plan": "1. Examine `bin/stress` to see how the soak test is executed.\n2. Examine `src/main/java/io/harbor/textd/core/GenerationRegistry.java` and `LoadedGeneration.java` to understand how the lifecycle of processor generations is managed, as the issue is likely related to resource leaks or improper cleanup during refreshes.\n3. Run the stress test to confirm the failure.",
+  "commands": [
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/GenerationRegistry.java\n",
+      "duration": 0.2
+    }
+  ],
+  "task_complete": false
+}

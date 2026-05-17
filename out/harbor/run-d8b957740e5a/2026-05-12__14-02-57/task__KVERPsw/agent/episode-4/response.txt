@@ -1,0 +1,15 @@
+{
+  "analysis": "Here's the problem:\n1. `ThreadBridge` uses a `ThreadLocal<ThreadCache>`. \n2. `ThreadCache` holds a `WorkerHandle cursor`.\n3. `WorkerHandle` (likely) holds a reference to a `TimelineFrame`, which holds a `LoadedGeneration`, which holds a `URLClassLoader`.\n4. When `TimelineLedger.install` is called, a new generation is created. Old generations are added to `shadow` and marked for cooling.\n5. `TimelineLedger.pruneShadow()` removes frames that are 'drained'.\n6. `ThreadCache.cursorFor` updates `cursor` when the frame changes: `if (!cursor.matches(frame)) { cursor = new WorkerHandle(frame); }`.\n\nHowever, even if `cursor` is replaced in `ThreadCache`, the old `WorkerHandle` (and its associated ClassLoader) remains until the next time that specific worker thread calls `cursorFor`. \n\nWait, there's a bigger issue: `TimelineFrame` seems to track usage. Let's look at `TimelineFrame.java` and `WorkerHandle.java`.",
+  "plan": "1. Examine `TimelineFrame.java` and `WorkerHandle.java` to see how they handle lifecycle and 'draining'.\n2. Check `ProcessingResult.java` if it holds any references.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

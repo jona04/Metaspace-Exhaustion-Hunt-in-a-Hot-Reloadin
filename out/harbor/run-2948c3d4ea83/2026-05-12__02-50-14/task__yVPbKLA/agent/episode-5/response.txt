@@ -1,0 +1,15 @@
+{
+  "analysis": "Exactly as suspected. `DispatchBinding` retains the lease in the constructor and releases it in `close()`. \n\nIn `WorkerBindings.current()`:\n```java\n        if (!binding.matches(activeLease)) {\n            DispatchBinding replacement = new DispatchBinding(activeLease);\n            ACTIVE.set(replacement);\n            return replacement;\n        }\n```\nWhen the generation changes, the old `binding` is replaced in the `ThreadLocal`, but `binding.close()` is never called. This means the old lease's reference count never reaches zero, so the `LoadedGeneration` (and its `URLClassLoader`) is never closed. This leads to a Metaspace leak, which eventually crashes the JVM given the 64MB limit.\n\nAlso, `TextDaemon.processRecord` doesn't call `WorkerBindings.releaseCurrent()` at the end of a request, but since it's using a fixed thread pool and `WorkerBindings` handles replacement, it *could* have worked if replacement closed the old binding. However, it's better to clean up if we want to be thorough, but the immediate bug is the leak during replacement.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/WorkerBindings.java` to call `binding.close()` when replacing a binding.\n2. Also check if `releaseCurrent()` should be called in `TextDaemon`, but the task description says \"keep returning the same deterministic text-processing results across processor generations and across the already-running workers that continue serving requests\". Keeping the binding in `ThreadLocal` is an optimization, but it must be closed when it becomes stale.\n3. Run the stress test to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/if (!binding.matches(activeLease)) {/if (!binding.matches(activeLease)) {\\n            binding.close();/' src/main/java/io/harbor/textd/core/WorkerBindings.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerBindings.java\n",
+      "duration": 0.2
+    }
+  ],
+  "task_complete": false
+}

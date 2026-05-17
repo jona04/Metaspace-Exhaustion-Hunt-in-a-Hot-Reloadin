@@ -1,0 +1,15 @@
+{
+  "analysis": "The stress test failed with `java.lang.OutOfMemoryError: Metaspace`. This confirms a leak of classes/ClassLoaders.\n\nLooking at `ThreadCache.java`:\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\nWhen `cursor.matches(frame)` is false (i.e., a new generation has been loaded), a new `WorkerHandle` is created and assigned to `cursor`. However, the old `cursor` is not closed! `WorkerHandle` likely holds a reference to the plugin's ClassLoader or instances that prevent the ClassLoader from being GC'd.\n\nI should also check `WorkerHandle.java` and `TimelineFrame.java` to see what they hold and what `close()` does.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java` and `src/main/java/io/harbor/textd/core/TimelineFrame.java`.\n2. Verify if `WorkerHandle` has a `close()` method that should be called when it's replaced in `ThreadCache`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

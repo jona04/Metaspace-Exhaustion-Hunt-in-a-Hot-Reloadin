@@ -1,0 +1,10 @@
+{
+  "analysis": "The `TimelineFrame` uses a reference counting mechanism (`pins`). When `remaining == 0 && cooled.get()`, it calls `closeLoadedGeneration()`, which closes the `LoadedGeneration`. `LoadedGeneration` likely holds the `ClassLoader`. \n\nIn `ThreadCache.java`, when a new `WorkerHandle` is created because the revision changed, the old `WorkerHandle` is leaked, so its `frame.unpin()` is never called. This keeps the `pins` count above zero, preventing the old `TimelineFrame` from being closed and the Metaspace from being reclaimed.\n\nAlso, `ThreadBridge` uses a `ThreadLocal<ThreadCache>`, but `TextDaemon` uses a `FixedThreadPool`. The threads in the pool will stay alive, and their `ThreadLocal` values will persist unless explicitly cleared. `TextDaemon` doesn't seem to call `ThreadBridge.clear()`.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before replacing it.\n2. Check `LoadedGeneration.java` to confirm it closes the ClassLoader.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.1
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "analysis": "The `HotReloadStressRunner` creates a `TextDaemon` and performs many reloads. In each reload, it processes some records. Since it uses a fixed thread pool of 4 workers, each worker will eventually hold a `WorkerHandle` for a generation in its `ThreadLocal` `ThreadCache`. When a new generation is reloaded, the next time a worker processes a record, it will call `cursorFor`, notice the generation mismatch, and (with my fix) close the old `WorkerHandle` before creating a new one.\n\nHowever, I noticed that `isBalanced()` is mentioned in the task description (\"Old plugin generations must be fully reclaimed by the runtime once sessions close\"). `isBalanced()` checks if the `shadow` queue in `TimelineLedger` is empty.\n\nIn `TimelineLedger.install()`:\n```java\n    void install(long revision) throws Exception {\n        TimelineFrame next = new TimelineFrame(LoadedGeneration.load(pluginJar, revision));\n        TimelineFrame previous = current.getAndSet(next);\n        if (previous != null) {\n            shadow.add(previous);\n            previous.cool();\n            pruneShadow();\n        }\n    }\n```\n`pruneShadow()` calls `shadow.removeIf(TimelineFrame::isDrained)`, and `isDrained()` returns `closed.get()`. `closed` is set when `pins` reaches 0.\n\nWith my fix, `pins` should reach 0 when all workers have moved to a newer generation or when the daemon is closed. \n\nLet's try running the stress test to see if it passes now.",
+  "plan": "I will run the stress test using `bin/stress`.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 100\n",
+      "duration": 5.0
+    }
+  ]
+}

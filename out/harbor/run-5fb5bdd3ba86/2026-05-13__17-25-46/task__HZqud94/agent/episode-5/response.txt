@@ -1,0 +1,14 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with a 64MB limit on Metaspace (`-XX:MaxMetaspaceSize=64m`). This is a very strong hint. Metaspace is where Java stores class metadata. If the application is performing 'repeated processor swaps' (likely reloading plugins/classes), and the old classes are not being unloaded, Metaspace will eventually fill up and cause an OutOfMemoryError. The 'constrained CI profile' makes this happen faster.",
+  "plan": "I will examine `HotReloadStressRunner.java` and `TextDaemon.java` to see how they load and unload plugins. I'm looking for classloader leaks. Specifically, I want to see if each swap creates a new ClassLoader and if the old ones are being properly discarded and garbage collected.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.5
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "analysis": "The logic in `TimelineFrame` confirms that `closeLoadedGeneration()` is only called when `pins` reaches 0 and `cooled` is true. `TimelineLedger.install` calls `cool()` on the previous frame. `cool()` decrements the pin count (which starts at 1). So if no one else has pinned the frame, `pins` becomes 0 and it closes.\n\nHowever, `WorkerHandle` calls `frame.pin()` in its constructor and `frame.unpin()` in its `close()` method. In `ThreadCache.cursorFor`, when a new `WorkerHandle` is created because the generation changed, the old `WorkerHandle` is never closed. This means `unpin()` is never called for that handle, the pin count stays above 0, and the `TimelineFrame` (and its ClassLoader) is never closed. This is the Metaspace leak.",
+  "plan": "I will fix `ThreadCache.java` to close the old `cursor` before creating a new one.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/cursor.close(); cursor = new WorkerHandle(frame);/' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    }
+  ]
+}

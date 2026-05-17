@@ -1,0 +1,106 @@
+New Terminal Output:
+
+root@4b17642b2f73:/workspace/textd# cat src/main/java/io/harbor/textd/core/GenerationLease.java
+package io.harbor.textd.core;
+
+import io.harbor.textd.api.PluginModule;
+
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+
+final class GenerationLease {
+    private final LoadedGeneration loadedGeneration;
+    private final AtomicInteger references = new AtomicInteger(1);
+    private final AtomicBoolean retired = new AtomicBoolean(false);
+    private final AtomicBoolean closed = new AtomicBoolean(false);
+
+    GenerationLease(LoadedGeneration loadedGeneration) {
+        this.loadedGeneration = loadedGeneration;
+    }
+
+    GenerationLease retain() {
+        while (true) {
+            int current = references.get();
+            if (current == 0) {
+                throw new IllegalStateException("Generation " + generation() + " is already closed");
+            }
+            if (references.compareAndSet(current, current + 1)) {
+                return this;
+            }
+        }
+    }
+
+    long generation() {
+        return loadedGeneration.generation();
+    }
+
+    PluginModule module() {
+        return loadedGeneration.module();
+    }
+
+    void retire() {
+        if (retired.compareAndSet(false, true)) {
+            release();
+        }
+    }
+
+    void release() {
+        int remaining = references.decrementAndGet();
+        if (remaining < 0) {
+            throw new IllegalStateException("Reference count underflow for generation " + generation());
+        }
+        if (remaining == 0 && retired.get()) {
+            closeLoadedGeneration();
+        }
+    }
+
+    boolean isClosed() {
+        return closed.get();
+    }
+
+    private void closeLoadedGeneration() {
+        if (closed.compareAndSet(false, true)) {
+            try {
+                loadedGeneration.close();
+            } catch (Exception exception) {
+                throw new IllegalStateException("Unable to close generation " + generation(), exception);
+            }
+        }
+    }
+}
+root@4b17642b2f73:/workspace/textd# cat src/main/java/io/harbor/textd/core/WorkerBindings.java
+package io.harbor.textd.core;
+
+final class WorkerBindings {
+    private static final ThreadLocal<DispatchBinding> ACTIVE = new ThreadLocal<>();
+
+    private WorkerBindings() {
+    }
+
+    static DispatchBinding current(GenerationRegistry registry) {
+        GenerationLease activeLease = registry.active();
+        DispatchBinding binding = ACTIVE.get();
+        if (binding == null) {
+            DispatchBinding created = new DispatchBinding(activeLease);
+            ACTIVE.set(created);
+            return created;
+        }
+
+        if (!binding.matches(activeLease)) {
+            DispatchBinding replacement = new DispatchBinding(activeLease);
+            ACTIVE.set(replacement);
+            return replacement;
+        }
+
+        return binding;
+    }
+
+    static void releaseCurrent() {
+        DispatchBinding binding = ACTIVE.get();
+        if (binding != null) {
+            binding.close();
+            ACTIVE.remove();
+        }
+    }
+}
+root@4b17642b2f73:/workspace/textd#

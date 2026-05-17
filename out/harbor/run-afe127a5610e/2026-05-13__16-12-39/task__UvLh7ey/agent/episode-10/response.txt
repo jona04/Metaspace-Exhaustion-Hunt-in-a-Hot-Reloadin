@@ -1,0 +1,14 @@
+{
+  "analysis": "I've identified the leak! \n\nIn `ThreadCache.java`:\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\nWhen the `cursor` (a `WorkerHandle`) no longer matches the current `frame`, a new `WorkerHandle` is created and assigned to `cursor`, but the old `cursor` is never closed. \n\n`WorkerHandle`'s constructor calls `frame.pin()`:\n```java\n    WorkerHandle(TimelineFrame frame) {\n        this.frame = frame.pin();\n        // ...\n    }\n```\nAnd `WorkerHandle.close()` calls `frame.unpin()`:\n```java\n    @Override\n    public void close() {\n        frame.unpin();\n    }\n```\n\nIn `TimelineFrame.java`, a frame is only closed (and its `ClassLoader` released) when its pin count reaches zero AND it has been 'cooled' (added to the shadow queue in `TimelineLedger`). \n\nBecause `ThreadCache` replaces the `cursor` without closing the old one, the old `WorkerHandle` never calls `unpin()`, so the pin count of the old `TimelineFrame` never reaches zero, and the `ClassLoader` is never closed. This causes the Metaspace OOM.\n\nTo fix this, `ThreadCache.cursorFor` should close the old `cursor` before replacing it.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before creating a new one.\n2. Rebuild and run the stress test to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 20.0
+    }
+  ]
+}

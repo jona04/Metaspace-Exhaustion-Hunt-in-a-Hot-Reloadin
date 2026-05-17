@@ -1,0 +1,14 @@
+{
+  "analysis": "Wait! I see it! The `LoadedGeneration` class has a `module` field, and `module` is an instance of a class loaded by `classLoader`. If `module` is kept alive, the `classLoader` is kept alive. In `TextDaemon`, `ThreadBridge.current(revisions)` returns a `WorkerHandle` which holds a `TextProcessor` from the module. My fix ensured `WorkerHandle` is closed, which should release the reference to the processor. But wait, `LoadedGeneration.load` does this:\n```java\n        PluginModuleFactory factory = (PluginModuleFactory) factoryType.getDeclaredConstructor().newInstance();\n        return new LoadedGeneration(generation, classLoader, factory.open());\n```\nThe `factory` is an instance of `CustomerPluginFactory` loaded by `classLoader`. The `factory.open()` returns a `PluginModule`. Does the `factory` itself stay alive? It's a local variable in the `load` method, so it should be eligible for GC once the method returns. However, the `module` it returns might have a reference back to the factory or the class loader.",
+  "plan": "Let's check the plugin source code to see what `factory.open()` does.",
+  "commands": [
+    {
+      "keystrokes": "cat plugin-src/io/harbor/textd/customer/CustomerPluginFactory.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat plugin-src/io/harbor/textd/customer/CustomerPluginModule.java\n",
+      "duration": 0.1
+    }
+  ]
+}

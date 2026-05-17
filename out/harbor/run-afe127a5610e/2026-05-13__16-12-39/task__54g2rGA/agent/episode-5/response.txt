@@ -1,0 +1,19 @@
+{
+  "analysis": "In `TextDaemon.java`, `processRecord` calls `ThreadBridge.current(revisions)`. \nIn `ThreadCache.java`, it maintains a `cursor` of type `WorkerHandle`. When `cursorFor(TimelineLedger ledger)` is called, if the current frame doesn't match the cursor's frame, it creates a new `WorkerHandle` and replaces the old one: `cursor = new WorkerHandle(frame);`.\n\nWait, I don't see any explicit closing of the *old* `cursor` when it's replaced in `cursorFor`. \n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\nIf `WorkerHandle` or the objects it holds (like the `ClassLoader` for the plugin) need explicit cleanup, this could be a leak. However, `ThreadCache` itself implements `AutoCloseable`, but where is it stored? Likely in a `ThreadLocal` in `ThreadBridge`.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/ThreadBridge.java` to see how `ThreadCache` is managed.\n2. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java` to see what it contains and if it needs closing.\n3. Examine `src/main/java/io/harbor/textd/core/TimelineLedger.java` and `TimelineFrame.java` to understand how generations and ClassLoaders are managed.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

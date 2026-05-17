@@ -1,0 +1,10 @@
+{
+  "analysis": "`replay-check` failed because `unloaded-first=0` and `unloaded-second=0`. This means classes are not being unloaded even after `daemon.close()` and `System.gc()`. This is likely because the worker threads have been shut down but the `ThreadLocal` in `ThreadBridge` might still be holding onto the `ThreadCache` objects if the threads haven't been fully collected, or more likely, because the `ThreadCache` objects were never closed, and they don't have a way to close themselves when the thread dies.",
+  "plan": "Wait, if the threads are dead, they should be collected, and the `ThreadLocal` map entries for those threads should be removed. But the `ThreadLocal` itself is a static field in `ThreadBridge`. If the worker threads are still alive or held by the executor, that could be an issue. But `workers.shutdownNow()` and `awaitTermination` are called. Let's look at `TimelineLedger.isBalanced()`. It returns `shadow.isEmpty()` after calling `pruneShadow()`. `pruneShadow()` removes frames where `isDrained()` is true. `isDrained()` is true when `closed` is true. `closed` is set to true in `closeLoadedGeneration()`, which is called when `pins` reaches 0 AND `cooled` is true.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    }
+  ]
+}

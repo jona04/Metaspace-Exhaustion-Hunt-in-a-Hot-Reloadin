@@ -1,0 +1,19 @@
+{
+  "analysis": "I found a potential issue. `ThreadBridge` uses a `ThreadLocal<ThreadCache>`. \nWhen a plugin is reloaded, `TimelineLedger.install` creates a new `TimelineFrame` and adds the old one to a `shadow` queue. It calls `previous.cool()` and `pruneShadow()`. `pruneShadow()` removes frames that are 'drained'.\n\nHowever, `ThreadCache` in each worker thread holds a reference to a `WorkerHandle`, which in turn likely holds a reference to the `TimelineFrame` (and thus the classloader). \n\nThe `ThreadBridge.ROUTES.get().cursorFor(ledger)` call in `TextDaemon.processRecord` updates the `cursor` in `ThreadCache` when the frame changes. \n\nLet's look at `TimelineFrame.java` and `WorkerHandle.java` to see how `isDrained` is implemented and how they hold onto resources.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/TimelineFrame.java`.\n2. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java`.\n3. Examine `src/main/java/io/harbor/textd/core/LoadedGeneration.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

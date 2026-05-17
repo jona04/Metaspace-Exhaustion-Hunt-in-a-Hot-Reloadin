@@ -1,0 +1,15 @@
+{
+  "analysis": "The `TextDaemon.java` looks mostly fine, but I notice that it uses a fixed thread pool for workers, and `processRecord` calls `WorkerBindings.current(generations)`. \n\nOne thing to note: `WorkerBindings` uses a `ThreadLocal`. If a worker thread is used for multiple requests, it will keep its `DispatchBinding` until the generation changes. When the generation changes, the *next* request handled by that worker thread will trigger the cleanup of the old binding (with my fix).\n\nHowever, if the daemon is closed, we should probably clean up the `ThreadLocal` in all workers. The `TextDaemon.close()` calls `workers.shutdownNow()`, which should interrupt the threads. Since the threads are daemon threads and the pool is shut down, they should eventually be GC'd along with their `ThreadLocal` maps. \n\nWait, I see a potential issue: `WorkerBindings.releaseCurrent()` is provided but never called. In a real-world scenario, you might want to call it when a worker is being decommissioned or when the daemon is shutting down. But since these are worker threads in a pool that is shut down at the end, it's probably okay.\n\nMore importantly, the stress test is now passing. The 100 cycles test succeeded. \n\nLet's check if there are any other potential leaks. What if a worker thread never receives another request after a generation reload? Its `ThreadLocal` will still hold the `DispatchBinding` of the *previous* generation. \n\nIn `GenerationRegistry.java`, `sweepRetired()` only removes leases that are *already* closed. \n```java\n    private void sweepRetired() {\n        retired.removeIf(GenerationLease::isClosed);\n    }\n```\nIf a worker thread is idle and holds a reference, `isClosed()` will be false, and the lease will stay in the `retired` queue forever (or until that worker thread either processes another request or dies).\n\nIn the `HotReloadStressRunner`, it processes requests after every reload, so all worker threads (there are 2) should eventually hit the `WorkerBindings.current()` call and release their old bindings.\n\nLet's verify the `pendingRetirements()` in the stress test or via a new test to see if they actually go down to 0.",
+  "plan": "1. Create a small test script to verify that `pendingRetirements` goes to 0 after all workers have processed at least one request in the new generation.\n2. Actually, I can just modify `HotReloadStressRunner.java` to print `pendingRetirements` periodically.",
+  "commands": [
+    {
+      "keystrokes": "sed -i '/daemon.reload(generation);/a \\                if (generation % 10 == 0) System.out.println(\"Generation \" + generation + \", Pending retirements: \" + daemon.pendingRetirements());' src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "./bin/stress 50\n",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}

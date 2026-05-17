@@ -1,0 +1,10 @@
+{
+  "analysis": "The `SessionReplayRunner` checks if classes were unloaded after `daemon.close()`. The `replay-fail unloaded-first=0 unloaded-second=0` result means `unloaded_after_close` was not greater than `unloaded_before_close`. This indicates that even after closing the daemon, the plugin classes are still not being garbage collected. I've fixed the `ThreadCache` leak, which should have allowed old generations to be reclaimed during the run. However, the `SessionReplayRunner` is specifically looking for unloading *after* the entire daemon is closed.",
+  "plan": "1. Check if the worker threads are still holding onto any `ThreadLocal` variables. In `TextDaemon.java`, a `WorkerThreadFactory` is used, and the threads are daemon threads. When `workers.shutdownNow()` is called, the threads should eventually terminate, but they might not have terminated yet when `drainGc()` is called.\n2. In `ThreadBridge.java`, there's a `ThreadLocal<ThreadCache> ROUTES`. This `ThreadLocal` is static and holds a `ThreadCache`, which in turn holds a `WorkerHandle`, which pins a `TimelineFrame`. Even if the thread is terminated, if the thread object is still reachable, the `ThreadLocal` map might still hold references.\n3. Wait, `TextDaemon.close()` calls `workers.shutdownNow()` and `workers.awaitTermination()`. This should stop the threads. But the `ThreadLocal` is static in `ThreadBridge`. Each worker thread has its own `ThreadCache` in its `ThreadLocalMap`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    }
+  ]
+}

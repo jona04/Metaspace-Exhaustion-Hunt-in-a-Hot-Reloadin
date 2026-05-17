@@ -1,0 +1,10 @@
+{
+  "analysis": "I've identified a few issues:\n1. In `ThreadCache.java`, when `cursor` is replaced because it doesn't match the new frame, the old `cursor` is not closed. `cursor.close()` calls `frame.unpin()`. If `unpin()` is not called, the pin count stays above zero, and `closeLoadedGeneration()` is never called, so the `URLClassLoader` is never closed.\n2. `LoadedGeneration` has a static `LIVE` map, but it never seems to remove anything from it. This is definitely a leak, although it might just be a leak of `LoadedGeneration` objects, not necessarily the ClassLoaders if they are closed. Wait, if `LIVE` keeps a reference to `LoadedGeneration`, and `LoadedGeneration` keeps a reference to `URLClassLoader`, then the ClassLoader will never be GC'd even if it's closed, as long as the `LoadedGeneration` is in the map.\n\nLet's look at `ThreadCache.java` again.",
+  "plan": "I will fix `ThreadCache.java` to close the old cursor when replacing it. I will also check if `LoadedGeneration.LIVE` map is used for anything and if it should be cleaned up.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ]
+}

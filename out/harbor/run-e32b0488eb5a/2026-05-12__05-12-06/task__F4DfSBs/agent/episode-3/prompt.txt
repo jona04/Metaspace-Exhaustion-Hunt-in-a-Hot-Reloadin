@@ -1,0 +1,32 @@
+Previous response had warnings:
+WARNINGS: - Command 1 should end with newline when followed by another command. Otherwise the two commands will be concatenated together on the same line.
+
+New Terminal Output:
+
+root@52e14d386795:/workspace/textd# ./bin/stress
+Exception in thread "main" java.lang.OutOfMemoryError: Metaspace
+        at io.harbor.textd.customer.PipelineStages.<clinit>(PipelineStages.java:10)
+        at io.harbor.textd.customer.PipelineProcessor.process(PipelineProcessor.java:22)
+        at io.harbor.textd.core.WorkerHandle.process(WorkerHandle.java:21)
+        at io.harbor.textd.core.TextDaemon.processRecord(TextDaemon.java:80)
+        at io.harbor.textd.core.TextDaemon.lambda$processBatch$0(TextDaemon.java:43)
+        at io.harbor.textd.core.TextDaemon$$Lambda$1/0x00007cb371001c58.call(Unknown Source)
+        at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+        at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
+        at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+        at java.base/java.lang.Thread.run(Thread.java:840)
+root@52e14d386795:/workspace/textd# cat bin/stress
+#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+if [[ "${TEXTD_SKIP_BUILD:-0}" != "1" ]]; then
+  "$ROOT_DIR/bin/build"
+fi
+
+java -XX:MaxMetaspaceSize=64m -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.HotReloadStressRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" \
+  "${1:-500}"
+root@52e14d386795:/workspace/textd#

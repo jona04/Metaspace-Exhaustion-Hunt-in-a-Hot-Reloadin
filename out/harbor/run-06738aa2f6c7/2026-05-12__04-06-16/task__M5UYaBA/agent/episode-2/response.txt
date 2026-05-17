@@ -1,0 +1,14 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with `-XX:MaxMetaspaceSize=64m`. This is a very tight constraint for Metaspace, suggesting the issue is likely a Metaspace leak caused by repeated class loading during hot reloads. \n\nIn Java, Metaspace leaks often occur when a `ClassLoader` (and the classes it loaded) cannot be garbage collected because of references from long-lived objects or threads. \n\nLooking at `HotReloadStressRunner.java`, it calls `daemon.reload(generation)` in a loop. I need to investigate `TextDaemon.java` and how it handles reloading.",
+  "plan": "1. Run the stress test to confirm the failure.\n2. Examine `TextDaemon.java` to see how it loads plugins and handles reloads.\n3. Examine `ThreadCache.java`, `ThreadBridge.java`, and `WorkerHandle.java` to see if they hold onto references that prevent class loader GC.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 50\n",
+      "duration": 5.0
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.5
+    }
+  ]
+}

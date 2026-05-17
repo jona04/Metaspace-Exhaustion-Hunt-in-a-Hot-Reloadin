@@ -1,0 +1,15 @@
+{
+  "analysis": "The stress test passed for 50 cycles (`stress-ok cycles=50`). The task says the soak fails under constrained CI runtime. Let's look at the `WorkerBindings.java` and `DispatchBinding.java`.\n\nIn `WorkerBindings.current()`:\n```java\n        if (!binding.matches(activeLease)) {\n            DispatchBinding replacement = new DispatchBinding(activeLease);\n            ACTIVE.set(replacement);\n            return replacement;\n        }\n```\nWhen a `DispatchBinding` is replaced because the generation has changed, the old `binding` is NOT closed. It's just replaced in the `ThreadLocal`. This means the `GenerationLease` held by the old `DispatchBinding` is never released, leading to a leak of generations and their ClassLoaders, eventually filling up Metaspace.",
+  "plan": "1. Verify `DispatchBinding.java` content.\n2. If it holds a `GenerationLease` and has a `close()` method, I should call it when replacing the binding in `WorkerBindings.java`.\n3. Run the stress test with a larger number of cycles (e.g., 500) to see if it fails as expected.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/DispatchBinding.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

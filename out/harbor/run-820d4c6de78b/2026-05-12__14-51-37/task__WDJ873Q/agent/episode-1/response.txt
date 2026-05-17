@@ -1,0 +1,14 @@
+{
+  "analysis": "The project is a Java-based text processing daemon. \n- `src/main/java/io/harbor/textd/core/TextDaemon.java` likely contains the main logic.\n- `bin/stress` and `bin/run-suite` seem relevant to the 'long refresh run' and 'full validation' mentioned in the task.\n- The task mentions 'repeated processor swaps' and the CLI includes `HotReloadStressRunner.java`, suggesting that the issue might be related to dynamic loading/unloading of plugins or 'generations' of code.\n- The directory structure shows `plugin-src` which likely contains the processors being swapped.",
+  "plan": "1. Examine `bin/stress` to see how the stress test is executed.\n2. Run the stress test to observe the failure.\n3. Examine `TextDaemon.java` and `ThreadCache.java` as they are often sources of leaks in long-running services.",
+  "commands": [
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 5.0
+    }
+  ]
+}

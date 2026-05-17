@@ -1,0 +1,22 @@
+{
+  "analysis": "The stress test with 100 cycles passed. The task mentioned that it fails during a \"long refresh run\". Let's try a larger number of cycles, say 1000, to see if it eventually fails with OutOfMemoryError in Metaspace.\n\nLooking at `TextDaemon.java`:\n- It uses `TimelineLedger` to manage revisions.\n- It uses a fixed thread pool for workers.\n- `processRecord` calls `ThreadBridge.current(revisions)` to get a `WorkerHandle`.\n\nLet's look at `TimelineLedger.java`, `ThreadBridge.java`, and `LoadedGeneration.java` to see how generations are managed.",
+  "plan": "1. Run the stress test with 1000 cycles to reproduce the failure.\n2. Read `TimelineLedger.java`, `ThreadBridge.java`, and `LoadedGeneration.java`.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 1000\n",
+      "duration": 30.0
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.5
+    }
+  ]
+}

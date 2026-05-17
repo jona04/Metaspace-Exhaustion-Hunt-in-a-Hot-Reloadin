@@ -1,0 +1,15 @@
+{
+  "analysis": "The analysis is confirmed. `TimelineFrame` uses a reference counting mechanism (pins). When a `TimelineFrame` is created, it starts with 1 pin. When it's 'cooled' (replaced by a newer version), it's unpinned once. Each `WorkerHandle` also pins it. When a `WorkerHandle` is closed, it unpins it. When the pin count reaches 0 and it has been cooled, the `LoadedGeneration` is closed, which closes the `URLClassLoader`. \n\nIn `ThreadCache.cursorFor`, when a new `WorkerHandle` is created because the revision changed, the old `WorkerHandle` is not closed. This means its pin on the old `TimelineFrame` is never released. Thus, the old classloader is never closed and remains in Metaspace.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before creating a new one.\n2. Rebuild the project.\n3. Run the stress test again to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

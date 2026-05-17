@@ -1,0 +1,10 @@
+{
+  "analysis": "I've identified the bug. In `ThreadCache.java`, when a new `WorkerHandle` is created because the generation changed, the old `WorkerHandle` is not closed. \n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame); // Old cursor is leaked here!\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n\nEach `WorkerHandle` pins the `TimelineFrame`. If the old `WorkerHandle` is not closed, the `pins` count of the `TimelineFrame` will never reach zero, and thus the old generation will never be closed/reclaimed, even after `cool()` is called on it.\n\nTo fix this, I should close the old `cursor` before replacing it.",
+  "plan": "I will modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the existing `cursor` if it doesn't match the current frame.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/cursor.close(); cursor = new WorkerHandle(frame);/' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    }
+  ]
+}

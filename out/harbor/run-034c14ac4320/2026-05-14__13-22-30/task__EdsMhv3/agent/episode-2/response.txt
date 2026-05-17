@@ -1,0 +1,18 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with a `MaxMetaspaceSize=64m`. This is quite small, and if old plugin generations are not being reclaimed, the Metaspace will eventually fill up, leading to `OutOfMemoryError: Metaspace`. `LoadedGeneration.close()` calls `classLoader.close()`, which should allow the classes to be garbage collected, but only if there are no remaining references to those classes or the class loader. `TextDaemon` uses `TimelineLedger` to manage revisions and `ThreadBridge` to bind workers to a generation.",
+  "plan": "I need to examine `TimelineLedger.java`, `ThreadBridge.java`, and `ThreadCache.java` to see how generations are managed and if there are any leaks (e.g., thread-local variables not being cleared).",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    }
+  ]
+}

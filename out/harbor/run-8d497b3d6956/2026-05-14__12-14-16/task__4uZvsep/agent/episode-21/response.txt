@@ -1,0 +1,10 @@
+{
+  "analysis": "I will modify the `close()` method in `TextDaemon.java` to clear the `ThreadBridge` in each worker thread before shutting them down. Since there are `workerCount` threads in a fixed thread pool, I can submit `workerCount` tasks that each call `ThreadBridge.clear()`.",
+  "plan": "I will modify `src/main/java/io/harbor/textd/core/TextDaemon.java` to clear the thread local storage on all worker threads during shutdown.",
+  "commands": [
+    {
+      "keystrokes": "sed -i '/revisions.close();/i \\        List<Future<?>> cleanups = new ArrayList<>();\\n        for (int i = 0; i < workerCount; i++) {\\n            cleanups.add(workers.submit(ThreadBridge::clear));\\n        }\\n        for (Future<?> cleanup : cleanups) {\\n            try {\\n                cleanup.get(1, TimeUnit.SECONDS);\\n            } catch (Exception ignored) {\\n            }\\n        }' src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.1
+    }
+  ]
+}

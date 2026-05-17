@@ -1,0 +1,10 @@
+{
+  "analysis": "The `bin/stress` script runs `io.harbor.textd.cli.HotReloadStressRunner` with a strict memory constraint: `-XX:MaxMetaspaceSize=64m`. This is likely the cause of the failure during 'repeated in-place processor swaps', as each swap might be loading new classes or failing to unload old ones, eventually exhausting the Metaspace. The task mentions the 'constrained CI profile does not make it through the full refresh sequence'.",
+  "plan": "1. Run the stress test to confirm it fails with an OutOfMemoryError in Metaspace.\n2. Analyze `HotReloadStressRunner.java` and `TextDaemon.java` to see how class loading and plugin swapping are implemented.\n3. Look for leaks in class loading or missing cleanup during swaps.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 200\n",
+      "duration": 10.0
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+# Task Idea
+A Java daemon that hot-reloads text-processing plugins experiences an eventual Metaspace OutOfMemoryError after multiple reloads. The root cause is a rogue ThreadLocal variable in a worker pool holding a reference to a plugin-loaded class, which prevents the custom ClassLoader (and all its loaded class metadata) from being garbage-collected. The agent must analyze the memory leak and implement the correct ThreadLocal cleanup logic during plugin teardown.
+
+# Verifier Sketch
+• Run a stress-test script that triggers 500 hot-reload cycles of the plugin under a strict JVM Metaspace limit (-XX:MaxMetaspaceSize=64m).
+• Assert the daemon completes all 500 cycles successfully without throwing java.lang.OutOfMemoryError.
+• Run integration tests to ensure plugin outputs are still correctly processed across thread pool re-use.

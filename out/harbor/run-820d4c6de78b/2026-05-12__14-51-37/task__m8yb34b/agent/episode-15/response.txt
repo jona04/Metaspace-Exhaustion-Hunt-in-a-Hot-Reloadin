@@ -1,0 +1,6 @@
+{
+  "analysis": "The `textd` service was failing with a `java.lang.OutOfMemoryError: Metaspace` during long runs involving repeated processor swaps. Investigation revealed that `ThreadCache` was failing to close the previous `WorkerHandle` when a new plugin generation was loaded. This caused the reference count (pins) on the old `TimelineFrame` to never reach zero, preventing the associated `URLClassLoader` from being closed and garbage collected. By adding `cursor.close()` in `ThreadCache.cursorFor` before creating a new `WorkerHandle`, the resources are properly released. Verified the fix with both the `stress` test and the full `run-suite`.",
+  "plan": "The task is complete. No further actions are needed.",
+  "commands": [],
+  "task_complete": true
+}

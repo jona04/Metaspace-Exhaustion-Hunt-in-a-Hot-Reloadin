@@ -1,0 +1,6 @@
+{
+  "analysis": "The `textd` service was failing during long refresh runs due to a Metaspace leak. Every time the daemon reloaded its plugin (processor swap), a new `URLClassLoader` was created. However, the old `WorkerHandle` (and its reference to the previous `TimelineFrame`) was being replaced in `ThreadCache` without being closed. This kept the pin count on old `TimelineFrame` instances above zero, preventing the associated `URLClassLoader` from being closed and garbage collected. By adding a `cursor.close()` call in `ThreadCache.cursorFor` before replacing the cursor, the resources are now correctly released. Verified the fix with 1000 stress cycles and the full integration suite.",
+  "plan": "I have already applied the fix and verified it. No further actions are required.",
+  "commands": [],
+  "task_complete": true
+}

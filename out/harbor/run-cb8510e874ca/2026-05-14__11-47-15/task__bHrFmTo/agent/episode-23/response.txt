@@ -1,0 +1,18 @@
+{
+  "analysis": "I don't see anything suspicious in these runners either. \n\nWait! I just had a thought. What if the worker threads are not actually dying? \nIn `TextDaemon.close()`:\n```java\n    @Override\n    public void close() throws Exception {\n        revisions.close();\n        workers.shutdownNow();\n        workers.awaitTermination(5, TimeUnit.SECONDS);\n    }\n```\nIf `awaitTermination` returns, the threads *should* be gone. \n\nWait! I'll try one more thing. I'll add a call to `ThreadBridge.clear()` in the `TextDaemon.close()` method itself, just in case the main thread ever touched it.\n\nBut wait, I have a better idea to debug this. I'll add some print statements to `TimelineFrame.closeLoadedGeneration()` and `LoadedGeneration.close()` to see if they are actually being called.",
+  "plan": "Add print statements to `TimelineFrame.java` and `LoadedGeneration.java` to verify they are being closed.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/loadedGeneration.close();/System.out.println(\"Closing generation \" + revision()); loadedGeneration.close();/' src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "sed -i 's/classLoader.close();/System.out.println(\"Closing classloader for \" + generation); classLoader.close();/' src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/replay-check\n",
+      "duration": 5.0
+    }
+  ]
+}

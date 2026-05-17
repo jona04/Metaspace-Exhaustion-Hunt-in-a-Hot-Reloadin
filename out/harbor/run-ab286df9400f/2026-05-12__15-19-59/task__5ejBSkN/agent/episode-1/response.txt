@@ -1,0 +1,15 @@
+{
+  "analysis": "The project is a Java-based text processing daemon. Based on the file structure and the task description, the issue involves 'processor swaps' and a 'long refresh run'. The `cli` package contains `HotReloadStressRunner.java` and `HotReloadIntegrationRunner.java`, which likely trigger the repeated swaps. The `core` package contains classes like `TextDaemon.java`, `ThreadCache.java`, and `WorkerHandle.java`, which are prime candidates for resource leaks during reloading.",
+  "plan": "1. Examine `bin/stress` and `bin/run-suite` to see how the long run is executed.\n2. Read `TextDaemon.java` and `ThreadCache.java` to understand how plugins are loaded and swapped, looking for unclosed resources or thread leaks.\n3. Read `PipelineProcessor.java` in `plugin-src` to see if the plugin itself is holding onto resources.",
+  "commands": [
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

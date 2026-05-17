@@ -1,0 +1,35 @@
+New Terminal Output:
+
+root@cd0f3c6ff864:/workspace/textd# cat <<EOF > src/main/java/io/harbor/textd/core/WorkerHandle.java
+> package io.harbor.textd.core;
+>
+> import io.harbor.textd.api.TextProcessor;
+>
+> final class WorkerHandle implements AutoCloseable {
+>     private final TimelineFrame frame;
+>     private final long revision;
+>     private TextProcessor processor;
+>
+>     WorkerHandle(TimelineFrame frame) {
+>         this.frame = frame.pin();
+>         this.revision = frame.revision();
+>         this.processor = frame.module().processorFor(revision);
+>     }
+>
+>     boolean matches(TimelineFrame frame) {
+>         return revision == frame.revision();
+>     }
+>
+>     ProcessingResult process(String record) {
+>         String output = processor.process(record);
+>         return new ProcessingResult(revision, output, Thread.currentThread().getName());
+>     }
+>
+>     @Override
+>     public void close() {
+>         processor = null;
+>         frame.unpin();
+>     }
+> }
+> EOF
+root@cd0f3c6ff864:/workspace/textd#

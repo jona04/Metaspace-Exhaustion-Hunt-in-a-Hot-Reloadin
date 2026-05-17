@@ -1,0 +1,15 @@
+{
+  "analysis": "I found the bug in `ThreadCache.java`:\n\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\n\nWhen the `cursor` doesn't match the current frame (i.e., a reload has occurred), a new `WorkerHandle` is created and assigned to `cursor`, but the **old `cursor` is never closed**. \n\nEach `WorkerHandle` pins a `TimelineFrame`. When the old `WorkerHandle` is simply overwritten without being closed, its `TimelineFrame` remains pinned forever (or at least until the thread dies, which doesn't happen in a fixed thread pool). Since the frame remains pinned, `unpin()` is never called for that handle, and the `pins` count never reaches zero, so `closeLoadedGeneration()` is never called, and the `ClassLoader` is never closed.\n\nTo fix this, I should call `cursor.close()` before assigning the new `WorkerHandle` to `cursor`.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old cursor when a new one is created.\n2. Verify the fix by running the stress test with 500 cycles.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/if (!cursor.matches(frame)) {/if (!cursor.matches(frame)) { cursor.close();/' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

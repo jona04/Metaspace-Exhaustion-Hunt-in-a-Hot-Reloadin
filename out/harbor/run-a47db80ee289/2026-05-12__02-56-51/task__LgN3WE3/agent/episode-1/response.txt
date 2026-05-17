@@ -1,0 +1,15 @@
+{
+  "analysis": "The project structure reveals a Java-based daemon (`textd`) with a plugin architecture. \n- `src/main/java/io/harbor/textd/core` contains the core logic: `GenerationRegistry`, `LoadedGeneration`, `GenerationLease`, and `WorkerBindings`, which likely handle the 'in-place refresh' and 'worker' lifecycle.\n- `src/main/java/io/harbor/textd/cli` contains `HotReloadStressRunner.java` and `HotReloadLifecycleProbe.java`, which are likely used by the soak/stress tests.\n- `bin/` contains shell scripts like `stress` and `run-suite`.\n\nThe issue is that the 'soak' fails during repeated refreshes. I need to see how the stress test is executed and what the failure looks like.",
+  "plan": "1. Examine the `bin/stress` and `bin/run-suite` scripts to understand how the soak test is triggered.\n2. Attempt to run the stress test to reproduce the failure.\n3. Examine the core lifecycle code (`GenerationRegistry.java`, `LoadedGeneration.java`) to understand how new generations are loaded and old ones are retired.",
+  "commands": [
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat bin/run-suite\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

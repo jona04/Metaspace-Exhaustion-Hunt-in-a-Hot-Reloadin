@@ -1,0 +1,18 @@
+{
+  "analysis": "In `ThreadState.java`, there is a `ThreadLocal<RouteState>`. The `current` method calls `ROUTES.get().cursorFor(ledger)`. \n\nIn `RevisionLedger.java`, the `install` method creates a new `RevisionFrame` and adds the old one to a `shadow` queue. It then calls `pruneShadow()`, which removes frames if they are 'drained'.\n\nI need to see `RouteState.java` and `RevisionFrame.java` to understand how they interact and what 'drained' means.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/RouteState.java`.\n2. Examine `src/main/java/io/harbor/textd/core/RevisionFrame.java`.\n3. Examine `src/main/java/io/harbor/textd/core/RouteCursor.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/RouteState.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/RevisionFrame.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/RouteCursor.java\n",
+      "duration": 0.2
+    }
+  ]
+}

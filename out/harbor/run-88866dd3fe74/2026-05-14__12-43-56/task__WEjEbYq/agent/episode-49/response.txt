@@ -1,0 +1,18 @@
+{
+  "analysis": "This is very frustrating. I've fixed the leak in `ThreadCache`, I've ensured worker threads are cleared, I've fixed the pin count logic, and I've ensured the `ClassLoader` is closed and references are nulled. \n\nWait! I just realized something! In `LoadedGeneration.load()`: \n```java\n        PluginModuleFactory factory = (PluginModuleFactory) factoryType.getDeclaredConstructor().newInstance();\n```\n`factory` is an instance of a class loaded by `classLoader`. \nDoes `factory.open()` return something that has a reference back to `factory`? \n\nLet's look at the plugin source code! \n`plugin-src/io/harbor/textd/customer/CustomerPluginFactory.java`",
+  "plan": "Examine plugin source code.",
+  "commands": [
+    {
+      "keystrokes": "cat plugin-src/io/harbor/textd/customer/CustomerPluginFactory.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat plugin-src/io/harbor/textd/customer/CustomerPluginModule.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat plugin-src/io/harbor/textd/customer/PipelineProcessor.java\n",
+      "duration": 0.1
+    }
+  ]
+}

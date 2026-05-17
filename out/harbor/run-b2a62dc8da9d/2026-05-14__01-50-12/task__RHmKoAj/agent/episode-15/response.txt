@@ -1,0 +1,20 @@
+{
+  "analysis": "In `TextDaemon.close()`, it shuts down the workers and closes the `revisions` (TimelineLedger). However, the `ThreadLocal` variables in the worker threads are not explicitly cleared. Since the worker threads are being shut down anyway, this might not be a leak in the long term, but it's good practice to clear them if possible. But more importantly, the `ThreadCache` in each worker thread will only release its `WorkerHandle` (and thus unpin the frame) when `cursorFor` is called again with a new revision or if the thread dies.\n\nWait, if `TextDaemon` is closed, the worker threads are shut down. When they die, the `ThreadLocal` references should be eligible for GC, and the `ThreadCache` objects too. But the `WorkerHandle` inside those `ThreadCache` objects needs to be closed to unpin the frames. If the threads just die, the `WorkerHandle.close()` is never called!\n\nActually, `TimelineLedger.close()` calls `frame.cool()` on the current frame, which decrements the pin count. But the `WorkerHandle` in each thread still has a pin. So the pin count won't reach zero until those `WorkerHandle`s are closed or the threads are cleaned up and somehow they release their pins.\n\nBut wait, `ThreadCache` implements `AutoCloseable`, and `ThreadBridge.clear()` calls `routeState.close()`. If we don't call `ThreadBridge.clear()` in each worker thread before it exits, the pins remain.\n\nHowever, the task was to get the daemon through the long run without changing deterministic results. I've already achieved that by fixing the leak during reloads. The shutdown behavior is less critical unless `TextDaemon` objects are also being created and destroyed repeatedly.\n\nLet's check `HotReloadStressRunner.java` to see if it creates multiple `TextDaemon` instances.",
+  "plan": "I will examine `src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.1
+    }
+  ]
+} housework
+{
+  "analysis": "In `TextDaemon.close()`, it shuts down the workers and closes the `revisions` (TimelineLedger). However, the `ThreadLocal` variables in the worker threads are not explicitly cleared. Since the worker threads are being shut down anyway, this might not be a leak in the long term, but it's good practice to clear them if possible. But more importantly, the `ThreadCache` in each worker thread will only release its `WorkerHandle` (and thus unpin the frame) when `cursorFor` is called again with a new revision or if the thread dies.\n\nWait, if `TextDaemon` is closed, the worker threads are shut down. When they die, the `ThreadLocal` references should be eligible for GC, and the `ThreadCache` objects too. But the `WorkerHandle` inside those `ThreadCache` objects needs to be closed to unpin the frames. If the threads just die, the `WorkerHandle.close()` is never called!\n\nActually, `TimelineLedger.close()` calls `frame.cool()` on the current frame, which decrements the pin count. But the `WorkerHandle` in each thread still has a pin. So the pin count won't reach zero until those `WorkerHandle`s are closed or the threads are cleaned up and somehow they release their pins.\n\nBut wait, `ThreadCache` implements `AutoCloseable`, and `ThreadBridge.clear()` calls `routeState.close()`. If we don't call `ThreadBridge.clear()` in each worker thread before it exits, the pins remain.\n\nHowever, the task was to get the daemon through the long run without changing deterministic results. I've already achieved that by fixing the leak during reloads. The shutdown behavior is less critical unless `TextDaemon` objects are also being created and destroyed repeatedly.\n\nLet's check `HotReloadStressRunner.java` to see if it creates multiple `TextDaemon` instances.",
+  "plan": "I will examine `src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.1
+    }
+  ]
+}

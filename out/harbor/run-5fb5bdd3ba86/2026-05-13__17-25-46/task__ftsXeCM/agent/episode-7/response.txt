@@ -1,0 +1,15 @@
+{
+  "analysis": "I see the problem. In `ThreadCache.cursorFor`, when the generation changes (`!cursor.matches(frame)`), a new `WorkerHandle` is created and assigned to `cursor`, but the old `cursor` is never closed. \n\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\n\n`WorkerHandle` likely holds a reference to the `TimelineFrame` (or something that prevents the old ClassLoader from being GC'd). Let's check `WorkerHandle.java` and `TimelineFrame.java` to see what they hold.",
+  "plan": "Examine `WorkerHandle.java` and `TimelineFrame.java` to confirm they hold resources that need closing.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

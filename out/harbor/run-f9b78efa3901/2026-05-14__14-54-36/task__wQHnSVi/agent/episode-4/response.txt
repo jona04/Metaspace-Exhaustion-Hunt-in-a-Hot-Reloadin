@@ -1,0 +1,14 @@
+{
+  "analysis": "I've analyzed the code. Here's what I found:\n- `ThreadCache.cursorFor` creates a new `WorkerHandle` if the current one doesn't match the ledger's current frame.\n- However, it **doesn't close the old `WorkerHandle`** before replacing it with a new one.\n- `WorkerHandle.close()` calls `frame.unpin()`.\n- `TimelineFrame` tracks pins. When a frame is replaced in `TimelineLedger`, `cool()` is called, which decrements the pin count. When the pin count reaches 0 and the frame is cooled, it's closed.\n- Since `ThreadCache` doesn't close the old `WorkerHandle`, the pin count for the old frame never reaches 0, so the `LoadedGeneration` (and its `URLClassLoader`) is never closed.\n\nThis explains why old plugin generations are not being reclaimed.",
+  "plan": "I need to modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before creating a new one. Before that, I'll try to run the stress test to reproduce the issue.",
+  "commands": [
+    {
+      "keystrokes": "ls bin\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 5.0
+    }
+  ]
+}

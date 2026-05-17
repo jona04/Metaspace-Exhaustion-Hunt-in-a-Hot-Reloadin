@@ -1,0 +1,15 @@
+{
+  "analysis": "The project is a Java-based text processing daemon. The task description mentions failures during 'long refresh runs' and 'processor swaps'. Looking at the file structure, `src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java` and `HotReloadIntegrationRunner.java` seem relevant to these 'swaps'. The core logic appears to be in `TextDaemon.java` and `ThreadBridge.java`. The directory `plugin-src` contains a `CustomerPluginFactory.java` which likely gets reloaded.",
+  "plan": "1. Examine `HotReloadStressRunner.java` to see how the stress test is performed.\n2. Examine `TextDaemon.java` to understand how it handles reloads and processor swaps.\n3. Check `ThreadBridge.java` and `ThreadCache.java` for potential resource leaks (e.g., threads or memory not being cleared during swaps).",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

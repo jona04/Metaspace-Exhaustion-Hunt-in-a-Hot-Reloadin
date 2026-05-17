@@ -1,0 +1,6 @@
+{
+  "analysis": "The issue was a Metaspace OutOfMemoryError caused by a classloader leak. In `ThreadCache.java`, when the daemon switched to a new plugin revision (generation), the old `WorkerHandle` was discarded without being closed. Since each `WorkerHandle` pins a `TimelineFrame`, and each `TimelineFrame` holds a `URLClassLoader`, the old classloaders were never closed or garbage collected. I modified `ThreadCache.cursorFor` to properly close the previous `WorkerHandle` before creating a new one. This allows the pin count to drop, the frame to 'drain', and the classloader to be closed. The fix was verified by running the stress test for 500 cycles, which now passes consistently within the constrained Metaspace limit.",
+  "plan": "Task is complete. All tests pass and the resource leak is resolved.",
+  "commands": [],
+  "task_complete": true
+}

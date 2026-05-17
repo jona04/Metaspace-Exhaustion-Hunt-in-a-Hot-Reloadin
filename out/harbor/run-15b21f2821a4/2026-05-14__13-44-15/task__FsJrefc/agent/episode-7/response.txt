@@ -1,0 +1,18 @@
+{
+  "analysis": "In `LoadedGeneration.java`, `close()` calls `classLoader.close()`, which is good. However, if there are remaining references to the class loader or classes loaded by it, the Metaspace won't be reclaimed.\n\n`TextDaemon.processRecord` calls `ThreadBridge.current(revisions)` to get a `WorkerHandle`.\n\nLet's look at `TimelineLedger.java`, `ThreadBridge.java`, and `WorkerHandle.java`.",
+  "plan": "Examine `TimelineLedger.java`, `ThreadBridge.java`, and `WorkerHandle.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    }
+  ]
+}

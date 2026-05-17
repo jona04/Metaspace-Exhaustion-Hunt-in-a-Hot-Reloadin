@@ -1,0 +1,19 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with a very limited `-XX:MaxMetaspaceSize=64m`. This is a strong hint that the 'long refresh run' failure is a `Metaspace` leak caused by class loading/unloading during processor swaps. The `TextDaemon` uses `TimelineLedger` to manage revisions and `ThreadBridge` to bind workers to a specific revision. Each 'reload' likely involves loading a new JAR and creating new class loaders.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/TimelineLedger.java` and `LoadedGeneration.java` to see how class loaders are created and managed.\n2. Check `src/main/java/io/harbor/textd/core/ThreadBridge.java` and `ThreadCache.java` for potential leaks (e.g., `ThreadLocal` variables holding onto old class loaders).\n3. Run the stress test and see if it fails with `OutOfMemoryError: Metaspace`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

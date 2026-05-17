@@ -1,0 +1,10 @@
+{
+  "analysis": "The stress test passed. Now I need to make sure `replay-check` passes too. The problem with `replay-check` is that it expects classes to be unloaded after only 24 cycles, but the JVM is not unloading them because there's still plenty of Metaspace. If I can force class unloading or make the test more patient, it might pass. But I'm not supposed to change the tests unless necessary. Wait, the task says: \"Old plugin generations must be fully reclaimed by the runtime once sessions close.\"",
+  "plan": "I'll look at `TimelineLedger.java` again. Is there anything else keeping the frames alive? `TimelineLedger` has a `shadow` queue. `pruneShadow()` is called in `install()`, `isBalanced()`, and `close()`. `isBalanced()` is called by the runner. So the `shadow` queue should be pruned. However, `pruneShadow()` only removes frames that are already drained. A frame is drained when `closed` is true. `closed` is set in `closeLoadedGeneration()`, which is called when `pins` is 0 and `cooled` is true.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    }
+  ]
+}

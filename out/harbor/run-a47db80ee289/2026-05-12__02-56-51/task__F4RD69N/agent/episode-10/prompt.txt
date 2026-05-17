@@ -1,0 +1,51 @@
+New Terminal Output:
+
+root@7b171b5d0816:/workspace/textd# sed -i '18i\            binding.close();' src/main/java/io/harbor/textd/core/WorkerBindings.java
+root@7b171b5d0816:/workspace/textd# cat src/main/java/io/harbor/textd/core/WorkerBindings.java
+package io.harbor.textd.core;
+
+final class WorkerBindings {
+    private static final ThreadLocal<DispatchBinding> ACTIVE = new ThreadLocal<>();
+
+    private WorkerBindings() {
+    }
+
+    static DispatchBinding current(GenerationRegistry registry) {
+        GenerationLease activeLease = registry.active();
+        DispatchBinding binding = ACTIVE.get();
+        if (binding == null) {
+            DispatchBinding created = new DispatchBinding(activeLease);
+            ACTIVE.set(created);
+            return created;
+        }
+
+            binding.close();
+        if (!binding.matches(activeLease)) {
+            DispatchBinding replacement = new DispatchBinding(activeLease);
+            ACTIVE.set(replacement);
+            return replacement;
+        }
+
+        return binding;
+    }
+
+    static void releaseCurrent() {
+        DispatchBinding binding = ACTIVE.get();
+        if (binding != null) {
+            binding.close();
+            ACTIVE.remove();
+        }
+    }
+}
+root@7b171b5d0816:/workspace/textd# ./bin/stress 500
+Exception in thread "main" java.lang.IllegalStateException: Reference count underflow for generation 1
+        at io.harbor.textd.core.GenerationLease.release(GenerationLease.java:47)
+        at io.harbor.textd.core.DispatchBinding.close(DispatchBinding.java:27)
+        at io.harbor.textd.core.WorkerBindings.current(WorkerBindings.java:18)
+        at io.harbor.textd.core.TextDaemon.processRecord(TextDaemon.java:79)
+        at io.harbor.textd.core.TextDaemon.lambda$processBatch$0(TextDaemon.java:43)
+        at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+        at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
+        at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+        at java.base/java.lang.Thread.run(Thread.java:840)
+root@7b171b5d0816:/workspace/textd#

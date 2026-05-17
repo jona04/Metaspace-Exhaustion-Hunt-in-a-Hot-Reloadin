@@ -1,0 +1,11 @@
+{
+  "analysis": "The project is a Java-based text processing daemon with a plugin system. The task description mentions the service 'falls over' during a long refresh run with 'repeated processor swaps'. This strongly suggests a memory leak or resource exhaustion related to hot-reloading plugins or 'processor swaps'. \n\nI see `HotReloadStressRunner.java` and `HotReloadIntegrationRunner.java` in `src/main/java/io/harbor/textd/cli`, and a `stress` script in `bin`. These are likely the tools used to reproduce the issue.",
+  "plan": "1. Run the `bin/stress` script to confirm the failure and see the error message (e.g., OutOfMemoryError).\n2. Examine `TextDaemon.java` and `ThreadCache.java` as they are likely involved in the core lifecycle and resource management.\n3. Examine `HotReloadStressRunner.java` to understand what 'processor swaps' means in this context.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}

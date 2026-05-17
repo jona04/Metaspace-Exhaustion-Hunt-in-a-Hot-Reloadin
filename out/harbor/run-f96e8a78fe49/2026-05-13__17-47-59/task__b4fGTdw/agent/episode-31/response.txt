@@ -1,0 +1,6 @@
+{
+  "analysis": "I have successfully identified the resource leak in the `textd` service. The issue was in `ThreadCache.java`, where a new `WorkerHandle` was created during a processor swap without closing the previous one. Since `WorkerHandle` pins a `TimelineFrame`, the failure to close it meant that old plugin generations were never unpinned and thus never closed, leading to a memory and classloader leak. I have applied a fix to `ThreadCache.java` to ensure the old `cursor` is closed before being replaced. I have also verified the fix by running the build and stress scripts, which completed successfully.",
+  "plan": "The task is complete. I have identified, fixed, and verified the resource leak.",
+  "commands": [],
+  "task_complete": true
+}

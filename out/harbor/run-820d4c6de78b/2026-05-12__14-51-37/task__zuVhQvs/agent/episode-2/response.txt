@@ -1,0 +1,19 @@
+{
+  "analysis": "The project is a Java-based daemon (`textd`). The source code is organized into `src/main/java` and `plugin-src`. There are interesting CLI runners in `src/main/java/io/harbor/textd/cli/`: `HotReloadIntegrationRunner.java` and `HotReloadStressRunner.java`. The `bin/` directory contains executables named `build`, `integration`, `run-suite`, and `stress`. These likely map to the CLI runners. The task mentions 'long refresh run' and 'processor swaps', which aligns with 'HotReloadStressRunner'.",
+  "plan": "1. Examine the contents of `bin/stress` and `bin/run-suite` to see how they invoke the Java code.\n2. Try to run the stress test to reproduce the failure.\n3. Examine `TextDaemon.java` and `HotReloadStressRunner.java` to understand how processors are loaded and swapped, looking for resource leaks (like thread pools, file handles, or classloaders).",
+  "commands": [
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat bin/run-suite\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/stress --help\n",
+      "duration": 1.0
+    }
+  ],
+  "task_complete": false
+}

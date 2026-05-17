@@ -1,0 +1,649 @@
+asciinema rec --stdin /logs/agent/recording.cast
+[?2004hroot@1d381b4ca4f2:/workspace/textd# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+clear
+[?2004hroot@1d381b4ca4f2:/workspace/textd# clear
+[?2004l[H[J[3J[?2004hroot@1d381b4ca4f2:/workspace/textd# ls -R
+[?2004l.:
+[0m[01;34mbin[0m  [01;34mplugin-src[0m  [01;34msrc[0m
+
+./bin:
+[01;32mbuild[0m  [01;32mintegration[0m  [01;32mrun-suite[0m  [01;32mstress[0m
+
+./plugin-src:
+[01;34mio[0m
+
+./plugin-src/io:
+[01;34mharbor[0m
+
+./plugin-src/io/harbor:
+[01;34mtextd[0m
+
+./plugin-src/io/harbor/textd:
+[01;34mcustomer[0m
+
+./plugin-src/io/harbor/textd/customer:
+CustomerPluginFactory.java  CustomerPluginModule.java  PipelineProcessor.java  PipelineStages.java
+
+./src:
+[01;34mmain[0m
+
+./src/main:
+[01;34mjava[0m
+
+./src/main/java:
+[01;34mio[0m
+
+./src/main/java/io:
+[01;34mharbor[0m
+
+./src/main/java/io/harbor:
+[01;34mtextd[0m
+
+./src/main/java/io/harbor/textd:
+[01;34mapi[0m  [01;34mcli[0m  [01;34mcore[0m
+
+./src/main/java/io/harbor/textd/api:
+PluginModule.java  PluginModuleFactory.java  TextProcessor.java
+
+./src/main/java/io/harbor/textd/cli:
+HotReloadIntegrationRunner.java  HotReloadLifecycleProbe.java  HotReloadStressRunner.java
+
+./src/main/java/io/harbor/textd/core:
+DispatchBinding.java  GenerationRegistry.java  OutputFormat.java      TextDaemon.java
+GenerationLease.java  LoadedGeneration.java    ProcessingResult.java  WorkerBindings.java
+[?2004hroot@1d381b4ca4f2:/workspace/textd# cat bin/stress
+[?2004l#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+if [[ "${TEXTD_SKIP_BUILD:-0}" != "1" ]]; then
+  "$ROOT_DIR/bin/build"
+fi
+
+java -XX:MaxMetaspaceSize=64m -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.HotReloadStressRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" \
+  "${1:-500}"
+[?2004hroot@1d381b4ca4f2:/workspace/textd# cat src/main/java/io/harbor/textd/core/GenerationRegistry.java
+[?2004lpackage io.harbor.textd.core;
+
+import java.nio.file.Path;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicReference;
+
+final class GenerationRegistry {
+    private final Path pluginJar;
+    private final AtomicReference<GenerationLease> active = new AtomicReference<>();
+    private final Queue<GenerationLease> retired = new ConcurrentLinkedQueue<>();
+
+    GenerationRegistry(Path pluginJar) {
+        this.pluginJar = pluginJar;
+    }
+
+    void activate(long generation) throws Exception {
+        GenerationLease next = new GenerationLease(LoadedGeneration.load(pluginJar, generation));
+        GenerationLease previous = active.getAndSet(next);
+        if (previous != null) {
+            retired.add(previous);
+            previous.retire();
+            sweepRetired();
+        }
+    }
+
+    GenerationLease active() {
+        GenerationLease lease = active.get();
+        if (lease == null) {
+            throw new IllegalStateException("No plugin generation is loaded");
+        }
+        return lease;
+    }
+
+    int pendingRetirements() {
+        sweepRetired();
+        return retired.size();
+    }
+
+    void close() {
+        GenerationLease current = active.getAndSet(null);
+        if (current != null) {
+            retired.add(current);
+            current.retire();
+        }
+        sweepRetired();
+    }
+
+    private void sweepRetired() {
+        retired.removeIf(GenerationLease::isClosed);
+    }
+}
+[?2004hroot@1d381b4ca4f2:/workspace/textd# cat src/main/java/io/harbor/textd/core/LoadedGeneration.java
+[?2004lpackage io.harbor.textd.core;
+
+import io.harbor.textd.api.PluginModule;
+import io.harbor.textd.api.PluginModuleFactory;
+
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Path;
+
+final class LoadedGeneration implements AutoCloseable {
+    private static final String FACTORY_CLASS = "io.harbor.textd.customer.CustomerPluginFactory";
+
+    private final long generation;
+    private final URLClassLoader classLoader;
+    private final PluginModule module;
+
+    private LoadedGeneration(long generation, URLClassLoader classLoader, PluginModule module) {
+        this.generation = generation;
+        this.classLoader = classLoader;
+        this.module = module;
+    }
+
+    static LoadedGeneration load(Path pluginJar, long generation) throws Exception {
+        URLClassLoader classLoader = new URLClassLoader(new URL[] {pluginJar.toUri().toURL()}, PluginModuleFactory.class.getClassLoader());
+        Class<?> factoryType = classLoader.loadClass(FACTORY_CLASS);
+        PluginModuleFactory factory = (PluginModuleFactory) factoryType.getDeclaredConstructor().newInstance();
+        return new LoadedGeneration(generation, classLoader, factory.open());
+    }
+
+    long generation() {
+        return generation;
+    }
+
+    PluginModule module() {
+        return module;
+    }
+
+    @Override
+    public void close() throws Exception {
+        module.close();
+        classLoader.close();
+    }
+}
+[?2004hroot@1d381b4ca4f2:/workspace/textd# cat src/main/java/io/harbor/textd/core/GenerationLease.java
+[?2004lpackage io.harbor.textd.core;
+
+import io.harbor.textd.api.PluginModule;
+
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+
+final class GenerationLease {
+    private final LoadedGeneration loadedGeneration;
+    private final AtomicInteger references = new AtomicInteger(1);
+    private final AtomicBoolean retired = new AtomicBoolean(false);
+    private final AtomicBoolean closed = new AtomicBoolean(false);
+
+    GenerationLease(LoadedGeneration loadedGeneration) {
+        this.loadedGeneration = loadedGeneration;
+    }
+
+    GenerationLease retain() {
+        while (true) {
+            int current = references.get();
+            if (current == 0) {
+                throw new IllegalStateException("Generation " + generation() + " is already closed");
+            }
+            if (references.compareAndSet(current, current + 1)) {
+                return this;
+            }
+        }
+    }
+
+    long generation() {
+        return loadedGeneration.generation();
+    }
+
+    PluginModule module() {
+        return loadedGeneration.module();
+    }
+
+    void retire() {
+        if (retired.compareAndSet(false, true)) {
+            release();
+        }
+    }
+
+    void release() {
+        int remaining = references.decrementAndGet();
+        if (remaining < 0) {
+            throw new IllegalStateException("Reference count underflow for generation " + generation());
+        }
+        if (remaining == 0 && retired.get()) {
+            closeLoadedGeneration();
+        }
+    }
+
+    boolean isClosed() {
+        return closed.get();
+    }
+
+    private void closeLoadedGeneration() {
+        if (closed.compareAndSet(false, true)) {
+            try {
+                loadedGeneration.close();
+            } catch (Exception exception) {
+                throw new IllegalStateException("Unable to close generation " + generation(), exception);
+            }
+        }
+    }
+}
+[?2004hroot@1d381b4ca4f2:/workspace/textd# ./bin/stress 50
+[?2004lstress-ok cycles=50
+[?2004hroot@1d381b4ca4f2:/workspace/textd# cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java
+[?2004lpackage io.harbor.textd.cli;
+
+import io.harbor.textd.core.OutputFormat;
+import io.harbor.textd.core.ProcessingResult;
+import io.harbor.textd.core.TextDaemon;
+
+import java.nio.file.Path;
+import java.util.List;
+
+public final class HotReloadStressRunner {
+    private static final String SAMPLE = "alpha beta gamma";
+
+    private HotReloadStressRunner() {
+    }
+
+    public static void main(String[] args) throws Exception {
+        Path pluginJar = Path.of(args[0]);
+        int cycles = args.length > 1 ? Integer.parseInt(args[1]) : 500;
+
+        try (TextDaemon daemon = new TextDaemon(pluginJar, 2)) {
+            for (int generation = 1; generation <= cycles; generation++) {
+                daemon.reload(generation);
+                assertOutputs(generation, daemon.processBatch(List.of(SAMPLE, SAMPLE)));
+                assertOutput(generation, daemon.process(SAMPLE));
+                if (generation % 3 == 0) {
+                    assertOutputs(generation, daemon.processBatch(List.of(SAMPLE, SAMPLE)));
+                }
+            }
+        }
+
+        System.out.println("stress-ok cycles=" + cycles);
+    }
+
+    private static void assertOutputs(long generation, List<ProcessingResult> results) {
+        for (ProcessingResult result : results) {
+            assertOutput(generation, result);
+        }
+    }
+
+    private static void assertOutput(long generation, ProcessingResult result) {
+        String expected = OutputFormat.expectedFor(generation, SAMPLE);
+        if (!expected.equals(result.output())) {
+            throw new IllegalStateException("Unexpected output at generation " + generation + ": " + result.output());
+        }
+    }
+}
+[?2004hroot@1d381b4ca4f2:/workspace/textd# ./bin/stress 500
+[?2004lException in thread "main" java.lang.NoClassDefFoundError: Could not initialize class io.harbor.textd.customer.PipelineStages
+	at io.harbor.textd.customer.PipelineProcessor.process(PipelineProcessor.java:22)
+	at io.harbor.textd.core.DispatchBinding.process(DispatchBinding.java:21)
+	at io.harbor.textd.core.TextDaemon.processRecord(TextDaemon.java:80)
+	at io.harbor.textd.core.TextDaemon.lambda$processBatch$0(TextDaemon.java:43)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+	at java.base/java.lang.Thread.run(Thread.java:840)
+Caused by: java.lang.ExceptionInInitializerError: Exception java.lang.OutOfMemoryError: Metaspace [in thread "textd-worker-2"]
+	at io.harbor.textd.customer.PipelineStages.<clinit>(PipelineStages.java:10)
+	at io.harbor.textd.customer.PipelineProcessor.process(PipelineProcessor.java:22)
+	at io.harbor.textd.core.DispatchBinding.process(DispatchBinding.java:21)
+	at io.harbor.textd.core.TextDaemon.processRecord(TextDaemon.java:80)
+	at io.harbor.textd.core.TextDaemon.lambda$processBatch$0(TextDaemon.java:43)
+	at io.harbor.textd.core.TextDaemon$$Lambda$1/0x00007a9f71001c58.call(Unknown Source)
+	... 4 more
+[?2004hroot@1d381b4ca4f2:/workspace/textd# cat src/main/java/io/harbor/textd/core/TextDaemon.java
+[?2004lpackage io.harbor.textd.core;
+
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+public final class TextDaemon implements AutoCloseable {
+    private final ExecutorService workers;
+    private final GenerationRegistry generations;
+    private final int workerCount;
+
+    public TextDaemon(Path pluginJar, int workerCount) {
+        this.generations = new GenerationRegistry(pluginJar);
+        this.workers = Executors.newFixedThreadPool(workerCount, new WorkerThreadFactory());
+        this.workerCount = workerCount;
+    }
+
+    public void reload(long generation) throws Exception {
+        generations.activate(generation);
+    }
+
+    public ProcessingResult process(String record) throws Exception {
+        return processBatch(List.of(record)).get(0);
+    }
+
+    public int pendingRetirements() {
+        return generations.pendingRetirements();
+    }
+
+    public List<ProcessingResult> processBatch(List<String> records) throws Exception {
+        CountDownLatch ready = new CountDownLatch(records.size());
+        CountDownLatch release = new CountDownLatch(1);
+        List<Future<ProcessingResult>> futures = new ArrayList<>();
+        for (String record : records) {
+            futures.add(workers.submit(() -> processRecord(record, ready, release)));
+        }
+
+        if (!ready.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Workers did not become ready");
+        }
+        release.countDown();
+
+        List<ProcessingResult> results = new ArrayList<>(records.size());
+        for (Future<ProcessingResult> future : futures) {
+            try {
+                results.add(future.get());
+            } catch (ExecutionException exception) {
+                Throwable cause = exception.getCause();
+                if (cause instanceof Exception checked) {
+                    throw checked;
+                }
+                if (cause instanceof Error error) {
+                    throw error;
+                }
+                throw new RuntimeException(cause);
+            }
+        }
+        return results;
+    }
+
+    private ProcessingResult processRecord(
+        String record,
+        CountDownLatch ready,
+        CountDownLatch release
+    ) throws Exception {
+        ready.countDown();
+        if (!release.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Request release timed out");
+        }
+
+        DispatchBinding binding = WorkerBindings.current(generations);
+        return binding.process(record);
+    }
+
+    @Override
+    public void close() throws Exception {
+        generations.close();
+        workers.shutdownNow();
+        workers.awaitTermination(5, TimeUnit.SECONDS);
+    }
+
+    private static final class WorkerThreadFactory implements ThreadFactory {
+        private final AtomicInteger sequence = new AtomicInteger(1);
+
+        @Override
+        public Thread newThread(Runnable runnable) {
+            Thread thread = new Thread(runnable);
+            thread.setName("textd-worker-" + sequence.getAndIncrement());
+            thread.setDaemon(true);
+            return thread;
+        }
+    }
+}
+[?2004hroot@1d381b4ca4f2:/workspace/textd# cat src/main/java/io/harbor/textd/core/WorkerBindings.java
+[?2004lpackage io.harbor.textd.core;
+
+final class WorkerBindings {
+    private static final ThreadLocal<DispatchBinding> ACTIVE = new ThreadLocal<>();
+
+    private WorkerBindings() {
+    }
+
+    static DispatchBinding current(GenerationRegistry registry) {
+        GenerationLease activeLease = registry.active();
+        DispatchBinding binding = ACTIVE.get();
+        if (binding == null) {
+            DispatchBinding created = new DispatchBinding(activeLease);
+            ACTIVE.set(created);
+            return created;
+        }
+
+        if (!binding.matches(activeLease)) {
+            DispatchBinding replacement = new DispatchBinding(activeLease);
+            ACTIVE.set(replacement);
+            return replacement;
+        }
+
+        return binding;
+    }
+
+    static void releaseCurrent() {
+        DispatchBinding binding = ACTIVE.get();
+        if (binding != null) {
+            binding.close();
+            ACTIVE.remove();
+        }
+    }
+}
+[?2004hroot@1d381b4ca4f2:/workspace/textd# cat src/main/java/io/harbor/textd/core/DispatchBinding.java
+[?2004lpackage io.harbor.textd.core;
+
+import io.harbor.textd.api.TextProcessor;
+
+final class DispatchBinding implements AutoCloseable {
+    private final GenerationLease lease;
+    private final long generation;
+    private final TextProcessor processor;
+
+    DispatchBinding(GenerationLease lease) {
+        this.lease = lease.retain();
+        this.generation = lease.generation();
+        this.processor = lease.module().processorFor(generation);
+    }
+
+    boolean matches(GenerationLease lease) {
+        return generation == lease.generation();
+    }
+
+    ProcessingResult process(String record) {
+        String output = processor.process(record);
+        return new ProcessingResult(generation, output, Thread.currentThread().getName());
+    }
+
+    @Override
+    public void close() {
+        lease.release();
+    }
+}
+[?2004hroot@1d381b4ca4f2:/workspace/textd# cat > src/main/java/io/harbor/textd/core/WorkerBindings.java <<EOF
+[?2004l[?2004h> package io.harbor.textd.core;
+[?2004l[?2004h> 
+[?2004l[?2004h> final class WorkerBindings {
+[?2004l[?2004h>     private static final ThreadLocal<DispatchBinding> ACTIVE = new ThreadLocal<>();
+[?2004l[?2004h> 
+[?2004l[?2004h>     private WorkerBindings() {
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     static DispatchBinding current(GenerationRegistry registry) {
+[?2004l[?2004h>         GenerationLease activeLease = registry.active();
+[?2004l[?2004h>         DispatchBinding binding = ACTIVE.get();
+[?2004l[?2004h>         if (binding == null) {
+[?2004l[?2004h>             DispatchBinding created = new DispatchBinding(activeLease);
+[?2004l[?2004h>             ACTIVE.set(created);
+[?2004l[?2004h>             return created;
+[?2004l[?2004h>         }
+[?2004l[?2004h> 
+[?2004l[?2004h>         if (!binding.matches(activeLease)) {
+[?2004l[?2004h>             binding.close();
+[?2004l[?2004h>             DispatchBinding replacement = new DispatchBinding(activeLease);
+[?2004l[?2004h>             ACTIVE.set(replacement);
+[?2004l[?2004h>             return replacement;
+[?2004l[?2004h>         }
+[?2004l[?2004h> 
+[?2004l[?2004h>         return binding;
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     static void releaseCurrent() {
+[?2004l[?2004h>         DispatchBinding binding = ACTIVE.get();
+[?2004l[?2004h>         if (binding != null) {
+[?2004l[?2004h>             binding.close();
+[?2004l[?2004h>             ACTIVE.remove();
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h> }
+[?2004l[?2004h> EOF
+[?2004l./bin/stress 500
+[?2004hroot@1d381b4ca4f2:/workspace/textd# ./bin/stress 500
+[?2004lstress-ok cycles=500
+[?2004hroot@1d381b4ca4f2:/workspace/textd# cat src/main/java/io/harbor/textd/cli/HotReloadLifecycleProbe.java
+[?2004lpackage io.harbor.textd.cli;
+
+import io.harbor.textd.core.OutputFormat;
+import io.harbor.textd.core.ProcessingResult;
+import io.harbor.textd.core.TextDaemon;
+
+import java.nio.file.Path;
+import java.util.List;
+import java.util.stream.Collectors;
+
+public final class HotReloadLifecycleProbe {
+    private static final String SAMPLE = "alpha beta gamma";
+
+    private HotReloadLifecycleProbe() {
+    }
+
+    public static void main(String[] args) throws Exception {
+        Path pluginJar = Path.of(args[0]);
+        int latestGeneration = args.length > 1 ? Integer.parseInt(args[1]) : 12;
+
+        TextDaemon daemon = new TextDaemon(pluginJar, 2);
+        try {
+            daemon.reload(1);
+            List<ProcessingResult> generationOne = daemon.processBatch(List.of(SAMPLE, SAMPLE));
+            assertOutputs(1, generationOne);
+
+            List<String> generationOneThreads = generationOne.stream()
+                .map(ProcessingResult::workerThread)
+                .sorted()
+                .collect(Collectors.toList());
+
+            List<ProcessingResult> latestResults = generationOne;
+            for (int generation = 2; generation <= latestGeneration; generation++) {
+                daemon.reload(generation);
+                latestResults = daemon.processBatch(List.of(SAMPLE, SAMPLE));
+                assertOutputs(generation, latestResults);
+            }
+
+            List<String> latestThreads = latestResults.stream()
+                .map(ProcessingResult::workerThread)
+                .sorted()
+                .collect(Collectors.toList());
+
+            int pendingBeforeShutdown = daemon.pendingRetirements();
+            String generationOneOutput = generationOne.get(0).output();
+            String latestOutput = latestResults.get(0).output();
+            boolean sameThreadsReused = generationOneThreads.equals(latestThreads);
+
+            daemon.close();
+            int pendingAfterShutdown = daemon.pendingRetirements();
+
+            System.out.println("{");
+            System.out.println("  \"sample\": \"" + SAMPLE + "\",");
+            System.out.println("  \"generation1_output\": \"" + generationOneOutput + "\",");
+            System.out.println("  \"latest_generation\": " + latestGeneration + ",");
+            System.out.println("  \"latest_output\": \"" + latestOutput + "\",");
+            System.out.println("  \"generation1_threads\": " + toJsonArray(generationOneThreads) + ",");
+            System.out.println("  \"latest_threads\": " + toJsonArray(latestThreads) + ",");
+            System.out.println("  \"same_threads_reused\": " + sameThreadsReused + ",");
+            System.out.println("  \"pending_retirements_before_shutdown\": " + pendingBeforeShutdown + ",");
+            System.out.println("  \"pending_retirements_after_shutdown\": " + pendingAfterShutdown);
+            System.out.println("}");
+        } catch (Exception exception) {
+            try {
+                daemon.close();
+            } catch (Exception closeException) {
+                exception.addSuppressed(closeException);
+            }
+            throw exception;
+        }
+    }
+
+    private static void assertOutputs(long generation, List<ProcessingResult> results) {
+        String expected = OutputFormat.expectedFor(generation, SAMPLE);
+        for (ProcessingResult result : results) {
+            if (!expected.equals(result.output())) {
+                throw new IllegalStateException("Unexpected output at generation " + generation + ": " + result.output());
+            }
+        }
+    }
+
+    private static String toJsonArray(List<String> values) {
+        return values.stream()
+            .map(value -> "\"" + value + "\"")
+            .collect(Collectors.joining(", ", "[", "]"));
+    }
+}
+[?2004hroot@1d381b4ca4f2:/workspace/textd# cat bin/integration
+[?2004l#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+if [[ "${TEXTD_SKIP_BUILD:-0}" != "1" ]]; then
+  "$ROOT_DIR/bin/build"
+fi
+
+java -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.HotReloadIntegrationRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" \
+  "${1:-12}"
+[?2004hroot@1d381b4ca4f2:/workspace/textd# ./bin/integration
+[?2004l./bin/run-suite
+{
+  "sample": "alpha beta gamma",
+  "generation1_output": "GEN-001|ALPHA>BETA>GAMMA|PIPE-18528",
+  "latest_generation": 12,
+  "latest_output": "GEN-012|ALPHA>BETA>GAMMA|PIPE-18528"
+}
+[?2004hroot@1d381b4ca4f2:/workspace/textd# ./bin/run-suite
+[?2004lcat bin/run-suite
+suite-ok
+[?2004hroot@1d381b4ca4f2:/workspace/textd# cat bin/run-suite
+[?2004l#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+"$ROOT_DIR/bin/build"
+TEXTD_SKIP_BUILD=1 "$ROOT_DIR/bin/integration" 12 >/tmp/textd-integration.json
+java -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.HotReloadLifecycleProbe \
+  "$ROOT_DIR/build/plugins/customer-default.jar" \
+  12 >/tmp/textd-lifecycle.json
+TEXTD_SKIP_BUILD=1 "$ROOT_DIR/bin/stress" 500 >/tmp/textd-stress.log
+
+echo "suite-ok"
+[?2004hroot@1d381b4ca4f2:/workspace/textd# cat /tmp/textd-lifecycle.json
+[?2004l{
+  "sample": "alpha beta gamma",
+  "generation1_output": "GEN-001|ALPHA>BETA>GAMMA|PIPE-18528",
+  "latest_generation": 12,
+  "latest_output": "GEN-012|ALPHA>BETA>GAMMA|PIPE-18528",
+  "generation1_threads": ["textd-worker-1", "textd-worker-2"],
+  "latest_threads": ["textd-worker-1", "textd-worker-2"],
+  "same_threads_reused": true,
+  "pending_retirements_before_shutdown": 0,
+  "pending_retirements_after_shutdown": 1
+}
+[?2004hroot@1d381b4ca4f2:/workspace/textd# 

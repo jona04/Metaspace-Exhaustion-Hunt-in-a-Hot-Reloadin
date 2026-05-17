@@ -1,0 +1,10 @@
+{
+  "analysis": "Wait, I see a potential issue in `TimelineLedger.close()`. It sets `current` to `null`, then cools the frame and adds it to `shadow`. Then it calls `pruneShadow()`. But `pruneShadow()` only removes frames that are *already* drained. The frame we just cooled might not be drained yet if its pins haven't reached 0. But in `TextDaemon.close()`, I've already cleared the thread locals, so the pins *should* be 0 after `ThreadBridge.clear()` is called on all worker threads.",
+  "plan": "Let's check the order of operations in `TextDaemon.close()`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.1
+    }
+  ]
+}

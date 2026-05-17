@@ -1,0 +1,10 @@
+{
+  "analysis": "`after_close` is `false`! This means the last generation is NOT being reclaimed after `daemon.close()`. This is because the worker threads still have pins on it in their `ThreadLocal<ThreadCache>`. \n\nThe task says: \"Old plugin generations must be fully reclaimed by the runtime once sessions close.\"\n\nSo I should ensure that `after_close` becomes `true` by clearing the `ThreadBridge` when the daemon is closed.",
+  "plan": "I need to modify `TextDaemon.java` to clear the `ThreadBridge` for each worker thread during shutdown. Since I can't easily run code on those threads after `shutdownNow()`, I should probably have the worker threads clear themselves, or use another way to release the pins.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.1
+    }
+  ]
+}

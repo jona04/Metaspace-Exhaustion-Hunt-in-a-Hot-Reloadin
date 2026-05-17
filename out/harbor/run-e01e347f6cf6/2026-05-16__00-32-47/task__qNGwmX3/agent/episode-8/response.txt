@@ -1,0 +1,10 @@
+{
+  "analysis": "The `sed` command worked but it's a bit messy because it replaced both occurrences and added redundant checks. Specifically, the first replacement was inside `if (cursor == null)`, so `if (cursor != null) cursor.close();` is redundant there. More importantly, I should make sure the code is clean. Let's rewrite `ThreadCache.java` properly.",
+  "plan": "Rewrite `src/main/java/io/harbor/textd/core/ThreadCache.java` to be cleaner and correctly close the old cursor.",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor != null && !cursor.matches(frame)) {\n            cursor.close();\n            cursor = null;\n        }\n\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.1
+    }
+  ]
+}

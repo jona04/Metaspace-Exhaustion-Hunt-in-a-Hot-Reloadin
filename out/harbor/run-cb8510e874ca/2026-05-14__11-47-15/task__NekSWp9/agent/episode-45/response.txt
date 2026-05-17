@@ -1,0 +1,10 @@
+{
+  "analysis": "Still failing `replay-check`. This is very frustrating. Let's look at `ThreadCache.java` again. Is there any other reference? \n```java\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n    ...\n}\n```\nWait! `cursorFor` returns `cursor`. And `cursor` is a `WorkerHandle`. `WorkerHandle` holds a reference to `TimelineFrame` and `TextProcessor`. In `TextDaemon.processRecord`, the returned `WorkerHandle` is stored in a local variable `binding`. When `processRecord` returns, `binding` should be gone. But wait, `ThreadBridge.current(revisions)` is what calls `cursorFor`. So the worker thread is indeed holding onto the *latest* `WorkerHandle` in its `ThreadLocal`.",
+  "plan": "Wait! I think I see a problem. In `ThreadCache.cursorFor`, if `cursor.matches(frame)` is true, it returns the *existing* `cursor`. This is fine. But when is it ever closed? It's only closed when a *new* generation is installed, or when `ThreadBridge.clear()` is called. I've ensured `ThreadBridge.clear()` is called during `TextDaemon.close()`. So that should be fine.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    }
+  ]
+}

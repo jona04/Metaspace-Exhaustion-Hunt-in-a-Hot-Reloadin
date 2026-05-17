@@ -1,0 +1,11 @@
+{
+  "analysis": "The `bin/stress` script already provides the jar path and takes the number of cycles as the first argument. My previous command `bin/stress build/plugins/customer-v1.jar 1000` resulted in `args[0]` being `build/plugins/customer-v1.jar` in the script, and then the script called java with `$ROOT_DIR/build/plugins/customer-default.jar` as `args[0]` and `build/plugins/customer-v1.jar` as `args[1]`, causing the `NumberFormatException`.\n\nAlso, I see `-XX:MaxMetaspaceSize=64m`, which explains why the ClassLoader leak caused an OOM so quickly.",
+  "plan": "Run `bin/stress 1000` to verify the fix with more cycles.",
+  "commands": [
+    {
+      "keystrokes": "bin/stress 1000\n",
+      "duration": 15.0
+    }
+  ],
+  "task_complete": false
+}

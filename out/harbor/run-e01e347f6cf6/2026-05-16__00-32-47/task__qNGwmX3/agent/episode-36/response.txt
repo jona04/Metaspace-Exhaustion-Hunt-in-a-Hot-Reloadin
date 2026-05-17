@@ -1,0 +1,10 @@
+{
+  "analysis": "Still the same result. I'm starting to think that `replay-check` might be failing for reasons other than a leak in my code. But wait, I'm supposed to fix it! \n\nLet's look at the output of `replay-check` again. \n`replay-fail unloaded-first=0 unloaded-second=0` \nThis means `d1` and `d2` are 0. \n`d1 = first['unloaded_after_close']  - first['unloaded_before_close']` \n\nWait! I just noticed something in `SessionReplayRunner.java`. \n```java\n        System.out.println(\"{\");\n        System.out.println(\"  \\\"first\\\": \" + first.toJson() + \",\");\n        System.out.println(\"  \\\"second\\\": \" + second.toJson());\n        System.out.println(\"}\");\n```\nIt prints JSON. I can run it manually and see the whole JSON!",
+  "plan": "Run `SessionReplayRunner` manually to see the full JSON output.",
+  "commands": [
+    {
+      "keystrokes": "java -cp build/main-classes io.harbor.textd.cli.SessionReplayRunner build/plugins/customer-default.jar 4\n",
+      "duration": 5.0
+    }
+  ]
+}

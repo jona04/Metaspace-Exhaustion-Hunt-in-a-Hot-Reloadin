@@ -1,0 +1,11 @@
+{
+  "analysis": "My analysis was correct. \n- `TimelineFrame` starts with `pins = 1`. \n- `TimelineLedger.install` calls `previous.cool()` which calls `unpin()`, reducing pins to 1 (if it was pinned once by a `WorkerHandle`) or 0 (if never pinned). \n- Actually, `TimelineFrame` is initialized with `pins = 1`. This initial pin represents the 'current' status in the ledger.\n- When `install` moves it to `shadow`, it calls `cool()`, which decrements the pin. If no one else is using it, it goes to 0 and closes.\n- If a `WorkerHandle` has pinned it, the count is 2. `cool()` brings it to 1. When `WorkerHandle` calls `unpin()`, it goes to 0 and closes.\n\nIn `ThreadCache.java`, when a new `WorkerHandle` is created, the old one is abandoned without being closed. Thus `unpin()` is never called on the old frame, its pin count stays at 1 (after `cool()`), and it never closes. This keeps the `URLClassLoader` alive, leading to Metaspace OOM.",
+  "plan": "Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before creating a new one.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

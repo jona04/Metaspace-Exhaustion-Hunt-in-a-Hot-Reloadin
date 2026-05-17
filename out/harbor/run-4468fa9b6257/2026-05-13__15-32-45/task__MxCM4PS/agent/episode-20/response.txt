@@ -1,0 +1,6 @@
+{
+  "analysis": "I have successfully identified a memory leak in the `textd` service. The issue was in `ThreadCache.java`, where a `WorkerHandle` (which pins a `TimelineFrame` and its associated `ClassLoader`) was being replaced during a plugin reload without being closed. This caused `TimelineFrame` pin counts to never reach zero, preventing old class loaders from being garbage collected and leading to a `Metaspace` `OutOfMemoryError` during long runs. I modified `ThreadCache.java` to properly close the old `WorkerHandle` before creating a new one. I have verified the fix by running the `bin/stress` test (500 cycles) and the full suite (`bin/run-suite`), both of which now pass within the constrained Metaspace limit.",
+  "plan": "The task is complete. I have verified the fix and the system's stability.",
+  "commands": [],
+  "task_complete": true
+}

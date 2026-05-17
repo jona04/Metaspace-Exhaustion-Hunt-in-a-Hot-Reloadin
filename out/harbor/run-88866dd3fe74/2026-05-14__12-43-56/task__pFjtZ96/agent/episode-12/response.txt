@@ -1,0 +1,6 @@
+{
+  "analysis": "I have identified and fixed a resource leak in the `textd` service. The issue was located in `ThreadCache.java`, where old `WorkerHandle` instances were being replaced by new ones without being closed. Since `WorkerHandle.close()` is responsible for unpinning the `TimelineFrame`, old plugin generations remained pinned indefinitely, preventing their `URLClassLoader` from being garbage collected and eventually leading to Metaspace exhaustion. I modified `ThreadCache.java` to explicitly call `close()` on the existing `WorkerHandle` before creating a new one when a generation swap occurs. I have verified the fix by running the provided stress test and the full integration suite, both of which now pass successfully.",
+  "plan": "The task is complete. I have verified the fix with the provided test suites.",
+  "commands": [],
+  "task_complete": true
+}

@@ -1,0 +1,23 @@
+{
+  "analysis": "The stress test passed with 100 cycles, but the task says it 'falls over during a long refresh run'. The default in `bin/stress` is 50, and I ran 100. Maybe I need to run more cycles or check if the memory limit is indeed tight.\n\nLooking at `TextDaemon.java` and `LoadedGeneration.java`:\n- `LoadedGeneration` has a `close()` method that closes the `module` and the `classLoader`. This is good.\n- `TextDaemon` uses `TimelineLedger revisions` to manage generations. I should check `TimelineLedger.java`.\n- `TextDaemon.processRecord` calls `ThreadBridge.current(revisions)`. I should check `ThreadBridge.java` and `ThreadCache.java`.",
+  "plan": "1. Examine `TimelineLedger.java`, `ThreadBridge.java`, and `ThreadCache.java`.\n2. Run the stress test with more cycles (e.g., 500) to see if it eventually fails.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.3
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.3
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.3
+    },
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

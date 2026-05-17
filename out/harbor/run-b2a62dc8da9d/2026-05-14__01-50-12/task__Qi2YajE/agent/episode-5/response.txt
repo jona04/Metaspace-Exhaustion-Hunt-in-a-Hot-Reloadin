@@ -1,0 +1,14 @@
+{
+  "analysis": "The stress test failed with `java.lang.OutOfMemoryError: Metaspace`. This confirms that repeated loading of plugins is leaking memory in the Metaspace, which is where class metadata is stored. In Java, Metaspace is only reclaimed when the ClassLoader that loaded the classes is garbage collected. If there's a reference to a ClassLoader or any class it loaded, it won't be GC'ed.",
+  "plan": "1. Examine `TextDaemon.java` and `HotReloadStressRunner.java` to see how ClassLoaders are created and managed.\n2. Look for static references or thread locals that might be holding onto classes or ClassLoaders from the plugins.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.5
+    }
+  ]
+}

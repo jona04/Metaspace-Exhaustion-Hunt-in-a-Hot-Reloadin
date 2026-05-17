@@ -1,0 +1,18 @@
+{
+  "analysis": "I have examined `TextDaemon.java`, `LoadedGeneration.java`, `ThreadBridge.java`, and `TimelineLedger.java`. \n- `TextDaemon` uses a fixed thread pool for workers.\n- `ThreadBridge` uses a `ThreadLocal<ThreadCache>` to store worker handles.\n- `TimelineLedger` manages `TimelineFrame` objects, including a 'shadow' queue for old generations.\n- `TimelineLedger.pruneShadow()` removes frames if they are 'drained'.\n\nThe issue likely lies in how `ThreadCache` and `TimelineFrame` interact, particularly how they track usage and whether old generations are properly released when no longer in use by any thread.",
+  "plan": "I will examine `ThreadCache.java`, `TimelineFrame.java`, and `WorkerHandle.java` to understand the lifecycle of plugin generations and how they are 'drained'.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    }
+  ]
+}

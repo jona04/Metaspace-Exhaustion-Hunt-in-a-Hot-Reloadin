@@ -1,0 +1,15 @@
+{
+  "analysis": "The project is a Java-based text processing daemon (`textd`). \n- `src/main/java/io/harbor/textd/core` contains the core engine logic.\n- `plugin-src` contains a customer plugin, which likely includes the `PipelineProcessor` and `PipelineStages` mentioned in the task (processor swaps).\n- `bin/stress` and `bin/run-suite` seem relevant for reproducing the 'long refresh run' failure.\n- The failure happens during 'repeated processor swaps' in a 'constrained CI profile', which strongly suggests a resource leak (likely memory or threads) during hot-reloading or plugin swapping.",
+  "plan": "1. Examine the `bin/stress` script to see how the long run is executed.\n2. Run the stress test to confirm the failure and see the error message.\n3. Examine `TextDaemon.java` and `ThreadBridge.java` to understand how processors are swapped and how resources are managed.",
+  "commands": [
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}

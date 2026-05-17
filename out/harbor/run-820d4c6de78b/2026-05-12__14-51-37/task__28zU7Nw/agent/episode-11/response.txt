@@ -1,0 +1,15 @@
+{
+  "analysis": "Aha! I found it! \n\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\n\nIt replaces the `cursor` with a new `WorkerHandle`, but it **NEVER CLOSES** the old `cursor`! \nThe `WorkerHandle.close()` method is responsible for calling `frame.unpin()`. If `unpin()` is never called, the `TimelineFrame` pin count never reaches zero, and the `LoadedGeneration` (and its `URLClassLoader`) is never closed.\n\nThis is definitely the leak.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to call `cursor.close()` before replacing it with a new `WorkerHandle`.\n2. Recompile and run the stress test to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "sed -i '12i\\            cursor.close();' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

@@ -1,0 +1,168 @@
+New Terminal Output:
+
+root@813cbecd3a5c:/workspace/textd# cat src/main/java/io/harbor/textd/core/GenerationRegistry.java
+package io.harbor.textd.core;
+
+import java.nio.file.Path;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicReference;
+
+final class GenerationRegistry {
+    private final Path pluginJar;
+    private final AtomicReference<GenerationLease> active = new AtomicReference<>();
+    private final Queue<GenerationLease> retired = new ConcurrentLinkedQueue<>();
+
+    GenerationRegistry(Path pluginJar) {
+        this.pluginJar = pluginJar;
+    }
+
+    void activate(long generation) throws Exception {
+        GenerationLease next = new GenerationLease(LoadedGeneration.load(pluginJar, generation));
+        GenerationLease previous = active.getAndSet(next);
+        if (previous != null) {
+            retired.add(previous);
+            previous.retire();
+            sweepRetired();
+        }
+    }
+
+    GenerationLease active() {
+        GenerationLease lease = active.get();
+        if (lease == null) {
+            throw new IllegalStateException("No plugin generation is loaded");
+        }
+        return lease;
+    }
+
+    int pendingRetirements() {
+        sweepRetired();
+        return retired.size();
+    }
+
+    void close() {
+        GenerationLease current = active.getAndSet(null);
+        if (current != null) {
+            retired.add(current);
+            current.retire();
+        }
+        sweepRetired();
+    }
+
+    private void sweepRetired() {
+        retired.removeIf(GenerationLease::isClosed);
+    }
+}
+root@813cbecd3a5c:/workspace/textd# cat src/main/java/io/harbor/textd/core/LoadedGeneration.java
+package io.harbor.textd.core;
+
+import io.harbor.textd.api.PluginModule;
+import io.harbor.textd.api.PluginModuleFactory;
+
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Path;
+
+final class LoadedGeneration implements AutoCloseable {
+    private static final String FACTORY_CLASS = "io.harbor.textd.customer.CustomerPluginFactory";
+
+    private final long generation;
+    private final URLClassLoader classLoader;
+    private final PluginModule module;
+
+    private LoadedGeneration(long generation, URLClassLoader classLoader, PluginModule module) {
+        this.generation = generation;
+        this.classLoader = classLoader;
+        this.module = module;
+    }
+
+    static LoadedGeneration load(Path pluginJar, long generation) throws Exception {
+        URLClassLoader classLoader = new URLClassLoader(new URL[] {pluginJar.toUri().toURL()}, PluginModuleFactory.class.getClassLoader());
+        Class<?> factoryType = classLoader.loadClass(FACTORY_CLASS);
+        PluginModuleFactory factory = (PluginModuleFactory) factoryType.getDeclaredConstructor().newInstance();
+        return new LoadedGeneration(generation, classLoader, factory.open());
+    }
+
+    long generation() {
+        return generation;
+    }
+
+    PluginModule module() {
+        return module;
+    }
+
+    @Override
+    public void close() throws Exception {
+        module.close();
+        classLoader.close();
+    }
+}
+root@813cbecd3a5c:/workspace/textd# cat src/main/java/io/harbor/textd/core/GenerationLease.java
+package io.harbor.textd.core;
+
+import io.harbor.textd.api.PluginModule;
+
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+
+final class GenerationLease {
+    private final LoadedGeneration loadedGeneration;
+    private final AtomicInteger references = new AtomicInteger(1);
+    private final AtomicBoolean retired = new AtomicBoolean(false);
+    private final AtomicBoolean closed = new AtomicBoolean(false);
+
+    GenerationLease(LoadedGeneration loadedGeneration) {
+        this.loadedGeneration = loadedGeneration;
+    }
+
+    GenerationLease retain() {
+        while (true) {
+            int current = references.get();
+            if (current == 0) {
+                throw new IllegalStateException("Generation " + generation() + " is already closed");
+            }
+            if (references.compareAndSet(current, current + 1)) {
+                return this;
+            }
+        }
+    }
+
+    long generation() {
+        return loadedGeneration.generation();
+    }
+
+    PluginModule module() {
+        return loadedGeneration.module();
+    }
+
+    void retire() {
+        if (retired.compareAndSet(false, true)) {
+            release();
+        }
+    }
+
+    void release() {
+        int remaining = references.decrementAndGet();
+        if (remaining < 0) {
+            throw new IllegalStateException("Reference count underflow for generation " + generation());
+        }
+        if (remaining == 0 && retired.get()) {
+            closeLoadedGeneration();
+        }
+    }
+
+    boolean isClosed() {
+        return closed.get();
+    }
+
+    private void closeLoadedGeneration() {
+        if (closed.compareAndSet(false, true)) {
+            try {
+                loadedGeneration.close();
+            } catch (Exception exception) {
+                throw new IllegalStateException("Unable to close generation " + generation(), exception);
+            }
+        }
+    }
+}
+root@813cbecd3a5c:/workspace/textd#

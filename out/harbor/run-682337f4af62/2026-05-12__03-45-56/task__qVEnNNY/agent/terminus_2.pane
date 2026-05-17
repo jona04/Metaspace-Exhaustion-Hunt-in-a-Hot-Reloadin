@@ -1,0 +1,557 @@
+[?2004hroot@664a9b7d4f73:/workspace/textd# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@664a9b7d4f73:/workspace/textd# clear
+[?2004l[H[J[3J[?2004hroot@664a9b7d4f73:/workspace/textd# ls -R
+[?2004l.:
+[0m[01;34mbin[0m  [01;34mplugin-src[0m  [01;34msrc[0m
+
+./bin:
+[01;32mbuild[0m  [01;32mintegration[0m  [01;32mrun-suite[0m  [01;32mstress[0m
+
+./plugin-src:
+[01;34mio[0m
+
+./plugin-src/io:
+[01;34mharbor[0m
+
+./plugin-src/io/harbor:
+[01;34mtextd[0m
+
+./plugin-src/io/harbor/textd:
+[01;34mcustomer[0m
+
+./plugin-src/io/harbor/textd/customer:
+CustomerPluginFactory.java  CustomerPluginModule.java  PipelineProcessor.java  PipelineStages.java
+
+./src:
+[01;34mmain[0m
+
+./src/main:
+[01;34mjava[0m
+
+./src/main/java:
+[01;34mio[0m
+
+./src/main/java/io:
+[01;34mharbor[0m
+
+./src/main/java/io/harbor:
+[01;34mtextd[0m
+
+./src/main/java/io/harbor/textd:
+[01;34mapi[0m  [01;34mcli[0m  [01;34mcore[0m
+
+./src/main/java/io/harbor/textd/api:
+PluginModule.java  PluginModuleFactory.java  TextProcessor.java
+
+./src/main/java/io/harbor/textd/cli:
+HotReloadIntegrationRunner.java  HotReloadStressRunner.java  SessionSnapshotRunner.java
+
+./src/main/java/io/harbor/textd/core:
+LoadedGeneration.java  ProcessingResult.java  RevisionLedger.java  RouteState.java  ThreadState.java
+OutputFormat.java      RevisionFrame.java     RouteCursor.java     TextDaemon.java
+[?2004hroot@664a9b7d4f73:/workspace/textd# cat bin/stress
+[?2004l#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+if [[ "${TEXTD_SKIP_BUILD:-0}" != "1" ]]; then
+  "$ROOT_DIR/bin/build"
+fi
+
+java -XX:MaxMetaspaceSize=64m -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.HotReloadStressRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" \
+  "${1:-500}"
+[?2004hroot@664a9b7d4f73:/workspace/textd# ./bin/build && ./bin/stress
+[?2004lException in thread "main" java.lang.OutOfMemoryError: Metaspace
+	at io.harbor.textd.customer.PipelineStages.<clinit>(PipelineStages.java:10)
+	at io.harbor.textd.customer.PipelineProcessor.process(PipelineProcessor.java:22)
+	at io.harbor.textd.core.RouteCursor.process(RouteCursor.java:21)
+	at io.harbor.textd.core.TextDaemon.processRecord(TextDaemon.java:80)
+	at io.harbor.textd.core.TextDaemon.lambda$processBatch$0(TextDaemon.java:43)
+	at io.harbor.textd.core.TextDaemon$$Lambda$1/0x00007b6339001c58.call(Unknown Source)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+	at java.base/java.lang.Thread.run(Thread.java:840)
+[?2004hroot@664a9b7d4f73:/workspace/textd# cat src/main/java/io/harbor/textd/core/TextDaemon.java
+[?2004lpackage io.harbor.textd.core;
+
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+public final class TextDaemon implements AutoCloseable {
+    private final ExecutorService workers;
+    private final RevisionLedger revisions;
+    private final int workerCount;
+
+    public TextDaemon(Path pluginJar, int workerCount) {
+        this.revisions = new RevisionLedger(pluginJar);
+        this.workers = Executors.newFixedThreadPool(workerCount, new WorkerThreadFactory());
+        this.workerCount = workerCount;
+    }
+
+    public void reload(long generation) throws Exception {
+        revisions.install(generation);
+    }
+
+    public ProcessingResult process(String record) throws Exception {
+        return processBatch(List.of(record)).get(0);
+    }
+
+    public boolean isSteady() {
+        return revisions.isSteady();
+    }
+
+    public List<ProcessingResult> processBatch(List<String> records) throws Exception {
+        CountDownLatch ready = new CountDownLatch(records.size());
+        CountDownLatch release = new CountDownLatch(1);
+        List<Future<ProcessingResult>> futures = new ArrayList<>();
+        for (String record : records) {
+            futures.add(workers.submit(() -> processRecord(record, ready, release)));
+        }
+
+        if (!ready.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Workers did not become ready");
+        }
+        release.countDown();
+
+        List<ProcessingResult> results = new ArrayList<>(records.size());
+        for (Future<ProcessingResult> future : futures) {
+            try {
+                results.add(future.get());
+            } catch (ExecutionException exception) {
+                Throwable cause = exception.getCause();
+                if (cause instanceof Exception checked) {
+                    throw checked;
+                }
+                if (cause instanceof Error error) {
+                    throw error;
+                }
+                throw new RuntimeException(cause);
+            }
+        }
+        return results;
+    }
+
+    private ProcessingResult processRecord(
+        String record,
+        CountDownLatch ready,
+        CountDownLatch release
+    ) throws Exception {
+        ready.countDown();
+        if (!release.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Request release timed out");
+        }
+
+        RouteCursor binding = ThreadState.current(revisions);
+        return binding.process(record);
+    }
+
+    @Override
+    public void close() throws Exception {
+        revisions.close();
+        workers.shutdownNow();
+        workers.awaitTermination(5, TimeUnit.SECONDS);
+    }
+
+    private static final class WorkerThreadFactory implements ThreadFactory {
+        private final AtomicInteger sequence = new AtomicInteger(1);
+
+        @Override
+        public Thread newThread(Runnable runnable) {
+            Thread thread = new Thread(runnable);
+            thread.setName("textd-worker-" + sequence.getAndIncrement());
+            thread.setDaemon(true);
+            return thread;
+        }
+    }
+}
+[?2004hroot@664a9b7d4f73:/workspace/textd# cat src/main/java/io/harbor/textd/core/ThreadState.java
+[?2004lpackage io.harbor.textd.core;
+
+final class ThreadState {
+    private static final ThreadLocal<RouteState> ROUTES = ThreadLocal.withInitial(RouteState::new);
+
+    private ThreadState() {
+    }
+
+    static RouteCursor current(RevisionLedger ledger) {
+        return ROUTES.get().cursorFor(ledger);
+    }
+
+    static void clear() {
+        RouteState routeState = ROUTES.get();
+        routeState.close();
+        ROUTES.remove();
+    }
+}
+[?2004hroot@664a9b7d4f73:/workspace/textd# cat src/main/java/io/harbor/textd/core/RevisionLedger.java
+[?2004lpackage io.harbor.textd.core;
+
+import java.nio.file.Path;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicReference;
+
+final class RevisionLedger {
+    private final Path pluginJar;
+    private final AtomicReference<RevisionFrame> current = new AtomicReference<>();
+    private final Queue<RevisionFrame> shadow = new ConcurrentLinkedQueue<>();
+
+    RevisionLedger(Path pluginJar) {
+        this.pluginJar = pluginJar;
+    }
+
+    void install(long revision) throws Exception {
+        RevisionFrame next = new RevisionFrame(LoadedGeneration.load(pluginJar, revision));
+        RevisionFrame previous = current.getAndSet(next);
+        if (previous != null) {
+            shadow.add(previous);
+            previous.cool();
+            pruneShadow();
+        }
+    }
+
+    RevisionFrame current() {
+        RevisionFrame frame = current.get();
+        if (frame == null) {
+            throw new IllegalStateException("No plugin generation is loaded");
+        }
+        return frame;
+    }
+
+    boolean isSteady() {
+        pruneShadow();
+        return shadow.isEmpty();
+    }
+
+    void close() {
+        RevisionFrame frame = current.getAndSet(null);
+        if (frame != null) {
+            shadow.add(frame);
+            frame.cool();
+        }
+        pruneShadow();
+    }
+
+    private void pruneShadow() {
+        shadow.removeIf(RevisionFrame::isDrained);
+    }
+}
+[?2004hroot@664a9b7d4f73:/workspace/textd# cat src/main/java/io/harbor/textd/core/RouteState.java
+[?2004lpackage io.harbor.textd.core;
+
+final class RouteState implements AutoCloseable {
+    private RouteCursor cursor;
+
+    RouteCursor cursorFor(RevisionLedger ledger) {
+        RevisionFrame frame = ledger.current();
+        if (cursor == null) {
+            cursor = new RouteCursor(frame);
+            return cursor;
+        }
+
+        if (!cursor.matches(frame)) {
+            cursor = new RouteCursor(frame);
+            return cursor;
+        }
+
+        return cursor;
+    }
+
+    @Override
+    public void close() {
+        if (cursor != null) {
+            cursor.close();
+            cursor = null;
+        }
+    }
+}
+[?2004hroot@664a9b7d4f73:/workspace/textd# cat src/main/java/io/harbor/textd/core/RevisionFrame.java
+[?2004lpackage io.harbor.textd.core;
+
+import io.harbor.textd.api.PluginModule;
+
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+
+final class RevisionFrame {
+    private final LoadedGeneration loadedGeneration;
+    private final AtomicInteger pins = new AtomicInteger(1);
+    private final AtomicBoolean cooled = new AtomicBoolean(false);
+    private final AtomicBoolean closed = new AtomicBoolean(false);
+
+    RevisionFrame(LoadedGeneration loadedGeneration) {
+        this.loadedGeneration = loadedGeneration;
+    }
+
+    RevisionFrame pin() {
+        while (true) {
+            int current = pins.get();
+            if (current == 0) {
+                throw new IllegalStateException("Revision " + revision() + " is already closed");
+            }
+            if (pins.compareAndSet(current, current + 1)) {
+                return this;
+            }
+        }
+    }
+
+    long revision() {
+        return loadedGeneration.generation();
+    }
+
+    PluginModule module() {
+        return loadedGeneration.module();
+    }
+
+    void cool() {
+        if (cooled.compareAndSet(false, true)) {
+            unpin();
+        }
+    }
+
+    void unpin() {
+        int remaining = pins.decrementAndGet();
+        if (remaining < 0) {
+            throw new IllegalStateException("Pin count underflow for revision " + revision());
+        }
+        if (remaining == 0 && cooled.get()) {
+            closeLoadedGeneration();
+        }
+    }
+
+    boolean isDrained() {
+        return closed.get();
+    }
+
+    private void closeLoadedGeneration() {
+        if (closed.compareAndSet(false, true)) {
+            try {
+                loadedGeneration.close();
+            } catch (Exception exception) {
+                throw new IllegalStateException("Unable to close revision " + revision(), exception);
+            }
+        }
+    }
+}
+[?2004hroot@664a9b7d4f73:/workspace/textd# cat src/main/java/io/harbor/textd/core/RouteCursor.java
+[?2004lpackage io.harbor.textd.core;
+
+import io.harbor.textd.api.TextProcessor;
+
+final class RouteCursor implements AutoCloseable {
+    private final RevisionFrame frame;
+    private final long revision;
+    private final TextProcessor processor;
+
+    RouteCursor(RevisionFrame frame) {
+        this.frame = frame.pin();
+        this.revision = frame.revision();
+        this.processor = frame.module().processorFor(revision);
+    }
+
+    boolean matches(RevisionFrame frame) {
+        return revision == frame.revision();
+    }
+
+    ProcessingResult process(String record) {
+        String output = processor.process(record);
+        return new ProcessingResult(revision, output, Thread.currentThread().getName());
+    }
+
+    @Override
+    public void close() {
+        frame.unpin();
+    }
+}
+[?2004hroot@664a9b7d4f73:/workspace/textd# cat <<EOF > src/main/java/io/harbor/textd/core/RouteState.java
+[?2004l[?2004h> package io.harbor.textd.core;
+[?2004l[?2004h> 
+[?2004l[?2004h> final class RouteState implements AutoCloseable {
+[?2004l[?2004h>     private RouteCursor cursor;
+[?2004l[?2004h> 
+[?2004l[?2004h>     RouteCursor cursorFor(RevisionLedger ledger) {
+[?2004l[?2004h>         RevisionFrame frame = ledger.current();
+[?2004l[?2004h>         if (cursor == null) {
+[?2004l[?2004h>             cursor = new RouteCursor(frame);
+[?2004l[?2004h>             return cursor;
+[?2004l[?2004h>         }
+[?2004l[?2004h> 
+[?2004l[?2004h>         if (!cursor.matches(frame)) {
+[?2004l[?2004h>             cursor.close();
+[?2004l[?2004h>             cursor = new RouteCursor(frame);
+[?2004l[?2004h>             return cursor;
+[?2004l[?2004h>         }
+[?2004l[?2004h> 
+[?2004l[?2004h>         return cursor;
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     @Override
+[?2004l[?2004h>     public void close() {
+[?2004l[?2004h>         if (cursor != null) {
+[?2004l[?2004h>             cursor.close();
+[?2004l[?2004h>             cursor = null;
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h> }
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@664a9b7d4f73:/workspace/textd# ./bin/build && ./bin/stress
+[?2004lstress-ok cycles=500
+[?2004hroot@664a9b7d4f73:/workspace/textd# ./bin/run-suite
+[?2004lsuite-ok
+[?2004hroot@664a9b7d4f73:/workspace/textd# ls -R
+[?2004l.:
+[0m[01;34mbin[0m  [01;34mbuild[0m  [01;34mplugin-src[0m  [01;34msrc[0m
+
+./bin:
+[01;32mbuild[0m  [01;32mintegration[0m  [01;32mrun-suite[0m  [01;32mstress[0m
+
+./build:
+[01;34mmain-classes[0m  main-sources.txt  [01;34mplugin-classes[0m  plugin-sources.txt  [01;34mplugins[0m
+
+./build/main-classes:
+[01;34mio[0m
+
+./build/main-classes/io:
+[01;34mharbor[0m
+
+./build/main-classes/io/harbor:
+[01;34mtextd[0m
+
+./build/main-classes/io/harbor/textd:
+[01;34mapi[0m  [01;34mcli[0m  [01;34mcore[0m
+
+./build/main-classes/io/harbor/textd/api:
+PluginModule.class  PluginModuleFactory.class  TextProcessor.class
+
+./build/main-classes/io/harbor/textd/cli:
+HotReloadIntegrationRunner.class  HotReloadStressRunner.class  SessionSnapshotRunner.class
+
+./build/main-classes/io/harbor/textd/core:
+ LoadedGeneration.class   ProcessingResult.class   RevisionLedger.class   RouteState.class                        TextDaemon.class
+ OutputFormat.class       RevisionFrame.class      RouteCursor.class     'TextDaemon$WorkerThreadFactory.class'   ThreadState.class
+
+./build/plugin-classes:
+[01;34mio[0m
+
+./build/plugin-classes/io:
+[01;34mharbor[0m
+
+./build/plugin-classes/io/harbor:
+[01;34mtextd[0m
+
+./build/plugin-classes/io/harbor/textd:
+[01;34mcustomer[0m
+
+./build/plugin-classes/io/harbor/textd/customer:
+ CustomerPluginFactory.class     'PipelineStages$Stage047.class'  'PipelineStages$Stage097.class'  'PipelineStages$Stage147.class'
+ CustomerPluginModule.class      'PipelineStages$Stage048.class'  'PipelineStages$Stage098.class'  'PipelineStages$Stage148.class'
+ PipelineProcessor.class         'PipelineStages$Stage049.class'  'PipelineStages$Stage099.class'  'PipelineStages$Stage149.class'
+'PipelineStages$Stage.class'     'PipelineStages$Stage050.class'  'PipelineStages$Stage100.class'  'PipelineStages$Stage150.class'
+'PipelineStages$Stage001.class'  'PipelineStages$Stage051.class'  'PipelineStages$Stage101.class'  'PipelineStages$Stage151.class'
+'PipelineStages$Stage002.class'  'PipelineStages$Stage052.class'  'PipelineStages$Stage102.class'  'PipelineStages$Stage152.class'
+'PipelineStages$Stage003.class'  'PipelineStages$Stage053.class'  'PipelineStages$Stage103.class'  'PipelineStages$Stage153.class'
+'PipelineStages$Stage004.class'  'PipelineStages$Stage054.class'  'PipelineStages$Stage104.class'  'PipelineStages$Stage154.class'
+'PipelineStages$Stage005.class'  'PipelineStages$Stage055.class'  'PipelineStages$Stage105.class'  'PipelineStages$Stage155.class'
+'PipelineStages$Stage006.class'  'PipelineStages$Stage056.class'  'PipelineStages$Stage106.class'  'PipelineStages$Stage156.class'
+'PipelineStages$Stage007.class'  'PipelineStages$Stage057.class'  'PipelineStages$Stage107.class'  'PipelineStages$Stage157.class'
+'PipelineStages$Stage008.class'  'PipelineStages$Stage058.class'  'PipelineStages$Stage108.class'  'PipelineStages$Stage158.class'
+'PipelineStages$Stage009.class'  'PipelineStages$Stage059.class'  'PipelineStages$Stage109.class'  'PipelineStages$Stage159.class'
+'PipelineStages$Stage010.class'  'PipelineStages$Stage060.class'  'PipelineStages$Stage110.class'  'PipelineStages$Stage160.class'
+'PipelineStages$Stage011.class'  'PipelineStages$Stage061.class'  'PipelineStages$Stage111.class'  'PipelineStages$Stage161.class'
+'PipelineStages$Stage012.class'  'PipelineStages$Stage062.class'  'PipelineStages$Stage112.class'  'PipelineStages$Stage162.class'
+'PipelineStages$Stage013.class'  'PipelineStages$Stage063.class'  'PipelineStages$Stage113.class'  'PipelineStages$Stage163.class'
+'PipelineStages$Stage014.class'  'PipelineStages$Stage064.class'  'PipelineStages$Stage114.class'  'PipelineStages$Stage164.class'
+'PipelineStages$Stage015.class'  'PipelineStages$Stage065.class'  'PipelineStages$Stage115.class'  'PipelineStages$Stage165.class'
+'PipelineStages$Stage016.class'  'PipelineStages$Stage066.class'  'PipelineStages$Stage116.class'  'PipelineStages$Stage166.class'
+'PipelineStages$Stage017.class'  'PipelineStages$Stage067.class'  'PipelineStages$Stage117.class'  'PipelineStages$Stage167.class'
+'PipelineStages$Stage018.class'  'PipelineStages$Stage068.class'  'PipelineStages$Stage118.class'  'PipelineStages$Stage168.class'
+'PipelineStages$Stage019.class'  'PipelineStages$Stage069.class'  'PipelineStages$Stage119.class'  'PipelineStages$Stage169.class'
+'PipelineStages$Stage020.class'  'PipelineStages$Stage070.class'  'PipelineStages$Stage120.class'  'PipelineStages$Stage170.class'
+'PipelineStages$Stage021.class'  'PipelineStages$Stage071.class'  'PipelineStages$Stage121.class'  'PipelineStages$Stage171.class'
+'PipelineStages$Stage022.class'  'PipelineStages$Stage072.class'  'PipelineStages$Stage122.class'  'PipelineStages$Stage172.class'
+'PipelineStages$Stage023.class'  'PipelineStages$Stage073.class'  'PipelineStages$Stage123.class'  'PipelineStages$Stage173.class'
+'PipelineStages$Stage024.class'  'PipelineStages$Stage074.class'  'PipelineStages$Stage124.class'  'PipelineStages$Stage174.class'
+'PipelineStages$Stage025.class'  'PipelineStages$Stage075.class'  'PipelineStages$Stage125.class'  'PipelineStages$Stage175.class'
+'PipelineStages$Stage026.class'  'PipelineStages$Stage076.class'  'PipelineStages$Stage126.class'  'PipelineStages$Stage176.class'
+'PipelineStages$Stage027.class'  'PipelineStages$Stage077.class'  'PipelineStages$Stage127.class'  'PipelineStages$Stage177.class'
+'PipelineStages$Stage028.class'  'PipelineStages$Stage078.class'  'PipelineStages$Stage128.class'  'PipelineStages$Stage178.class'
+'PipelineStages$Stage029.class'  'PipelineStages$Stage079.class'  'PipelineStages$Stage129.class'  'PipelineStages$Stage179.class'
+'PipelineStages$Stage030.class'  'PipelineStages$Stage080.class'  'PipelineStages$Stage130.class'  'PipelineStages$Stage180.class'
+'PipelineStages$Stage031.class'  'PipelineStages$Stage081.class'  'PipelineStages$Stage131.class'  'PipelineStages$Stage181.class'
+'PipelineStages$Stage032.class'  'PipelineStages$Stage082.class'  'PipelineStages$Stage132.class'  'PipelineStages$Stage182.class'
+'PipelineStages$Stage033.class'  'PipelineStages$Stage083.class'  'PipelineStages$Stage133.class'  'PipelineStages$Stage183.class'
+'PipelineStages$Stage034.class'  'PipelineStages$Stage084.class'  'PipelineStages$Stage134.class'  'PipelineStages$Stage184.class'
+'PipelineStages$Stage035.class'  'PipelineStages$Stage085.class'  'PipelineStages$Stage135.class'  'PipelineStages$Stage185.class'
+'PipelineStages$Stage036.class'  'PipelineStages$Stage086.class'  'PipelineStages$Stage136.class'  'PipelineStages$Stage186.class'
+'PipelineStages$Stage037.class'  'PipelineStages$Stage087.class'  'PipelineStages$Stage137.class'  'PipelineStages$Stage187.class'
+'PipelineStages$Stage038.class'  'PipelineStages$Stage088.class'  'PipelineStages$Stage138.class'  'PipelineStages$Stage188.class'
+'PipelineStages$Stage039.class'  'PipelineStages$Stage089.class'  'PipelineStages$Stage139.class'  'PipelineStages$Stage189.class'
+'PipelineStages$Stage040.class'  'PipelineStages$Stage090.class'  'PipelineStages$Stage140.class'  'PipelineStages$Stage190.class'
+'PipelineStages$Stage041.class'  'PipelineStages$Stage091.class'  'PipelineStages$Stage141.class'  'PipelineStages$Stage191.class'
+'PipelineStages$Stage042.class'  'PipelineStages$Stage092.class'  'PipelineStages$Stage142.class'  'PipelineStages$Stage192.class'
+'PipelineStages$Stage043.class'  'PipelineStages$Stage093.class'  'PipelineStages$Stage143.class'   PipelineStages.class
+'PipelineStages$Stage044.class'  'PipelineStages$Stage094.class'  'PipelineStages$Stage144.class'
+'PipelineStages$Stage045.class'  'PipelineStages$Stage095.class'  'PipelineStages$Stage145.class'
+'PipelineStages$Stage046.class'  'PipelineStages$Stage096.class'  'PipelineStages$Stage146.class'
+
+./build/plugins:
+[01;31mcustomer-default.jar[0m
+
+./plugin-src:
+[01;34mio[0m
+
+./plugin-src/io:
+[01;34mharbor[0m
+
+./plugin-src/io/harbor:
+[01;34mtextd[0m
+
+./plugin-src/io/harbor/textd:
+[01;34mcustomer[0m
+
+./plugin-src/io/harbor/textd/customer:
+CustomerPluginFactory.java  CustomerPluginModule.java  PipelineProcessor.java  PipelineStages.java
+
+./src:
+[01;34mmain[0m
+
+./src/main:
+[01;34mjava[0m
+
+./src/main/java:
+[01;34mio[0m
+
+./src/main/java/io:
+[01;34mharbor[0m
+
+./src/main/java/io/harbor:
+[01;34mtextd[0m
+
+./src/main/java/io/harbor/textd:
+[01;34mapi[0m  [01;34mcli[0m  [01;34mcore[0m
+
+./src/main/java/io/harbor/textd/api:
+PluginModule.java  PluginModuleFactory.java  TextProcessor.java
+
+./src/main/java/io/harbor/textd/cli:
+HotReloadIntegrationRunner.java  HotReloadStressRunner.java  SessionSnapshotRunner.java
+
+./src/main/java/io/harbor/textd/core:
+LoadedGeneration.java  ProcessingResult.java  RevisionLedger.java  RouteState.java  ThreadState.java
+OutputFormat.java      RevisionFrame.java     RouteCursor.java     TextDaemon.java
+[?2004hroot@664a9b7d4f73:/workspace/textd# 

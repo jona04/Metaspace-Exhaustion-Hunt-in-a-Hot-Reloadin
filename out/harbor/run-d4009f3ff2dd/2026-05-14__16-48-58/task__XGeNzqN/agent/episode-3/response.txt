@@ -1,0 +1,18 @@
+{
+  "analysis": "In `ThreadBridge.java`, there is a `ThreadLocal<ThreadCache>`. This `ThreadLocal` might be holding onto old generations if they are not cleared properly. \nIn `TimelineLedger.java`, `install` adds the previous `TimelineFrame` to a `shadow` queue and calls `previous.cool()`. `pruneShadow` removes frames that are 'drained'.\n\nI need to check `ThreadCache.java`, `TimelineFrame.java`, and `WorkerHandle.java` to see how they interact and how frames are marked as 'drained'.",
+  "plan": "Examine `src/main/java/io/harbor/textd/core/ThreadCache.java`, `src/main/java/io/harbor/textd/core/TimelineFrame.java`, and `src/main/java/io/harbor/textd/core/WorkerHandle.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    }
+  ]
+}

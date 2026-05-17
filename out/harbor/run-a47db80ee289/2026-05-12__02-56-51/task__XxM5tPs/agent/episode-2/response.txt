@@ -1,0 +1,19 @@
+{
+  "analysis": "The `bin/stress` script reveals a critical constraint: `-XX:MaxMetaspaceSize=64m`. This suggests the 'soak' failure is likely a Metaspace OOM caused by classloader leaks during repeated plugin refreshes. \n\nIn `GenerationRegistry.java`, when a new generation is activated, the previous `GenerationLease` is added to a `retired` queue and `previous.retire()` is called. The `sweepRetired()` method removes leases only if `isClosed()` returns true. If `GenerationLease` or the underlying `LoadedGeneration` (which likely uses a custom classloader) doesn't close properly, the classloaders will accumulate in Metaspace until it exhausts.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/LoadedGeneration.java` to see how it loads plugins and if it uses a new `ClassLoader` per generation.\n2. Examine `src/main/java/io/harbor/textd/core/GenerationLease.java` to see how `retire()` and `isClosed()` are implemented, specifically looking for reference counting.\n3. Run the stress test to confirm the failure (likely `java.lang.OutOfMemoryError: Metaspace`).",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/GenerationLease.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "./bin/stress 50\n",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}

@@ -1,0 +1,62 @@
+New Terminal Output:
+
+root@a9b47570bd30:/workspace/textd# cat src/main/java/io/harbor/textd/core/RouteState.java
+package io.harbor.textd.core;
+
+final class RouteState implements AutoCloseable {
+    private RouteCursor cursor;
+
+    RouteCursor cursorFor(RevisionLedger ledger) {
+        RevisionFrame frame = ledger.current();
+        if (cursor == null) {
+            cursor = new RouteCursor(frame);
+            return cursor;
+        }
+
+        if (!cursor.matches(frame)) {
+            cursor = new RouteCursor(frame);
+            return cursor;
+        }
+
+        return cursor;
+    }
+
+    @Override
+    public void close() {
+        if (cursor != null) {
+            cursor.close();
+            cursor = null;
+        }
+    }
+}
+root@a9b47570bd30:/workspace/textd# cat src/main/java/io/harbor/textd/core/RouteCursor.java
+package io.harbor.textd.core;
+
+import io.harbor.textd.api.TextProcessor;
+
+final class RouteCursor implements AutoCloseable {
+    private final RevisionFrame frame;
+    private final long revision;
+    private final TextProcessor processor;
+
+    RouteCursor(RevisionFrame frame) {
+        this.frame = frame.pin();
+        this.revision = frame.revision();
+        this.processor = frame.module().processorFor(revision);
+    }
+
+    boolean matches(RevisionFrame frame) {
+        return revision == frame.revision();
+    }
+
+    ProcessingResult process(String record) {
+        String output = processor.process(record);
+        return new ProcessingResult(revision, output, Thread.currentThread().getName());
+    }
+
+    @Override
+    public void close() {
+        frame.unpin();
+    }
+}
+root@a9b47570bd30:/workspace/textd#

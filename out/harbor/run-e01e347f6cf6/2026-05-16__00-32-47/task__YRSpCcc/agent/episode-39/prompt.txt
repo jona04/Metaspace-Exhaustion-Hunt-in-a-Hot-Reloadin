@@ -1,0 +1,41 @@
+Current Terminal Screen:
+root@bf85ac6d598e:/workspace/textd# TEXTD_SKIP_BUILD=1 ./bin/stress 200
+stress-ok cycles=200
+root@bf85ac6d598e:/workspace/textd# ls -lh build/plugins/customer-default.jar
+-rw-r--r-- 1 root root 101K May 16 00:41 build/plugins/customer-default.jar
+root@bf85ac6d598e:/workspace/textd# ./bin/replay-check
+replay-fail unloaded-first=0 unloaded-second=0
+root@bf85ac6d598e:/workspace/textd# cat <<EOF > src/main/java/io/harbor/textd/core/ThreadBridge.java
+> package io.harbor.textd.core;
+>
+> import java.util.concurrent.ConcurrentHashMap;
+> import java.util.Map;
+>
+> final class ThreadBridge {
+>     private final Map<Thread, ThreadCache> routes = new ConcurrentHashMap<>();
+>
+>     WorkerHandle current(TimelineLedger ledger) {
+>         return routes.computeIfAbsent(Thread.currentThread(), t -> new ThreadCache()).cursorFor(ledger);
+>     }
+>
+>     void clearAll() {
+>         for (ThreadCache cache : routes.values()) {
+>             cache.close();
+>         }
+>         routes.clear();
+>     }
+> }
+> EOF
+root@bf85ac6d598e:/workspace/textd# ./bin/build
+java -cp build/main-classes io.harbor.textd.cli.SessionReplayRunner build/plugins/customer-default.jar 4
+root@bf85ac6d598e:/workspace/textd# java -cp build/main-classes io.harbor.textd.cli.SessionReplayRunner build/plugins/customer-default.jar 4
+{
+  "first": {"first":"GEN-001|ALPHA>BETA>GAMMA|PIPE-18528","last":"GEN-004|ALPHA>BETA>GAMMA|PIPE-18528","start":["textd-worker-1", "textd-worker-2", "textd-worke
+r-3", "textd-worker-4"],"end":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"same_workers":true,"before_close":true,"after_close":tru
+e,"loaded_before_close":694,"loaded_after_close":1888,"unloaded_before_close":0,"unloaded_after_close":0},
+  "second": {"first":"GEN-001|ALPHA>BETA>GAMMA|PIPE-18528","last":"GEN-004|ALPHA>BETA>GAMMA|PIPE-18528","start":["textd-worker-1", "textd-worker-2", "textd-work
+er-3", "textd-worker-4"],"end":["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"],"same_workers":true,"before_close":true,"after_close":tr
+ue,"loaded_before_close":1888,"loaded_after_close":2705,"unloaded_before_close":0,"unloaded_after_close":0}
+}
+root@bf85ac6d598e:/workspace/textd# ./bin/replay-check
+

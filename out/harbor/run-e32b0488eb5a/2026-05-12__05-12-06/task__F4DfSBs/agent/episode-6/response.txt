@@ -1,0 +1,19 @@
+{
+  "analysis": "The analysis is confirmed.\n\n1. `WorkerHandle` pins the `TimelineFrame` in its constructor: `this.frame = frame.pin();`.\n2. `WorkerHandle.close()` unpins it: `frame.unpin();`.\n3. `TimelineFrame.unpin()` closes the `LoadedGeneration` (which likely closes the ClassLoader) only when the pin count reaches 0 and the frame is 'cooled'.\n4. `TimelineLedger.install()` calls `previous.cool()` which decrements the initial pin (from 1 to 0 if no workers are using it).\n5. In `ThreadCache.cursorFor`, when a new `WorkerHandle` is created, the old one is discarded without being closed. This keeps the pin count of the old `TimelineFrame` above 0, preventing it from being closed and its ClassLoader from being garbage collected.\n\nFix: In `ThreadCache.java`, call `cursor.close()` before assigning a new `WorkerHandle` to `cursor`.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to call `cursor.close()` when replacing the cursor.\n2. Re-run the stress test to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/if (cursor != null) { cursor.close(); } cursor = new WorkerHandle(frame);/' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 20.0
+    }
+  ],
+  "task_complete": false
+}

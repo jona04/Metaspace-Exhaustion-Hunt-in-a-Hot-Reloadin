@@ -1,0 +1,41 @@
+Current Terminal Screen:
+>         return binding.process(record);
+>     }
+>
+>     @Override
+>     public void close() throws Exception {
+>         CyclicBarrier barrier = new CyclicBarrier(workerCount + 1);
+>         for (int i = 0; i < workerCount; i++) {
+>             workers.submit(() -> {
+>                 try {
+>                     ThreadBridge.clear();
+>                     barrier.await(1, TimeUnit.SECONDS);
+>                 } catch (Exception ignored) {
+>                 }
+>                 return null;
+>             });
+>         }
+>         try {
+>             barrier.await(2, TimeUnit.SECONDS);
+>         } catch (Exception ignored) {
+>         }
+>
+>         revisions.close();
+>         workers.shutdownNow();
+>         workers.awaitTermination(5, TimeUnit.SECONDS);
+>     }
+>
+>     private static final class WorkerThreadFactory implements ThreadFactory {
+>         private final AtomicInteger sequence = new AtomicInteger(1);
+>
+>         @Override
+>         public Thread newThread(Runnable runnable) {
+>             Thread thread = new Thread(runnable);
+>             thread.setName("textd-worker-" + sequence.getAndIncrement());
+>             thread.setDaemon(true);
+>             return thread;
+>         }
+>     }
+> }
+> EOF
+root@c432f645dca5:/workspace/textd#

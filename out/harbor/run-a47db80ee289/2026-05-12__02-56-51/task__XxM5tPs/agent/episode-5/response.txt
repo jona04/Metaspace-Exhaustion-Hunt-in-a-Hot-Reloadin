@@ -1,0 +1,15 @@
+{
+  "analysis": "The `HotReloadStressRunner` reloads the daemon in a loop and processes some text. It uses `daemon.processBatch` and `daemon.process`. \n\nI need to check how `TextDaemon` handles these calls and how it uses `GenerationLease`. If it fails to release a lease in one of these methods, we'll get a leak.\n\nThe `./bin/stress 500` is currently running.",
+  "plan": "1. Wait for `./bin/stress 500` to finish or fail.\n2. Read `src/main/java/io/harbor/textd/core/TextDaemon.java` to check lease management in `process` and `processBatch`.",
+  "commands": [
+    {
+      "keystrokes": "",
+      "duration": 10.0
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.2
+    }
+  ],
+  "task_complete": false
+}

@@ -1,0 +1,7 @@
+- A Java daemon named `textd` swaps customer text processors in place, loading each revision from the same plugin jar through a fresh class loader
+- Requests run on a long-lived four-thread executor, and per-thread state persists between calls instead of being rebuilt for every record
+- Internal bookkeeping keeps both the current revision and older revision history until the daemon considers the handoff complete
+- The shipped plugin logic remains deterministic for the canonical sample record `alpha beta gamma`, and revision-specific outputs are used by the functional checks
+- CI soak validation runs 500 refresh cycles with `-XX:MaxMetaspaceSize=64m` and a mixed request pattern that revisits the same workers throughout the run
+- An auxiliary digest runner samples outputs and worker identities around the end of a multi-refresh session
+- The full suite also replays the daemon twice in one JVM, and the replay-check wrapper prints positive unloading deltas after each close

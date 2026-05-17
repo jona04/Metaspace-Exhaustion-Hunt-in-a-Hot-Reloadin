@@ -1,0 +1,10 @@
+{
+  "analysis": "The `bin/stress` script runs `io.harbor.textd.cli.HotReloadStressRunner` with a limited `-XX:MaxMetaspaceSize=64m`. The `run-suite` script runs a stress test with 500 iterations. The error described ('falls over during a long refresh run') combined with the `MaxMetaspaceSize` limit strongly suggests a Metaspace leak, likely caused by not properly unloading classes or classloaders when 'swapping' processors.",
+  "plan": "1. Run `bin/stress 500` to see if it reproduces the failure.\n2. Examine the code in `HotReloadStressRunner.java` and `TextDaemon.java` to see how plugins are loaded and swapped.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 5.0
+    }
+  ]
+}

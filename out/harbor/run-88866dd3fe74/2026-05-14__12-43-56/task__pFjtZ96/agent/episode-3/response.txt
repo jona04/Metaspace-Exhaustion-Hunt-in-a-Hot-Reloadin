@@ -1,0 +1,14 @@
+{
+  "analysis": "Here's what I've found:\n- `TimelineLedger` manages `TimelineFrame`s. It keeps the current frame and a `shadow` queue of old frames.\n- `TimelineFrame` seems to have a pinning mechanism (`pin()` and `unpin()`).\n- `WorkerHandle` pins a `TimelineFrame` in its constructor and unpins it in its `close()` method.\n- `ThreadBridge` uses a `ThreadLocal<ThreadCache>` to store `WorkerHandle`s.\n- `TextDaemon.processRecord` calls `ThreadBridge.current(revisions)` but DOES NOT call `close()` on the returned `WorkerHandle`.\n- `ThreadCache` (which I haven't seen yet) likely caches the `WorkerHandle` for the thread.\n\nThe leak probably occurs because `WorkerHandle`s are cached in `ThreadLocal` and might not be released or updated correctly when a new generation is installed, or the `ThreadLocal` itself is not being cleared correctly, keeping old `TimelineFrame`s pinned forever.\n\nWait, if `WorkerHandle` is cached in `ThreadCache`, it holds a pin on the `TimelineFrame`. If the `ThreadCache` doesn't release old `WorkerHandle`s when the generation changes, the old `TimelineFrame` stays pinned and thus cannot be drained and pruned from `TimelineLedger.shadow`.\n\nLet's look at `ThreadCache.java` and `TimelineFrame.java`.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/ThreadCache.java`.\n2. Examine `src/main/java/io/harbor/textd/core/TimelineFrame.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.2
+    }
+  ]
+}

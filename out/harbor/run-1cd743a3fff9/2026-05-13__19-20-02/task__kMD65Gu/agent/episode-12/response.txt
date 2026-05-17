@@ -1,0 +1,19 @@
+{
+  "analysis": "Here's how the leak works:\n1. When a `WorkerHandle` is created, it calls `frame.pin()`, incrementing the pin count.\n2. In `ThreadCache.cursorFor`, if the `cursor` exists but doesn't match the new frame, it simply overwrites `cursor` with a new `WorkerHandle`.\n3. **CRITICAL ERROR**: The old `WorkerHandle` is never closed when it's replaced in `ThreadCache.cursorFor`. Thus, `frame.unpin()` is never called for the old frame.\n4. Since `unpin()` is not called, the pin count stays above 0, and `closeLoadedGeneration()` is never called.\n5. The `URLClassLoader` remains open, and the Metaspace for that generation is never reclaimed.\n\nAlso, `TimelineLedger.close()` calls `pruneShadow()`, but if some threads still have cached `WorkerHandle`s, those frames won't be drained. However, the main issue is the lack of closing the old `WorkerHandle` in `ThreadCache.cursorFor`.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to call `close()` on the old `cursor` before replacing it.\n2. Rebuild and run the stress test with 500 cycles to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/build\n",
+      "duration": 5.0
+    },
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 30.0
+    }
+  ],
+  "task_complete": false
+}

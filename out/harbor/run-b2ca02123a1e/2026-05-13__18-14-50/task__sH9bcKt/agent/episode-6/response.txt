@@ -1,0 +1,18 @@
+{
+  "analysis": "The stress test failed with `java.lang.OutOfMemoryError: Metaspace`. This confirms that the plugin reloading is leaking Metaspace. This usually happens when the old ClassLoaders are not being garbage collected because something is still holding a reference to them or their classes.",
+  "plan": "1. Examine `TextDaemon.java` and `WorkerHandle.java` to see how plugins are loaded and swapped.\n2. Look for any static caches or thread locals that might be holding onto plugin classes.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ]
+}

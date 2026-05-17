@@ -1,0 +1,18 @@
+{
+  "analysis": "The code shows a `RevisionLedger` managing `RevisionFrame` objects. When a new plugin is installed, the old `RevisionFrame` is moved to a `shadow` queue and `cool()` is called. `pruneShadow()` removes frames that are 'drained'. `TextDaemon` uses a thread pool and `ThreadState.current(revisions)` to bind a `RouteCursor` to the current thread. \n\nI need to see `LoadedGeneration.java`, `RevisionFrame.java`, and `ThreadState.java` to see how the classloaders are actually handled and if they are closed.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/LoadedGeneration.java` to see how the classloader is created.\n2. Examine `src/main/java/io/harbor/textd/core/RevisionFrame.java` to see how it tracks usage and calls `cool()`.\n3. Examine `src/main/java/io/harbor/textd/core/ThreadState.java` to see how it caches `RouteCursor` and if it holds onto old generations.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/RevisionFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadState.java\n",
+      "duration": 0.1
+    }
+  ]
+}

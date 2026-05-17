@@ -1,0 +1,10 @@
+{
+  "analysis": "I found the leak! \n\nIn `ThreadCache.java`:\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\nWhen `cursor.matches(frame)` is false, a new `WorkerHandle` is created and assigned to `cursor`, but the old `cursor` is never closed. `WorkerHandle.close()` is what calls `frame.unpin()`. If `unpin()` is not called, the `pins` count never reaches zero, and the `LoadedGeneration` (and its `URLClassLoader`) is never closed.\n\nAlso, `ThreadBridge.clear()` is available but it seems it is not being used to clean up the `ThreadLocal` when workers are idle or when the daemon is closing, though the workers are daemon threads and the daemon itself has a `close()` method that shuts down the executor.\n\nWait, `TextDaemon.processRecord` calls `ThreadBridge.current(revisions)` which gets the `WorkerHandle` from the `ThreadLocal`. If the generation changes, the old `WorkerHandle` is just dropped and replaced without being closed.\n\nLet's verify this by running the stress test and seeing if it fails.",
+  "plan": "I will run the stress test to confirm it fails as expected.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 20\n",
+      "duration": 10.0
+    }
+  ]
+}

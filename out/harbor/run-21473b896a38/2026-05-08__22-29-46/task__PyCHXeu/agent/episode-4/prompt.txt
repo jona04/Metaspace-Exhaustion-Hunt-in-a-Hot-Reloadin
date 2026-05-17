@@ -1,0 +1,39 @@
+New Terminal Output:
+
+root@56cb0ac734dd:/workspace/textd# bin/stress
+Exception in thread "main" java.lang.OutOfMemoryError: Metaspace
+        at java.base/java.lang.ClassLoader.defineClass1(Native Method)
+        at java.base/java.lang.ClassLoader.defineClass(ClassLoader.java:1017)
+        at java.base/java.security.SecureClassLoader.defineClass(SecureClassLoader.java:150)
+        at java.base/java.net.URLClassLoader.defineClass(URLClassLoader.java:524)
+        at java.base/java.net.URLClassLoader$1.run(URLClassLoader.java:427)
+        at java.base/java.net.URLClassLoader$1.run(URLClassLoader.java:421)
+        at java.base/java.security.AccessController.executePrivileged(AccessController.java:807)
+        at java.base/java.security.AccessController.doPrivileged(AccessController.java:712)
+        at java.base/java.net.URLClassLoader.findClass(URLClassLoader.java:420)
+        at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:592)
+        at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:525)
+        at io.harbor.textd.customer.PipelineStages.<clinit>(PipelineStages.java:10)
+        at io.harbor.textd.customer.PipelineProcessor.process(PipelineProcessor.java:22)
+        at io.harbor.textd.core.TextDaemon.processRecord(TextDaemon.java:89)
+        at io.harbor.textd.core.TextDaemon.lambda$processBatch$0(TextDaemon.java:50)
+        at io.harbor.textd.core.TextDaemon$$Lambda$1/0x0000793ea1001818.call(Unknown Source)
+        at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+        at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
+        at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+        at java.base/java.lang.Thread.run(Thread.java:840)
+root@56cb0ac734dd:/workspace/textd# cat bin/stress
+#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+if [[ "${TEXTD_SKIP_BUILD:-0}" != "1" ]]; then
+  "$ROOT_DIR/bin/build"
+fi
+
+java -XX:MaxMetaspaceSize=64m -cp "$ROOT_DIR/build/main-classes" \
+  io.harbor.textd.cli.HotReloadStressRunner \
+  "$ROOT_DIR/build/plugins/customer-default.jar" \
+  "${1:-500}"
+root@56cb0ac734dd:/workspace/textd#

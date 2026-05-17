@@ -1,0 +1,18 @@
+{
+  "analysis": "I've reviewed `HotReloadStressRunner.java` and `TextDaemon.java`. \n\n`HotReloadStressRunner` runs a loop of `cycles` iterations (default 500). In each cycle, it calls `daemon.reload(generation)` and then processes some samples. \n\n`TextDaemon` uses a fixed thread pool for workers. When processing a record, it calls `ThreadBridge.current(revisions)` to get a `WorkerHandle`. \n\nI need to look at `ThreadBridge.java` and `TimelineLedger.java` to see how they handle the `WorkerHandle` and if they are leaking resources (like ClassLoaders or Threads) when `reload` is called.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/ThreadBridge.java`.\n2. Examine `src/main/java/io/harbor/textd/core/TimelineLedger.java`.\n3. Examine `src/main/java/io/harbor/textd/core/ThreadCache.java`.\n4. Try to run the stress test to see it fail.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    }
+  ]
+}

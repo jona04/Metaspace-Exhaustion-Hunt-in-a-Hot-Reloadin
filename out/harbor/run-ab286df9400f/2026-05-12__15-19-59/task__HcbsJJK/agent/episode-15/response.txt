@@ -1,0 +1,6 @@
+{
+  "analysis": "The investigation revealed a Metaspace leak occurring during long runs of the `textd` service. The root cause was located in `src/main/java/io/harbor/textd/core/ThreadCache.java`, where a new `WorkerHandle` was being created during a processor swap without closing the previous one. Since `WorkerHandle` is responsible for unpinning the `TimelineFrame`, the failure to close it meant that old generations were never unpinned, and consequently, their `URLClassLoader`s were never closed. This led to an accumulation of class metadata in Metaspace until the 64MB limit was reached.\n\nI fixed the issue by explicitly calling `cursor.close()` before replacing it with a new handle in `ThreadCache.cursorFor`. I verified the fix by running the stress test for 500 cycles (which previously failed) and confirmed it now passes. I also ran the integration suite to ensure no regressions.",
+  "plan": "I have already applied the fix and verified it with both the stress test and the integration suite. The task is complete.",
+  "commands": [],
+  "task_complete": true
+}

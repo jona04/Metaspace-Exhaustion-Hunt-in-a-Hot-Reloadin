@@ -1,0 +1,10 @@
+{
+  "analysis": "`ThreadBridge.clear()` is not called anywhere in `src`. This might be another leak if threads are frequently created and destroyed, but `TextDaemon` uses a `FixedThreadPool`. The threads in the pool are daemon threads and they stay alive. \n\nHowever, if the `TextDaemon` itself is closed, we might want to clear the `ThreadLocal`s, but `ThreadLocal`s are tied to the threads. If the threads stay alive in the pool but the `TextDaemon` is replaced, the `ThreadCache` will still be there. \n\nIn `TextDaemon.close()`:\n```java\n    @Override\n    public void close() throws Exception {\n        revisions.close();\n        workers.shutdownNow();\n        workers.awaitTermination(5, TimeUnit.SECONDS);\n    }\n```\nIt shuts down the workers. Since they are shut down, the threads will eventually die, and the `ThreadLocal`s will be reclaimed. \n\nBut wait, the `ThreadBridge` class has a `static final ThreadLocal<ThreadCache> ROUTES`. If the threads are not dying, or if there's a leak of `TextDaemon` objects, this could be an issue. But here it seems `TextDaemon` is the main application component.\n\nLet's check `HotReloadStressRunner.java` to see how it uses `TextDaemon`.",
+  "plan": "I will examine `src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.5
+    }
+  ]
+}

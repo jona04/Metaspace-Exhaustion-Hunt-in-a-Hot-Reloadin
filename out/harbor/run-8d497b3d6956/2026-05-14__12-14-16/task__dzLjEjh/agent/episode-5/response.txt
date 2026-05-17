@@ -1,0 +1,10 @@
+{
+  "analysis": "The problem seems to be in `ThreadCache.java`. When `cursorFor` is called and the current `cursor` doesn't match the current `frame`, a new `WorkerHandle` is created and assigned to `cursor`, but the old `cursor` is never closed! \n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame); // Old cursor is leaked here!\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n\n`WorkerHandle` holds a pin on the `TimelineFrame`. If it's not closed, the pin count never reaches zero, and the `LoadedGeneration` is never closed, leading to a resource leak.",
+  "plan": "I will fix `ThreadCache.java` to close the old `cursor` before replacing it with a new one. Before that, I'll run the stress test to confirm the issue if possible.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 5.0
+    }
+  ]
+}

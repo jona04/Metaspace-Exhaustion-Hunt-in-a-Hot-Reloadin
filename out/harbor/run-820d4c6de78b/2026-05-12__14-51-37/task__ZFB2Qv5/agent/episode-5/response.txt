@@ -1,0 +1,15 @@
+{
+  "analysis": "The analysis confirms that `ThreadCache.java` is not calling `close()` on the previous `WorkerHandle` when a new generation is loaded. \n\nIn `ThreadCache.java`:\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\n`WorkerHandle`'s constructor calls `frame.pin()`. `frame.pin()` increments the pin count. `frame.unpin()` (called by `WorkerHandle.close()`) decrements it. When the pin count reaches 0 and the frame is 'cooled' (which happens when a newer generation is installed in `TimelineLedger.install`), `LoadedGeneration.close()` is called, which closes the `URLClassLoader`.\n\nSince `ThreadCache` replaces the `cursor` without closing the old one, the pin count of the old `TimelineFrame` never drops to 0, so the `LoadedGeneration` and its `URLClassLoader` are never closed. This causes the Metaspace leak.",
+  "plan": "I will fix `ThreadCache.java` by calling `cursor.close()` before replacing it with a new `WorkerHandle`.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/cursor.close(); cursor = new WorkerHandle(frame);/' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.2
+    }
+  ],
+  "task_complete": false
+}

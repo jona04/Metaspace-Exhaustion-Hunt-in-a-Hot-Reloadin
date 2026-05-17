@@ -1,0 +1,15 @@
+{
+  "analysis": "In `GenerationRegistry.java`, the `sweepRetired()` method removes leases if they are closed. The `activate` method adds the previous lease to `retired` and calls `previous.retire()`. \n\nLet's look at `GenerationLease.java` to see what `retire()` and `isClosed()` do. Also, `LoadedGeneration.java` correctly closes the `classLoader`. If the `GenerationLease` is not being closed, the `LoadedGeneration` won't be closed, and the `URLClassLoader` will remain open, preventing the classes from being unloaded.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/GenerationLease.java`.\n2. Examine `src/main/java/io/harbor/textd/core/WorkerBindings.java` and `src/main/java/io/harbor/textd/core/TextDaemon.java` to see how leases are acquired and released.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/GenerationLease.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerBindings.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

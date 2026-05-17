@@ -1,0 +1,10 @@
+{
+  "analysis": "Still failing! Why? \n\nWait, I think I know! The `runnable` passed to `newThread` is NOT the task I submit with `workers.submit()`. It's the internal `Runnable` of the `ThreadPoolExecutor` that runs the worker loop! \n\nThe worker loop only exits when the executor is shut down. So the `finally` block *will* run, but only then. \n\nBut wait, `SessionReplayRunner` calls `daemon.close()` which calls `workers.shutdownNow()` and `workers.awaitTermination()`. So the threads *should* have exited and called `ThreadBridge.clear()` before `daemon.close()` returns! \n\nWait, let's look at the `SessionReplayRunner` output again: \n`\"after_close\":false`. \nThis means `daemon.isBalanced()` returned `false`. \n`isBalanced()` calls `revisions.isBalanced()` which calls `shadow.isEmpty()`. \nIf `shadow` is not empty, it means some frame's `isDrained()` returned `false`. \n`isDrained()` returns `closed.get()`. \n`closed` is set in `closeLoadedGeneration()`, which is called when `pins` reaches 0. \n\nIf `pins` is not 0, it means some thread still has it pinned. \n\nBut which thread? I've cleared the worker threads. \n\nWait! What about the main thread?! \nIn `SessionReplayRunner`, the main thread calls `daemon.isBalanced()`. Does the main thread ever call `processRecord`? No. \nDoes the main thread ever call `ThreadBridge.current(revisions)`? \nLet's check `TextDaemon.java` again. \nWait! `isBalanced()` calls `revisions.isBalanced()`! \nDoes `revisions.isBalanced()` call `ThreadBridge`? No. \n\nWait, let's look at `TimelineLedger.java` again.",
+  "plan": "Check `TimelineLedger.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    }
+  ]
+}

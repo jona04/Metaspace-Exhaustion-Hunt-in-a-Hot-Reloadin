@@ -1,0 +1,11 @@
+{
+  "analysis": "I found the issue! In `ThreadCache.java`, when `cursorFor` is called, it checks if the `cursor` matches the current `frame`. If it doesn't match (meaning a processor swap occurred), it creates a *new* `WorkerHandle(frame)` and assigns it to `cursor`. \n\nHowever, it **never closes the old `cursor`**! \n\nLooking at `WorkerHandle.java` (I haven't seen the code yet but I can guess), it likely pins the `TimelineFrame`. If the old `WorkerHandle` is not closed, the `TimelineFrame` it points to will never have its pin count reach zero, so the `LoadedGeneration` (and its `URLClassLoader`) will never be closed. This causes a memory leak (classes and classloaders) and potentially a file descriptor leak (the JAR file).",
+  "plan": "1. Examine `WorkerHandle.java` to confirm it pins the `TimelineFrame` and has a `close()` method that unpins it.\n2. Fix `ThreadCache.java` to close the old cursor before replacing it.\n3. Verify the fix by running the stress test.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

@@ -1,0 +1,25 @@
+```json
+{
+  "analysis": "The previous attempts to fix the class unloading issue have not yet succeeded in passing the `replay-check`. Although worker threads are being shut down and their `ThreadLocal` entries are being cleared, the `ClassLoadingMXBean` still reports zero unloaded classes. This suggests that some references to the plugin classes or their `URLClassLoader` are still persisting. I have identified that the `TimelineFrame` holds a final reference to `LoadedGeneration`, which in turn holds the `URLClassLoader`. Even after the generation is closed, this reference remains until the `TimelineFrame` itself is garbage collected. Furthermore, the `ConcurrentLinkedQueue` used for the `shadow` queue might be retaining references longer than expected.",
+  "plan": "I will modify `src/main/java/io/harbor/textd/core/TimelineFrame.java` to make the `loadedGeneration` field non-final and null it out immediately when the generation is closed. This will break the reference chain to the `URLClassLoader` as soon as the pin count reaches zero and the frame is cooled, without waiting for the `TimelineFrame` itself to be removed from the queue or garbage collected. I will also ensure that `ThreadCache` correctly closes its cursor and that `TextDaemon` worker threads are properly cleaned up.",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/TimelineFrame.java <<EOF\npackage io.harbor.textd.core;\n\nimport io.harbor.textd.api.PluginModule;\n\nimport java.util.concurrent.atomic.AtomicBoolean;\nimport java.util.concurrent.atomic.AtomicInteger;\n\nfinal class TimelineFrame {\n    private LoadedGeneration loadedGeneration;\n    private final AtomicInteger pins = new AtomicInteger(1);\n    private final AtomicBoolean cooled = new AtomicBoolean(false);\n    private final AtomicBoolean closed = new AtomicBoolean(false);\n\n    TimelineFrame(LoadedGeneration loadedGeneration) {\n        this.loadedGeneration = loadedGeneration;\n    }\n\n    TimelineFrame pin() {\n        while (true) {\n            int current = pins.get();\n            if (current == 0) {\n                throw new IllegalStateException(\"Revision \" + revision() + \" is already closed\");\n            }\n            if (pins.compareAndSet(current, current + 1)) {\n                return this;\n            }\n        }\n    }\n\n    long revision() {\n        LoadedGeneration gen = loadedGeneration;\n        return gen != null ? gen.generation() : -1;\n    }\n\n    PluginModule module() {\n        LoadedGeneration gen = loadedGeneration;\n        return gen != null ? gen.module() : null;\n    }\n\n    void cool() {\n        if (cooled.compareAndSet(false, true)) {\n            unpin();\n        }\n    }\n\n    void unpin() {\n        int remaining = pins.decrementAndGet();\n        if (remaining < 0) {\n            throw new IllegalStateException(\"Pin count underflow for revision \" + revision());\n        }\n        if (remaining == 0 && cooled.get()) {\n            closeLoadedGeneration();\n        }\n    }\n\n    boolean isDrained() {\n        return closed.get();\n    }\n\n    private void closeLoadedGeneration() {\n        if (closed.compareAndSet(false, true)) {\n            try {\n                if (loadedGeneration != null) {\n                    loadedGeneration.close();\n                    loadedGeneration = null;\n                }\n            } catch (Exception exception) {\n                throw new IllegalStateException(\"Unable to close revision\", exception);\n            }\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/build\n",
+      "duration": 5.0
+    },
+    {
+      "keystrokes": "./bin/replay-check\n",
+      "duration": 5.0
+    },
+    {
+      "keystrokes": "./bin/run-suite\n",
+      "duration": 20.0
+    }
+  ],
+  "task_complete": false
+}
+```

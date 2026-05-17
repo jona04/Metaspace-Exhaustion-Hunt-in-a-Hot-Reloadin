@@ -1,0 +1,14 @@
+{
+  "analysis": "I've reviewed `TimelineLedger.java`, `ThreadBridge.java`, and `WorkerHandle.java`. \n\n- `TimelineLedger` manages a `current` `TimelineFrame` and a `shadow` queue of older frames. `pruneShadow` removes frames that are 'drained'.\n- `ThreadBridge` uses a `ThreadLocal<ThreadCache>` to store `WorkerHandle`s.\n- `WorkerHandle` pins a `TimelineFrame` when created and unpins it when closed.\n- `TimelineFrame` (which I haven't seen the source for yet) likely tracks the number of pins and determines if it's 'drained'.\n\nThe issue seems to be that `WorkerHandle`s are stored in a `ThreadLocal<ThreadCache>`, and `ThreadBridge.current(ledger)` returns a `WorkerHandle`. If the `ThreadCache` doesn't properly close old `WorkerHandle`s when the ledger moves to a new generation, they will remain pinned, preventing the `TimelineFrame` (and its associated `ClassLoader`) from being reclaimed.\n\nI need to see `ThreadCache.java` and `TimelineFrame.java`.",
+  "plan": "I will examine `ThreadCache.java` and `TimelineFrame.java` to see how `WorkerHandle`s are cached and how pinning/draining is implemented.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    }
+  ]
+}

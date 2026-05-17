@@ -1,0 +1,56 @@
+{
+  "schema_version": "ATIF-v1.6",
+  "session_id": "1035d87c-241b-4e1c-84f8-0a7f82afb7e0",
+  "agent": {
+    "name": "terminus-2",
+    "version": "2.0.0",
+    "model_name": "litellm_proxy/vertex_ai/gemini-3-flash-preview",
+    "extra": {
+      "parser": "json",
+      "temperature": 0.7
+    }
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "timestamp": "2026-05-14T03:12:42.653548+00:00",
+      "source": "user",
+      "message": "You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.\n\nFormat your response as JSON with the following structure:\n\n{\n  \"analysis\": \"Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?\",\n  \"plan\": \"Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.\",\n  \"commands\": [\n    {\n      \"keystrokes\": \"ls -la\\n\",\n      \"duration\": 0.1\n    },\n    {\n      \"keystrokes\": \"cd project\\n\",\n      \"duration\": 0.1\n    }\n  ],\n  \"task_complete\": true\n}\n\nRequired fields:\n- \"analysis\": Your analysis of the current situation\n- \"plan\": Your plan for the next steps\n- \"commands\": Array of command objects to execute\n\nOptional fields:\n- \"task_complete\": Boolean indicating if the task is complete (defaults to false if not present)\n\nCommand object structure:\n- \"keystrokes\": String containing the exact keystrokes to send to the terminal (required)\n- \"duration\": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)\n\nIMPORTANT: The text inside \"keystrokes\" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:\n- You must end every command with a newline (\\n) or it will not execute.\n- For special key sequences, use tmux-style escape sequences:\n  - C-c for Ctrl+C\n  - C-d for Ctrl+D\n\nThe \"duration\" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.\n\nIt is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {\"keystrokes\": \"\", \"duration\": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.\n\nImportant notes:\n- Each command's keystrokes are sent exactly as written to the terminal\n- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command\n- Extra text before or after the JSON will generate warnings but be tolerated\n- The JSON must be valid - use proper escaping for quotes and special characters within strings\n- Commands array can be empty if you want to wait without taking action\n\nTask Description:\nOur `textd` service still falls over during a long refresh run in the constrained CI profile. Short checks on a fresh start look normal, but the full validation does not survive repeated processor swaps.\n\nGet the daemon through the long run without changing the deterministic text-processing results from the shipped revisions. Old plugin generations must be fully reclaimed by the runtime once sessions close.\n\n\nCurrent terminal state:\nCurrent Terminal Screen:\nroot@29c4f3c9d4dd:/workspace/textd#\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+    },
+    {
+      "step_id": 2,
+      "timestamp": "2026-05-14T03:12:46.900747+00:00",
+      "source": "agent",
+      "model_name": "litellm_proxy/vertex_ai/gemini-3-flash-preview",
+      "message": "Analysis: I am in the /workspace/textd directory. I need to understand the project structure and how the `textd` service is implemented, especially regarding plugin management and session handling.\nPlan: I will start by listing the files in the current directory to get an overview of the project.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_0_1",
+          "function_name": "bash_command",
+          "arguments": {
+            "keystrokes": "ls -R\n",
+            "duration": 0.5
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "content": "New Terminal Output:\nroot@29c4f3c9d4dd:/workspace/textd# ls -R\n.:\nbin  build  plugin-src  src\n\n./bin:\nbuild  integration  replay-check  run-suite  stress\n\n./build:\nmain-classes  plugin-classes  plugins\n\n./build/main-classes:\n\n./build/plugin-classes:\n\n./build/plugins:\n\n./plugin-src:\nio\n\n./plugin-src/io:\nharbor\n\n./plugin-src/io/harbor:\ntextd\n\n./plugin-src/io/harbor/textd:\ncustomer\n\n./plugin-src/io/harbor/textd/customer:\nCustomerPluginFactory.java  CustomerPluginModule.java  PipelineProcessor.java  PipelineStages.java\n\n./src:\nmain\n\n./src/main:\njava\n\n./src/main/java:\nio\n\n./src/main/java/io:\nharbor\n\n./src/main/java/io/harbor:\ntextd\n\n./src/main/java/io/harbor/textd:\napi  cli  core\n\n./src/main/java/io/harbor/textd/api:\nPluginModule.java  PluginModuleFactory.java  TextProcessor.java\n\n./src/main/java/io/harbor/textd/cli:\nHotReloadIntegrationRunner.java  HotReloadStressRunner.java  RuntimeDigestRunner.java  SessionReplayRunner.java\n\n./src/main/java/io/harbor/textd/core:\nLoadedGeneration.java  ProcessingResult.java  ThreadBridge.java  TimelineFrame.java   WorkerHandle.java\nOutputFormat.java      TextDaemon.java        ThreadCache.java   TimelineLedger.java\nroot@29c4f3c9d4dd:/workspace/textd#\n"
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 805,
+        "completion_tokens": 267,
+        "cost_usd": 0.0012035000000000001
+      }
+    }
+  ],
+  "final_metrics": {
+    "total_prompt_tokens": 805,
+    "total_completion_tokens": 267,
+    "total_cached_tokens": 0,
+    "total_cost_usd": 0.0012035000000000001
+  }
+}

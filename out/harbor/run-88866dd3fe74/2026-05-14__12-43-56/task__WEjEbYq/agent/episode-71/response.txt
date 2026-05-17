@@ -1,0 +1,6 @@
+{
+  "analysis": "The memory leak was primarily caused by `ThreadCache` not closing the previous `WorkerHandle` when a new plugin generation was installed, which kept old `TimelineFrame`s pinned indefinitely. I have implemented a fix in `ThreadCache.java` to close and nullify the old cursor when it no longer matches the current frame. Additionally, I've updated `TextDaemon.java` to ensure that all cached handles in worker threads and the main thread are cleared when the daemon is closed. I've also refined the pin-count and cooling logic in `TimelineFrame.java` to ensure deterministic reclamation of resources. The stress test now passes consistently under constrained memory, and the system correctly balances and drains revisions.",
+  "plan": "The task is complete. I have verified the fix with the provided stress and integration tests.",
+  "commands": [],
+  "task_complete": true
+}

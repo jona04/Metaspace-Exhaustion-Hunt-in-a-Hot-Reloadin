@@ -1,0 +1,6 @@
+{
+  "analysis": "The investigation confirmed that a ClassLoader leak was occurring during in-place processor refreshes. The `WorkerBindings` class used a `ThreadLocal` to cache `DispatchBinding` objects (which hold a lease on a specific processor generation). When a new generation was activated, the `current()` method correctly identified that the cached binding was stale, but it replaced it in the `ThreadLocal` without calling `close()` on the old binding. Since `DispatchBinding` retains a reference count on the `GenerationLease`, failing to close it prevented the lease from being released, which in turn prevented the `URLClassLoader` for that generation from being closed. This led to Metaspace exhaustion (OOM) under the constrained CI runtime profile (64MB Metaspace).\n\nThe fix involved adding a `binding.close()` call in `WorkerBindings.current()` before replacing the stale binding. This ensures that the old lease's reference count is decremented, allowing the previous generation's resources to be reclaimed once all workers have transitioned to the new generation.",
+  "plan": "The fix has been verified with the `./bin/stress 500` command, which now passes successfully where it previously failed with a Metaspace OOM. No further changes are required.",
+  "commands": [],
+  "task_complete": true
+}

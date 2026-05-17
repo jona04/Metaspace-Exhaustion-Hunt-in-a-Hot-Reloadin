@@ -1,0 +1,14 @@
+{
+  "analysis": "In `TimelineLedger.java`, `pruneShadow()` removes frames that are 'drained'. `ThreadBridge.java` uses a `ThreadLocal<ThreadCache>`. If `ThreadCache` holds references to `TimelineFrame` or `WorkerHandle` (which likely points to a ClassLoader), and the `ThreadLocal` is not cleared, those objects (and their ClassLoaders) will stay in memory as long as the worker threads are alive. Since the worker threads are in a fixed pool, they live for the lifetime of the daemon.",
+  "plan": "1. Examine `ThreadCache.java` to see how it stores `WorkerHandle` or `TimelineFrame`.\n2. Examine `TimelineFrame.java` to see what `isDrained()` means.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "analysis": "The `bin/stress` script runs `io.harbor.textd.cli.HotReloadStressRunner` with a `MaxMetaspaceSize` of 64m. This is quite small and explains why it would fail if class loaders are not being reclaimed. The Metaspace is where class metadata is stored. If `URLClassLoader`s are not GCed, Metaspace will fill up.",
+  "plan": "I will run the stress test and expect it to fail with `OutOfMemoryError: Metaspace`. Then I will apply the fix to `ThreadCache.java` and run it again.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 10.0
+    }
+  ]
+}

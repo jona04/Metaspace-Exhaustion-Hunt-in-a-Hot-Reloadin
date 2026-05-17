@@ -1,0 +1,14 @@
+{
+  "analysis": "I've reviewed `TimelineLedger`, `ThreadBridge`, and `ThreadCache`. \n\n- `TimelineLedger` maintains a `current` `TimelineFrame` and a `shadow` queue of old frames. \n- `install(long revision)` loads a new generation, sets it as current, and adds the previous one to the `shadow` queue, calling `previous.cool()`.\n- `ThreadBridge` uses a `ThreadLocal<ThreadCache>`.\n- `ThreadCache` stores a `cursor` (a `WorkerHandle`). If the current frame in the ledger doesn't match the one in the cursor, it creates a new `WorkerHandle`.\n\nWait, I see a potential issue in `ThreadCache.cursorFor`: \n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\nWhen `cursor` is replaced, the old `cursor` (which holds a reference to a `TimelineFrame`) is not closed. This might be why old generations are not being reclaimed. \n\nAlso, I need to look at `TimelineFrame.java` and `WorkerHandle.java` to see how they track usage and if they are correctly 'draining'.",
+  "plan": "I will read `src/main/java/io/harbor/textd/core/TimelineFrame.java` and `src/main/java/io/harbor/textd/core/WorkerHandle.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    }
+  ]
+}

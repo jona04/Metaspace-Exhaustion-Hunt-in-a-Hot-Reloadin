@@ -1,0 +1,27 @@
+New Terminal Output:
+
+1 error
+root@4d312fc19747:/workspace/textd# cat > src/main/java/io/harbor/textd/core/ThreadBridge.java <<EOF
+> package io.harbor.textd.core;
+>
+> final class ThreadBridge {
+>     private static final ThreadLocal<ThreadCache> ROUTES = ThreadLocal.withInitial(ThreadCache::new);
+>
+>     private ThreadBridge() {
+>     }
+>
+>     static WorkerHandle current(TimelineLedger ledger) {
+>         return ROUTES.get().cursorFor(ledger);
+>     }
+>
+>     static void clear() {
+>         ThreadCache routeState = ROUTES.get();
+>         routeState.close();
+>         ROUTES.remove();
+>     }
+> }
+> EOF
+root@4d312fc19747:/workspace/textd# ./bin/build
+./bin/replay-check
+root@4d312fc19747:/workspace/textd# ./bin/replay-check
+

@@ -1,0 +1,11 @@
+{
+  "analysis": "The `ThreadBridge` uses a `ThreadLocal<ThreadCache>`. This means each worker thread has its own `ThreadCache`. The `clear()` method in `ThreadBridge` is available but I didn't see it being called in `TextDaemon.java`. If threads are reused (which they are, in a fixed thread pool), the `ThreadLocal` will persist. However, since the `ThreadCache` now correctly replaces and closes the `WorkerHandle` when the generation changes, the leak should be fixed even if `clear()` isn't called frequently, as long as the worker threads eventually process a record in the new generation.",
+  "plan": "I'll wait for the stress test to complete or show progress. The stress test usually runs for 500 iterations (as seen in `bin/stress`).",
+  "commands": [
+    {
+      "keystrokes": "",
+      "duration": 20.0
+    }
+  ],
+  "task_complete": false
+}

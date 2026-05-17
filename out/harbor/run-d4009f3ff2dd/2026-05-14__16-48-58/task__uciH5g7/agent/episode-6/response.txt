@@ -1,0 +1,10 @@
+{
+  "analysis": "In `ThreadCache.java`, the `cursorFor` method replaces the `cursor` with a new `WorkerHandle` if it doesn't match the current frame:\n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n\nWait, if it replaces the `cursor`, it should probably close the old one! `WorkerHandle` likely pins the `TimelineFrame`. If the old `WorkerHandle` is not closed, the frame will stay pinned and won't be drained.\n\nLet's check `WorkerHandle.java`.",
+  "plan": "I will examine `src/main/java/io/harbor/textd/core/WorkerHandle.java` to see how it interacts with `TimelineFrame`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.5
+    }
+  ]
+}

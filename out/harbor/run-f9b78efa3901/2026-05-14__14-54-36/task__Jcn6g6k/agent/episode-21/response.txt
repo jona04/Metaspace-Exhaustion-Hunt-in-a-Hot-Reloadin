@@ -1,0 +1,6 @@
+{
+  "analysis": "I have identified the cause of the Metaspace OOM: old `WorkerHandle`s were not being closed in `ThreadCache` when a new plugin generation was loaded, causing `TimelineFrame`s to remain pinned and their `ClassLoader`s to stay in memory. I fixed this by ensuring the old `cursor` is closed before creating a new one. I also added a cleanup step in `TextDaemon.close()` to clear the `ThreadLocal` caches in all worker threads, ensuring all pins are released upon shutdown. I've verified the fix with a long stress run and the full integration suite.",
+  "plan": "I will submit the task.",
+  "commands": [],
+  "task_complete": true
+}

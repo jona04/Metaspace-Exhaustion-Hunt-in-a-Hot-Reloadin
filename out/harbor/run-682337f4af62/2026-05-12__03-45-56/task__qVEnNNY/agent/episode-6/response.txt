@@ -1,0 +1,14 @@
+{
+  "analysis": "The code uses a pinning mechanism to track active uses of a `RevisionFrame`. \n\n1. `RevisionLedger` holds the current `RevisionFrame` and a `shadow` queue of old ones.\n2. When a new revision is installed, the old one is moved to `shadow` and `cool()` is called on it.\n3. `cool()` decrements the pin count (initially 1).\n4. `RouteState` is stored in a `ThreadLocal`. It holds a `RouteCursor`.\n5. `RouteCursor` pins the `RevisionFrame` in its constructor.\n6. When `RouteState.cursorFor` is called, it checks if the existing cursor matches the current revision. If not, it creates a new `RouteCursor` and overwrites the old one.\n\n**The bug:** When `RouteState.cursorFor` overwrites the old `cursor` with a new one, it **does not call `close()` on the old cursor**. This means the `frame.unpin()` is never called for the old revision, so the pin count never reaches zero, and the `LoadedGeneration` (which contains the ClassLoader) is never closed.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/RouteState.java` to call `cursor.close()` before replacing it with a new cursor.\n2. Verify the fix by running the stress test again.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/RouteState.java\npackage io.harbor.textd.core;\n\nfinal class RouteState implements AutoCloseable {\n    private RouteCursor cursor;\n\n    RouteCursor cursorFor(RevisionLedger ledger) {\n        RevisionFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new RouteCursor(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new RouteCursor(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/build && ./bin/stress\n",
+      "duration": 20.0
+    }
+  ]
+}

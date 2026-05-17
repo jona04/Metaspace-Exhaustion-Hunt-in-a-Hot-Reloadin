@@ -1,0 +1,15 @@
+{
+  "analysis": "Here's how it works:\n1. `ThreadBridge` holds a `ThreadLocal<ThreadCache>`.\n2. `ThreadCache` holds a `WorkerHandle`.\n3. `WorkerHandle` holds a `TimelineFrame` (pinned) and a `TextProcessor` (from the plugin).\n4. `TimelineLedger` manages `TimelineFrame`s. When a new one is installed, the old one is moved to `shadow`, cooled, and eventually pruned when `isDrained()` is true.\n\n`TimelineFrame.isDrained()` likely checks if the pin count is zero. If a thread never processes another record, its `ThreadCache` will hold onto the old `WorkerHandle`, which pins the `TimelineFrame`, preventing it from being drained and thus preventing the `LoadedGeneration` (and its ClassLoader) from being collected.\n\nIn the stress test, many generations are created. If some worker threads don't get used in a particular generation, they might still be holding onto a `WorkerHandle` from a much older generation.",
+  "plan": "1. Examine `TimelineFrame.java` to confirm how pinning and draining work.\n2. Examine `LoadedGeneration.java` to see how it loads classes.\n3. Verify if `isDrained` depends on the pin count.\n4. Check if the `TextDaemon` workers are all used in each batch.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

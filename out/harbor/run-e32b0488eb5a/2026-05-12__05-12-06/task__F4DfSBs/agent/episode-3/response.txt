@@ -1,0 +1,15 @@
+{
+  "analysis": "The stress test failed with `java.lang.OutOfMemoryError: Metaspace`. This confirms a classloader leak or excessive class loading during the 'processor swaps' (hot reloading). Metaspace is where the JVM stores class metadata. Since the task mentions 'repeated processor swaps', it's highly likely that each swap loads new classes without unloading the old ones.",
+  "plan": "1. Examine `HotReloadStressRunner.java` and `TextDaemon.java` to see how plugins are loaded and swapped.\n2. Look for where `PipelineProcessor` and `PipelineStages` are instantiated and if their ClassLoaders are being retained.\n3. Check `ThreadCache.java` as thread locals are a common source of ClassLoader leaks.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

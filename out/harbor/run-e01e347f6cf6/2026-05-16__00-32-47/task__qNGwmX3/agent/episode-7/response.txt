@@ -1,0 +1,14 @@
+{
+  "analysis": "The analysis of `ThreadCache.java` was correct. When a new generation is loaded, `cursorFor` replaces the existing `cursor` with a new `WorkerHandle` for the new frame, but it fails to call `close()` on the old `WorkerHandle`. This means the old `TimelineFrame` remains pinned (`pins` count doesn't reach 0), and thus `closeLoadedGeneration()` is never called. This prevents the `URLClassLoader` from being closed and the classes from being reclaimed.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before replacing it.\n2. Verify if there are other places where `WorkerHandle` or `TimelineFrame` might leak.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/if (cursor != null) cursor.close(); cursor = new WorkerHandle(frame);/g' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ]
+}

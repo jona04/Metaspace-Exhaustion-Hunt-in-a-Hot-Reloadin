@@ -1,0 +1,18 @@
+{
+  "analysis": "In `TextDaemon.java`, the `processRecord` method calls `ThreadBridge.current(revisions)`. This looks like it might be caching state on a per-thread basis. Since the worker threads are in a fixed thread pool and reused across generations, if `ThreadBridge` or `TimelineLedger` is caching classloaders or objects that hold onto classloaders without clearing them when a new generation is installed, we get a leak.",
+  "plan": "I will examine `ThreadBridge.java`, `TimelineLedger.java`, and `ThreadCache.java` to see how they manage state across generations and whether they hold onto old classloaders.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.5
+    }
+  ]
+}

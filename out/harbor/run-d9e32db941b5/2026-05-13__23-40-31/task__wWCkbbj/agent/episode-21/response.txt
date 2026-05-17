@@ -1,0 +1,10 @@
+{
+  "analysis": "`TimelineLedger.pruneShadow()` uses `shadow.removeIf(TimelineFrame::isDrained)`. `isDrained()` returns true when `closed` is true. `closed` is set to true in `closeLoadedGeneration()`, which is called by `unpin()` when `pins` reaches 0 and `cooled` is true. `cooled` is set to true in `cool()`, which also calls `unpin()`. \n\nInitially, a `TimelineFrame` has `pins = 1` and `cooled = false`. \nWhen `install()` is called for a new revision, the old frame's `cool()` is called. This sets `cooled = true` and calls `unpin()`, so `pins` becomes 0. If no workers are currently using it, `closeLoadedGeneration()` is called, and `isDrained()` becomes true.\nIf workers ARE using it, they would have called `pin()`, so `pins` > 1. When they finish, they call `unpin()`. The last one to call `unpin()` will trigger `closeLoadedGeneration()` because `cooled` is already true.\n\nThe problem was that `ThreadCache` was not calling `unpin()` (via `WorkerHandle.close()`) when switching to a new frame, so `pins` never reached 0 for old frames, and they were never closed or removed from the `shadow` queue.\n\nThe fix in `ThreadCache` correctly addresses this.",
+  "plan": "I'm confident with the fix. I'll run the stress test one last time with a larger number of iterations to be absolutely sure.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 2000\n",
+      "duration": 60.0
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "analysis": "The code shows a `TextDaemon` that uses a `TimelineLedger` to manage revisions and an `ExecutorService` for workers. `LoadedGeneration` handles loading the plugin JAR via a `URLClassLoader` and provides a `close()` method to close the module and the class loader. The `processRecord` method uses `ThreadBridge.current(revisions)` to get a `WorkerHandle`. The issue seems to be related to how these revisions are tracked and cleaned up.",
+  "plan": "I need to examine `TimelineLedger.java`, `ThreadBridge.java`, and `WorkerHandle.java` to see how generations are swapped and if they are properly closed when no longer in use.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.2
+    }
+  ]
+}

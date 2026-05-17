@@ -1,0 +1,10 @@
+{
+  "analysis": "I found the leak! In `ThreadCache.cursorFor`, when the revision changes (`!cursor.matches(frame)`), a new `WorkerHandle` is created and assigned to `cursor`, but the old `cursor` is never closed. `WorkerHandle.close()` is what calls `frame.unpin()`, which eventually allows the ClassLoader to be closed. Since the old `WorkerHandle` is just overwritten and not closed, the old `TimelineFrame` remains pinned forever, preventing the Metaspace from being reclaimed.",
+  "plan": "I will fix `ThreadCache.java` by closing the old `cursor` before creating a new one when the revision changes.",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    }
+  ]
+}

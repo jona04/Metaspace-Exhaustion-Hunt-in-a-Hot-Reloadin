@@ -1,0 +1,112 @@
+Get:1 http://archive.ubuntu.com/ubuntu noble InRelease [256 kB]
+Get:2 http://security.ubuntu.com/ubuntu noble-security InRelease [126 kB]
+Get:3 http://archive.ubuntu.com/ubuntu noble-updates InRelease [126 kB]
+Get:4 http://archive.ubuntu.com/ubuntu noble-backports InRelease [126 kB]
+Get:5 http://archive.ubuntu.com/ubuntu noble/multiverse amd64 Packages [331 kB]
+Get:6 http://archive.ubuntu.com/ubuntu noble/universe amd64 Packages [19.3 MB]
+Get:7 http://security.ubuntu.com/ubuntu noble-security/multiverse amd64 Packages [34.2 kB]
+Get:8 http://security.ubuntu.com/ubuntu noble-security/universe amd64 Packages [1504 kB]
+Get:9 http://security.ubuntu.com/ubuntu noble-security/restricted amd64 Packages [3610 kB]
+Get:10 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages [2038 kB]
+Get:11 http://archive.ubuntu.com/ubuntu noble/restricted amd64 Packages [117 kB]
+Get:12 http://archive.ubuntu.com/ubuntu noble/main amd64 Packages [1808 kB]
+Get:13 http://archive.ubuntu.com/ubuntu noble-updates/universe amd64 Packages [2147 kB]
+Get:14 http://archive.ubuntu.com/ubuntu noble-updates/multiverse amd64 Packages [54.1 kB]
+Get:15 http://archive.ubuntu.com/ubuntu noble-updates/restricted amd64 Packages [3824 kB]
+Get:16 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages [2412 kB]
+Get:17 http://archive.ubuntu.com/ubuntu noble-backports/multiverse amd64 Packages [671 B]
+Get:18 http://archive.ubuntu.com/ubuntu noble-backports/main amd64 Packages [49.0 kB]
+Get:19 http://archive.ubuntu.com/ubuntu noble-backports/universe amd64 Packages [35.9 kB]
+Fetched 37.9 MB in 7s (5394 kB/s)
+Reading package lists...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+curl is already the newest version (8.5.0-2ubuntu10.9).
+0 upgraded, 0 newly installed, 0 to remove and 3 not upgraded.
+downloading uv 0.9.7 x86_64-unknown-linux-gnu
+no checksums to verify
+installing to /root/.local/bin
+  uv
+  uvx
+everything's installed!
+
+To add $HOME/.local/bin to your PATH, either restart your shell or run:
+
+    source $HOME/.local/bin/env (sh, bash, zsh)
+    source $HOME/.local/bin/env.fish (fish)
+Downloading pygments (1.2MiB)
+ Downloading pygments
+Installed 6 packages in 45ms
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 11 items
+
+../../tests/test_outputs.py .....F.FF..                                  [100%]
+
+=================================== FAILURES ===================================
+____________________ test_runtime_digest_reports_stable_run ____________________
+
+digest_result = {'after_close': False, 'before_close': True, 'end': ['textd-worker-1', 'textd-worker-2', 'textd-worker-3', 'textd-worker-4'], 'first': 'GEN-001|ALPHA>BETA>GAMMA|PIPE-18528', ...}
+
+    def test_runtime_digest_reports_stable_run(digest_result: dict) -> None:
+        assert digest_result["sample"] == SAMPLE
+        assert digest_result["first"] == expected_output(1)
+        assert digest_result["rev"] == LATEST_GENERATION
+        assert digest_result["last"] == expected_output(LATEST_GENERATION)
+        assert digest_result["start"] == ["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"]
+        assert digest_result["end"] == ["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"]
+        assert digest_result["same_workers"] is True
+        assert digest_result["before_close"] is True
+>       assert digest_result["after_close"] is True
+E       assert False is True
+
+/tests/test_outputs.py:126: AssertionError
+____________________ test_first_replay_session_stays_clean _____________________
+
+replay_result = {'first': {'after_close': False, 'before_close': True, 'end': ['textd-worker-1', 'textd-worker-2', 'textd-worker-3', '...worker-1', 'textd-worker-2', 'textd-worker-3', 'textd-worker-4'], 'first': 'GEN-001|ALPHA>BETA>GAMMA|PIPE-18528', ...}}
+
+    def test_first_replay_session_stays_clean(replay_result: dict) -> None:
+        first = replay_result["first"]
+        assert first["first"] == expected_output(1)
+        assert first["last"] == expected_output(LATEST_GENERATION)
+        assert first["start"] == ["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"]
+        assert first["end"] == ["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"]
+        assert first["same_workers"] is True
+        assert first["before_close"] is True
+>       assert first["after_close"] is True
+E       assert False is True
+
+/tests/test_outputs.py:156: AssertionError
+____________________ test_second_replay_session_stays_clean ____________________
+
+replay_result = {'first': {'after_close': False, 'before_close': True, 'end': ['textd-worker-1', 'textd-worker-2', 'textd-worker-3', '...worker-1', 'textd-worker-2', 'textd-worker-3', 'textd-worker-4'], 'first': 'GEN-001|ALPHA>BETA>GAMMA|PIPE-18528', ...}}
+
+    def test_second_replay_session_stays_clean(replay_result: dict) -> None:
+        second = replay_result["second"]
+        assert second["first"] == expected_output(1)
+        assert second["last"] == expected_output(LATEST_GENERATION)
+        assert second["start"] == ["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"]
+        assert second["end"] == ["textd-worker-1", "textd-worker-2", "textd-worker-3", "textd-worker-4"]
+        assert second["same_workers"] is True
+        assert second["before_close"] is True
+>       assert second["after_close"] is True
+E       assert False is True
+
+/tests/test_outputs.py:167: AssertionError
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED ../../tests/test_outputs.py::test_public_runner_surfaces_are_pristine
+PASSED ../../tests/test_outputs.py::test_stress_runner_completes
+PASSED ../../tests/test_outputs.py::test_stress_runner_has_no_metaspace_oom
+PASSED ../../tests/test_outputs.py::test_generation_one_output
+PASSED ../../tests/test_outputs.py::test_current_output
+PASSED ../../tests/test_outputs.py::test_full_suite_passes
+PASSED ../../tests/test_outputs.py::test_replay_sessions_unload_classes
+PASSED ../../tests/test_outputs.py::test_replay_sessions_do_not_regress_unloading
+FAILED ../../tests/test_outputs.py::test_runtime_digest_reports_stable_run - ...
+FAILED ../../tests/test_outputs.py::test_first_replay_session_stays_clean - a...
+FAILED ../../tests/test_outputs.py::test_second_replay_session_stays_clean - ...
+=================== 3 failed, 8 passed in 119.86s (0:01:59) ====================

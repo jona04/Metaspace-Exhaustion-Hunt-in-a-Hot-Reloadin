@@ -1,0 +1,15 @@
+{
+  "analysis": "I found the leak! \n\nIn `WorkerBindings.java`, `current(registry)` gets a `DispatchBinding` from a `ThreadLocal`. If the binding is null or doesn't match the active generation, it creates a new one. \n\nWhen a new `DispatchBinding` is created:\n```java\n    DispatchBinding(GenerationLease lease) {\n        this.lease = lease.retain();\n        ...\n    }\n```\nIt calls `lease.retain()`, incrementing the reference count.\n\nHowever, look at what happens when a replacement occurs:\n```java\n        if (!binding.matches(activeLease)) {\n            DispatchBinding replacement = new DispatchBinding(activeLease);\n            ACTIVE.set(replacement);\n            return replacement;\n        }\n```\nThe old `binding` is simply overwritten in the `ThreadLocal`. The `ACTIVE.set(replacement)` call does not call `close()` on the previous `binding`. Therefore, `lease.release()` is never called for the old generation's lease, the reference count never reaches zero, the `URLClassLoader` is never closed, and Metaspace leaks.\n\nAlso, `releaseCurrent()` is never called in `TextDaemon.java`.",
+  "plan": "1. Modify `WorkerBindings.java` to properly close the old `DispatchBinding` before replacing it in the `ThreadLocal`.\n2. Although the `ThreadLocal` persists across tasks in the fixed thread pool, we should ensure that when we replace a binding, the old one is released.\n3. Verify if `TextDaemon` should be calling `releaseCurrent()` or if the `ThreadLocal` approach is intended to keep the binding alive for the next task on the same thread (which is fine, as long as it's eventually replaced and released).",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/WorkerBindings.java <<EOF\npackage io.harbor.textd.core;\n\nfinal class WorkerBindings {\n    private static final ThreadLocal<DispatchBinding> ACTIVE = new ThreadLocal<>();\n\n    private WorkerBindings() {\n    }\n\n    static DispatchBinding current(GenerationRegistry registry) {\n        GenerationLease activeLease = registry.active();\n        DispatchBinding binding = ACTIVE.get();\n        if (binding == null) {\n            DispatchBinding created = new DispatchBinding(activeLease);\n            ACTIVE.set(created);\n            return created;\n        }\n\n        if (!binding.matches(activeLease)) {\n            binding.close();\n            DispatchBinding replacement = new DispatchBinding(activeLease);\n            ACTIVE.set(replacement);\n            return replacement;\n        }\n\n        return binding;\n    }\n\n    static void releaseCurrent() {\n        DispatchBinding binding = ACTIVE.get();\n        if (binding != null) {\n            binding.close();\n            ACTIVE.remove();\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 15.0
+    }
+  ],
+  "task_complete": false
+}

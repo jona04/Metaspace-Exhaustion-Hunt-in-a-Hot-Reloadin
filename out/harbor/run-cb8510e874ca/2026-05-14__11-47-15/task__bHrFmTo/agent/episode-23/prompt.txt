@@ -1,0 +1,41 @@
+Current Terminal Screen:
+            daemon.close();
+            boolean afterClose = daemon.isBalanced();
+
+            System.out.println("{");
+            System.out.println("  \"sample\": \"" + SAMPLE + "\",");
+            System.out.println("  \"first\": \"" + first + "\",");
+            System.out.println("  \"rev\": " + revision + ",");
+            System.out.println("  \"last\": \"" + last + "\",");
+            System.out.println("  \"start\": " + toJsonArray(workersStart) + ",");
+            System.out.println("  \"end\": " + toJsonArray(workersEnd) + ",");
+            System.out.println("  \"same_workers\": " + sameWorkers + ",");
+            System.out.println("  \"before_close\": " + beforeClose + ",");
+            System.out.println("  \"after_close\": " + afterClose);
+            System.out.println("}");
+        } catch (Exception exception) {
+            try {
+                daemon.close();
+            } catch (Exception closeException) {
+                exception.addSuppressed(closeException);
+            }
+            throw exception;
+        }
+    }
+
+    private static void assertOutputs(long revision, List<ProcessingResult> results) {
+        String expected = OutputFormat.expectedFor(revision, SAMPLE);
+        for (ProcessingResult result : results) {
+            if (!expected.equals(result.output())) {
+                throw new IllegalStateException("Unexpected output at revision " + revision + ": " + result.output());
+            }
+        }
+    }
+
+    private static String toJsonArray(List<String> values) {
+        return values.stream()
+            .map(value -> "\"" + value + "\"")
+            .collect(Collectors.joining(", ", "[", "]"));
+    }
+}
+root@138f0c73e14a:/workspace/textd#

@@ -1,0 +1,6 @@
+{
+  "analysis": "The `textd` service was failing with a `java.lang.OutOfMemoryError: Metaspace` during long runs. Analysis of the code revealed that in `ThreadCache.cursorFor`, when a new plugin generation was loaded, the existing `WorkerHandle` was being replaced without being closed. Since `WorkerHandle` is responsible for unpinning the `TimelineFrame`, and a frame only closes its associated `LoadedGeneration` (and thus its classloader) when its pin count reaches zero, the classloaders were never being garbage collected. I have modified `ThreadCache.java` to explicitly call `cursor.close()` before replacing it with a new handle. This ensures that old classloaders are released. The fix has been verified with both the stress test and the full integration suite.",
+  "plan": "Task is complete. The fix is verified.",
+  "commands": [],
+  "task_complete": true
+}

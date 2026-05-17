@@ -1,0 +1,15 @@
+{
+  "analysis": "Here's what's happening:\n1. `ThreadBridge` uses a `ThreadLocal<ThreadCache>`. \n2. `ThreadCache` holds a `WorkerHandle` called `cursor`.\n3. `WorkerHandle` holds a `TimelineFrame` (via `frame.pin()`).\n4. `TimelineLedger` holds the current `TimelineFrame` and a `shadow` queue of old frames.\n5. `TimelineFrame.isDrained()` determines if an old frame can be removed from the `shadow` queue.\n6. A frame is likely 'drained' only when all pins are released.\n\nIn `TextDaemon.processRecord`, `ThreadBridge.current(revisions)` is called, which gets the `ThreadCache` and calls `cursorFor(ledger)`. \nIn `ThreadCache.cursorFor`:\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\nWait! When `cursor` is replaced because `!cursor.matches(frame)`, the old `cursor` is **never closed**. \n`WorkerHandle.close()` calls `frame.unpin()`. If `unpin()` is not called, the old `TimelineFrame` will never be 'drained', so it stays in the `shadow` queue in `TimelineLedger`, and its `ClassLoader` is never released. This is the leak!",
+  "plan": "1. Verify `TimelineFrame.java` and `LoadedGeneration.java` to confirm that `unpin()` and class loader management work as expected.\n2. Fix `ThreadCache.java` to close the old cursor before replacing it.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

@@ -1,0 +1,6 @@
+{
+  "analysis": "The issue was a memory leak in the `ThreadCache` class. Specifically, when a new plugin generation was installed, the `cursorFor` method would replace the existing `WorkerHandle` with a new one without closing the old one. Since `WorkerHandle` pins a `TimelineFrame` (which holds a reference to a `URLClassLoader`), the old generations were never unpinned and thus never reclaimed, leading to `OutOfMemoryError: Metaspace` during long runs. I have fixed this by ensuring that the old `WorkerHandle` is closed before being replaced. I verified the fix by running the stress test, which now completes successfully for 1000 cycles, and by running the full test suite.",
+  "plan": "I have completed the task and verified the fix. I am now marking the task as complete.",
+  "commands": [],
+  "task_complete": true
+}

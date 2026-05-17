@@ -1,0 +1,10 @@
+{
+  "analysis": "I've identified the leak. In `ThreadCache.cursorFor`, when the `cursor` doesn't match the current `frame`, a new `WorkerHandle` is created and assigned to `cursor`, but the old `cursor` is never closed. \n\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\n\nEach `WorkerHandle` pins a `TimelineFrame`. If the old `WorkerHandle` is not closed, the `TimelineFrame` it points to will never have its pin count drop to zero, even after being 'cooled' by the `TimelineLedger`. This prevents `closeLoadedGeneration()` from being called, and thus the old plugin generation's class loader and module are never closed.",
+  "plan": "I need to modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before replacing it with a new one. Before that, I'll run the stress test to confirm it fails as expected.",
+  "commands": [
+    {
+      "keystrokes": "bin/run-suite\n",
+      "duration": 5.0
+    }
+  ]
+}

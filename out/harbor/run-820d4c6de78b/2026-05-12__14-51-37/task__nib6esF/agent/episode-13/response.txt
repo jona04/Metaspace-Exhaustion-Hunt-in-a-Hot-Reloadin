@@ -1,0 +1,6 @@
+{
+  "analysis": "The investigation revealed a resource leak in `ThreadCache.java` where the `WorkerHandle` for a previous generation was not being closed when a new generation was loaded. This caused the `TimelineFrame` to remain pinned, preventing the `URLClassLoader` from being closed and the class metadata from being garbage collected. This led to a `java.lang.OutOfMemoryError: Metaspace` during repeated processor swaps.\n\nI fixed the leak by ensuring that `cursor.close()` is called before replacing the `cursor` with a new `WorkerHandle` in `ThreadCache.cursorFor`. I verified the fix by running the stress test (which now completes successfully within the 64MB Metaspace limit) and the full integration suite.",
+  "plan": "The task is complete. All tests pass and the memory leak is resolved.",
+  "commands": [],
+  "task_complete": true
+}

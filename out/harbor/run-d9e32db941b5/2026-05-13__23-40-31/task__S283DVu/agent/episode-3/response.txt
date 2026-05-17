@@ -1,0 +1,10 @@
+{
+  "analysis": "The `./bin/stress` script runs `HotReloadStressRunner` with a default of 50 cycles (if not specified, though the Java code says 500, the script passes `${1:-50}`). The JVM is started with `-XX:MaxMetaspaceSize=64m`. This is quite small and suggests that Metaspace might be the resource that's leaking during hot-reloads. Each `daemon.reload(generation)` likely loads a new set of classes.",
+  "plan": "I will run the stress test with a larger number of cycles to see if it eventually fails with an `OutOfMemoryError: Metaspace`.",
+  "commands": [
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 10.0
+    }
+  ]
+}

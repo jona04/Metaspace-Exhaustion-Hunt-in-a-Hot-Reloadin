@@ -1,0 +1,67 @@
+New Terminal Output:
+
+root@c432f645dca5:/workspace/textd# ./bin/stress 100
+cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF
+package io.harbor.textd.core;
+
+final class ThreadCache implements AutoCloseable {
+    private WorkerHandle cursor;
+
+    WorkerHandle cursorFor(TimelineLedger ledger) {
+        TimelineFrame frame = ledger.current();
+        if (cursor == null) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        if (!cursor.matches(frame)) {
+            cursor = new WorkerHandle(frame);
+            return cursor;
+        }
+
+        return cursor;
+    }
+
+    @Override
+    public void close() {
+        if (cursor != null) {
+            cursor.close();
+            cursor = null;
+        }
+    }
+}
+EOF
+./bin/stress 100
+stress-ok cycles=100
+root@c432f645dca5:/workspace/textd# cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF
+> package io.harbor.textd.core;
+>
+> final class ThreadCache implements AutoCloseable {
+>     private WorkerHandle cursor;
+>
+>     WorkerHandle cursorFor(TimelineLedger ledger) {
+>         TimelineFrame frame = ledger.current();
+>         if (cursor == null) {
+>             cursor = new WorkerHandle(frame);
+>             return cursor;
+>         }
+>
+>         if (!cursor.matches(frame)) {
+>             cursor = new WorkerHandle(frame);
+>             return cursor;
+>         }
+>
+>         return cursor;
+>     }
+>
+>     @Override
+>     public void close() {
+>         if (cursor != null) {
+>             cursor.close();
+>             cursor = null;
+>         }
+>     }
+> }
+> EOF
+root@c432f645dca5:/workspace/textd# ./bin/stress 100
+

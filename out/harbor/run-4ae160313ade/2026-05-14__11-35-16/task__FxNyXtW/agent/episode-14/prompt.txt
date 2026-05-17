@@ -1,0 +1,35 @@
+New Terminal Output:
+
+root@b7b87d92a59e:/workspace/textd# ./bin/integration; echo $?
+{
+  "input": "alpha beta gamma",
+  "baseline": "GEN-001|ALPHA>BETA>GAMMA|PIPE-18528",
+  "revision": 12,
+  "current": "GEN-012|ALPHA>BETA>GAMMA|PIPE-18528"
+}
+0
+root@b7b87d92a59e:/workspace/textd# cat <<EOF > src/main/java/io/harbor/textd/cli/BalanceCheck.java
+> package io.harbor.textd.cli;
+>
+> import io.harbor.textd.core.TextDaemon;
+> import java.nio.file.Path;
+>
+> public class BalanceCheck {
+>     public static void main(String[] args) throws Exception {
+>         Path pluginJar = Path.of(args[0]);
+>         try (TextDaemon daemon = new TextDaemon(pluginJar, 1)) {
+>             for (int i = 1; i <= 5; i++) {
+>                 daemon.reload(i);
+>                 daemon.process("test");
+>             }
+>             System.out.println("Is balanced: " + daemon.isBalanced());
+>             // Give it a bit of time or another process call if needed,
+>             // although in this single-threaded case it should be immediate.
+>             daemon.process("test");
+>             System.out.println("Is balanced after more processing: " + daemon.isBalanced());
+>         }
+>     }
+> }
+> EOF
+root@b7b87d92a59e:/workspace/textd# ./bin/build && java -cp build/main-classes io.harbor.textd.cli.BalanceCheck build/plugins/customer-default.jar
+

@@ -1,0 +1,6 @@
+{
+  "analysis": "The investigation revealed a Metaspace leak caused by unclosed `WorkerHandle` objects in `ThreadCache`. Each `WorkerHandle` pinned a `TimelineFrame`, which in turn held a reference to a `URLClassLoader`. When the daemon reloaded a plugin, the old `WorkerHandle` was replaced in the `ThreadLocal` cache without being closed, keeping the old `ClassLoader` alive indefinitely. By adding a call to `cursor.close()` before creating a new handle, the old frame is unpinned and the `ClassLoader` can be garbage collected. The fix was verified with a 1000-cycle stress test which previously failed with an `OutOfMemoryError: Metaspace`.",
+  "plan": "The task is complete. I have identified the leak, fixed it, and verified the fix with the provided stress test.",
+  "commands": [],
+  "task_complete": true
+}

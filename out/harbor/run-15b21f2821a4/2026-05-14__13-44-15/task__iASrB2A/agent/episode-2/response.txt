@@ -1,0 +1,14 @@
+{
+  "analysis": "The `bin/stress` script runs `io.harbor.textd.cli.HotReloadStressRunner` with a limited `MaxMetaspaceSize=64m`. This confirms the issue is likely related to Metaspace exhaustion caused by class loaders not being garbage collected when plugins are reloaded. I need to investigate how `TextDaemon` and `LoadedGeneration` handle plugin loading and unloading.",
+  "plan": "I will read `src/main/java/io/harbor/textd/core/TextDaemon.java` and `src/main/java/io/harbor/textd/core/LoadedGeneration.java` to see how plugins are managed.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.1
+    }
+  ]
+}

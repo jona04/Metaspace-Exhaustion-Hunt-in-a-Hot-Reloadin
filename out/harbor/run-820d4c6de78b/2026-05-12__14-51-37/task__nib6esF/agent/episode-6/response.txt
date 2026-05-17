@@ -1,0 +1,11 @@
+{
+  "analysis": "I found the leak! \n\nIn `ThreadCache.java`, the `cursorFor` method replaces the `cursor` without closing the old one:\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\n`WorkerHandle` holds a `TimelineFrame` which it pins. When the `cursor` is replaced without calling `close()`, the old `WorkerHandle` (and its pinned `TimelineFrame`) is never closed. \n\nIn `TimelineFrame` (I should check this file too), `unpin()` likely decrements a reference count. If `unpin()` is never called, the `TimelineFrame` remains pinned, and `TimelineLedger.pruneShadow()` will never remove it from the `shadow` queue because `isDrained()` will remain false. This keeps the `LoadedGeneration` (and its `URLClassLoader`) alive forever, leading to the Metaspace OOM.\n\nAlso, `ThreadBridge` uses a `ThreadLocal<ThreadCache>`. While `TextDaemon` workers are in a fixed pool, they are never cleared unless `ThreadBridge.clear()` is called, which I don't see being called anywhere except potentially at the end of the process.",
+  "plan": "1. Verify `TimelineFrame.java` to confirm how pinning/unpinning works.\n2. Fix `ThreadCache.java` to close the old `cursor` before creating a new one.\n3. Verify if `TextDaemon.java` should be calling some kind of cleanup, although fixing `ThreadCache` might be enough for the 'swap' leak.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

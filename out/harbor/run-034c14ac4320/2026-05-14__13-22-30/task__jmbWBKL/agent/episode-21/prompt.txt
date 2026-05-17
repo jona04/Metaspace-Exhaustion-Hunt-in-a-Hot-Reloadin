@@ -1,0 +1,41 @@
+New Terminal Output:
+
+root@d08983370c6e:/workspace/textd# bin/replay-check
+cat > src/main/java/io/harbor/textd/core/ThreadBridge.java <<EOF
+package io.harbor.textd.core;
+
+import java.util.Collections;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
+final class ThreadBridge {
+    private static final Set<ThreadCache> ALL_CACHES = Collections.newSetFromMap(new ConcurrentHashMap<>());
+    private static final ThreadLocal<ThreadCache> ROUTES = ThreadLocal.withInitial(() -> {
+        ThreadCache cache = new ThreadCache();
+        ALL_CACHES.add(cache);
+        return cache;
+    });
+
+    private ThreadBridge() {
+    }
+
+    static WorkerHandle current(TimelineLedger ledger) {
+        return ROUTES.get().cursorFor(ledger);
+    }
+
+    static void clear() {
+        ThreadCache routeState = ROUTES.get();
+        routeState.close();
+        ALL_CACHES.remove(routeState);
+        ROUTES.remove();
+    }
+
+    static void clearAll() {
+        for (ThreadCache cache : ALL_CACHES) {
+            cache.close();
+        }
+        ALL_CACHES.clear();
+    }
+}
+EOF
+

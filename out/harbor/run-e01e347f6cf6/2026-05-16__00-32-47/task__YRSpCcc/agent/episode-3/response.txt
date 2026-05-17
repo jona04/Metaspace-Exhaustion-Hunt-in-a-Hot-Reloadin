@@ -1,0 +1,14 @@
+{
+  "analysis": "I've analyzed the code:\n- `TimelineLedger` keeps track of the `current` generation and a `shadow` queue of older generations.\n- `TimelineFrame` (which I haven't seen yet, but it's used in `TimelineLedger`) seems to track whether a generation is still in use.\n- `ThreadBridge` uses a `ThreadLocal<ThreadCache>` to store a `WorkerHandle` for each thread.\n- `ThreadCache.cursorFor` creates a new `WorkerHandle` if the current one doesn't match the `TimelineLedger`'s current frame.\n\nThe issue is likely that when `ThreadCache.cursorFor` replaces `cursor` with a new `WorkerHandle`, it doesn't close the old one. If `WorkerHandle` holds a reference to a `TimelineFrame` (and thus a `LoadedGeneration`), and the old `WorkerHandle` is not closed, the `TimelineFrame` might never be considered 'drained', preventing it from being removed from `TimelineLedger.shadow` and closed.\n\nWait, I should check `TimelineFrame.java` and `WorkerHandle.java` to confirm.",
+  "plan": "I will examine `TimelineFrame.java` and `WorkerHandle.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.2
+    }
+  ]
+}

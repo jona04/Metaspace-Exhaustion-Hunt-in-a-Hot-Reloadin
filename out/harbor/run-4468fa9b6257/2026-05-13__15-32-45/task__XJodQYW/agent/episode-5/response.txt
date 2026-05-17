@@ -1,0 +1,19 @@
+{
+  "analysis": "In `TextDaemon.java`, the `processRecord` method calls `ThreadBridge.current(revisions)` to get a `WorkerHandle`. This sounds like it might be using `ThreadLocal` or some other mechanism to cache state per worker thread. If `revisions.install(generation)` is called, but the threads are still holding onto old `WorkerHandle`s or old ClassLoaders, that could be the leak. The restricted Metaspace (64m) in `bin/stress` confirms we should look for ClassLoader leaks.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/ThreadBridge.java` to see how it manages `WorkerHandle` and if it caches them.\n2. Examine `src/main/java/io/harbor/textd/core/TimelineLedger.java` and `src/main/java/io/harbor/textd/core/LoadedGeneration.java` to see how plugins are loaded and closed.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

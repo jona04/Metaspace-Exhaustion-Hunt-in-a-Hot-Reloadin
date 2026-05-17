@@ -1,0 +1,18 @@
+{
+  "analysis": "`TimelineLedger` keeps track of the current and old (`shadow`) plugin generations. It uses `TimelineFrame` to wrap `LoadedGeneration`. When a new revision is installed, the old one is moved to the `shadow` queue and cooled. `pruneShadow` removes generations that are 'drained'.\n\n`ThreadBridge` uses a `ThreadLocal` of `ThreadCache`. This is a classic place for leaks in thread-pooled applications if the `ThreadLocal` isn't cleared, or if the objects it holds keep references to classloaders.",
+  "plan": "I need to examine `TimelineFrame.java`, `ThreadCache.java`, and `LoadedGeneration.java` to see how they interact and how 'drained' is determined.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.5
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "analysis": "The `bin/stress` script runs the JVM with a constrained `-XX:MaxMetaspaceSize=64m`. This is a strong hint that the 'long-running validation under the constrained CI runtime profile' is likely failing due to a Metaspace leak caused by repeated class loading during processor refreshes. If the old ClassLoaders are not being garbage collected, the Metaspace will eventually exhaust.",
+  "plan": "1. Wait for the `./bin/stress` command to finish or fail to confirm the error (expecting OutOfMemoryError: Metaspace).\n2. Examine `src/main/java/io/harbor/textd/core/GenerationRegistry.java` and `LoadedGeneration.java` to see how ClassLoaders are managed and if they are being closed or leaked.\n3. Check `HotReloadStressRunner.java` to see how it triggers the refresh.",
+  "commands": [
+    {
+      "keystrokes": "",
+      "duration": 5.0
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/GenerationRegistry.java\n",
+      "duration": 0.1
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "analysis": "The stress test passed 500 cycles. However, I should also check if there's any other resource that might be leaking. Let's look at `ThreadCache.java` again. It's used via a `ThreadLocal` in `ThreadBridge.java`.\n\n```java\nfinal class ThreadBridge {\n    private static final ThreadLocal<ThreadCache> ROUTES = ThreadLocal.withInitial(ThreadCache::new);\n    // ...\n    static void clear() {\n        ThreadCache routeState = ROUTES.get();\n        routeState.close();\n        ROUTES.remove();\n    }\n}\n```\n\nIs `ThreadBridge.clear()` ever called? If the worker threads in `TextDaemon` are kept alive, the `ThreadLocal` might not be a problem, but if they were replaced, it could be. In `TextDaemon.java`, a `FixedThreadPool` is used, so threads are stable.\n\nWait, I noticed something in `TimelineLedger.java`:\n\n```java\n    private void pruneShadow() {\n        shadow.removeIf(TimelineFrame::isDrained);\n    }\n```\n\nAnd `TimelineFrame.isDrained()`:\n\n```java\n    boolean isDrained() {\n        return closed.get();\n    }\n```\n\nAnd `TimelineFrame.unpin()`:\n\n```java\n    void unpin() {\n        int remaining = pins.decrementAndGet();\n        // ...\n        if (remaining == 0 && cooled.get()) {\n            closeLoadedGeneration();\n        }\n    }\n```\n\nIf a thread is idle and still holding a `WorkerHandle` (and thus a pin) for an *old* revision, that revision will never be drained, even if a new revision is installed. In my fix, I added `cursor.close()` in `cursorFor`, which is only called when a *new* request comes in for that thread and it notices the revision has changed. \n\nIf some threads in the pool don't get a new request for a long time, they will keep the old revision pinned. This might be okay if the number of threads is small, but the task says 'constrained CI profile' and 'repeated processor swaps'.\n\nWait, `TextDaemon.processBatch` uses all threads? No, it submits tasks to the `workers` pool. If the number of records in `processBatch` is less than the number of workers, some workers might not be updated.\n\nHowever, the `stress` test passes now. Let's check `integration` tests as well.",
+  "plan": "1. Run `bin/run-suite` to see if all tests pass.",
+  "commands": [
+    {
+      "keystrokes": "./bin/run-suite\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

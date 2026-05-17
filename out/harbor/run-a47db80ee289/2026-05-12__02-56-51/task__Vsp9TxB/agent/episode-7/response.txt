@@ -1,0 +1,19 @@
+{
+  "analysis": "Confirmed! `DispatchBinding` calls `lease.retain()` in its constructor and has a `close()` method that calls `lease.release()`. \n\nIn `WorkerBindings.java`:\n```java\n        if (!binding.matches(activeLease)) {\n            DispatchBinding replacement = new DispatchBinding(activeLease);\n            ACTIVE.set(replacement);\n            return replacement;\n        }\n```\nThe old `binding` is discarded without calling `binding.close()`. This means the `GenerationLease` for the old generation will never have its reference count decremented for that worker thread. Since the `TextDaemon` uses multiple workers (the stress test uses 2), each worker will leak one reference per generation reload. This prevents the `LoadedGeneration` from ever being closed, leading to a `URLClassLoader` leak and eventually a Metaspace OOM.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/WorkerBindings.java` to call `binding.close()` before replacing it in the `ThreadLocal`.\n2. Run the stress test again to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/ACTIVE.set(replacement);/binding.close(); ACTIVE.set(replacement);/' src/main/java/io/harbor/textd/core/WorkerBindings.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerBindings.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 10.0
+    }
+  ],
+  "task_complete": false
+}

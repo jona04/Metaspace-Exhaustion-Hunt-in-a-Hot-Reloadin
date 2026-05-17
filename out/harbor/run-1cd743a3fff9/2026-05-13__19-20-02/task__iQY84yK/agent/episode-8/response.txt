@@ -1,0 +1,19 @@
+{
+  "analysis": "In `LoadedGeneration.java`, the `close()` method correctly calls `classLoader.close()`. This should normally allow the classes to be unloaded, provided there are no remaining references. \n\nIn `TextDaemon.java`, I see `WorkerHandle binding = ThreadBridge.current(revisions);`. This looks suspicious. `ThreadBridge.current` likely uses a `ThreadLocal` or some other mechanism to store the `WorkerHandle` for the current thread. If these handles or the references within them are not cleared when a new generation is installed, they will keep the old ClassLoader alive.\n\nAlso, `TextDaemon` has a `workers` thread pool. If the threads in this pool hold references to classes from the plugin ClassLoader, those ClassLoaders won't be GC'd.",
+  "plan": "1. Examine `ThreadBridge.java` and `WorkerHandle.java` to see how they store and manage references to the `LoadedGeneration` or its classes.\n2. Check `TimelineLedger.java` to see how it manages the collection of generations.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

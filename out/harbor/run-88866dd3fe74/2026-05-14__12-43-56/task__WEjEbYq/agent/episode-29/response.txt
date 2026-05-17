@@ -1,0 +1,10 @@
+{
+  "analysis": "In `TextDaemon`, `process` calls `processBatch`, which submits tasks to `workers`. `processRecord` is only called within those tasks. So only the worker threads should have `ThreadLocal` state. \n\nWait, I see another potential issue. `TimelineFrame` starts with `pins = 1`! \n\n```java\nfinal class TimelineFrame {\n    private final LoadedGeneration loadedGeneration;\n    private final AtomicInteger pins = new AtomicInteger(1);\n```\n\nAnd `TimelineLedger.install` calls `previous.cool()` which calls `unpin()`.\n\n```java\n    void install(long revision) throws Exception {\n        TimelineFrame next = new TimelineFrame(LoadedGeneration.load(pluginJar, revision));\n        TimelineFrame previous = current.getAndSet(next);\n        if (previous != null) {\n            shadow.add(previous);\n            previous.cool();\n            pruneShadow();\n        }\n    }\n```\n\nWait, `TextDaemon.close()` also calls `revisions.close()`:\n\n```java\n    void close() {\n        TimelineFrame frame = current.getAndSet(null);\n        if (frame != null) {\n            shadow.add(frame);\n            frame.cool();\n        }\n        pruneShadow();\n    }\n```\n\nSo the initial pin is accounted for. \n\nWhat if the classes are not being unloaded because the `URLClassLoader` is still reachable? \n\n`LoadedGeneration` holds the `URLClassLoader` and the `PluginModule`. \n`WorkerHandle` holds the `TextProcessor` from the `PluginModule` and the `TimelineFrame`. \n\nWhen `ThreadBridge.clear()` is called, it calls `ThreadCache.close()`, which calls `cursor.close()`, which calls `frame.unpin()`. \n\nWhen `pins` reaches 0 and `cooled` is true, it calls `closeLoadedGeneration()`, which calls `loadedGeneration.close()`, which calls `module.close()` and `classLoader.close()`.\n\nThis all looks correct. Why would it still fail to unload classes?",
+  "plan": "Maybe I should check `TimelineFrame.java` again to be absolutely sure about the pin logic.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    }
+  ]
+}

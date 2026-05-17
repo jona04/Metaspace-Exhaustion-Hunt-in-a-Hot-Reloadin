@@ -1,0 +1,6 @@
+{
+  "analysis": "The issue was identified as a Metaspace leak caused by unreleased ClassLoaders during repeated plugin swaps. Specifically, the `RouteState` class, which is stored in a `ThreadLocal` on worker threads, was replacing its `RouteCursor` when a new revision was detected without closing the old one. Since `RouteCursor` holds a 'pin' on a `RevisionFrame`, and `RevisionFrame` prevents the `LoadedGeneration` (and its `URLClassLoader`) from closing until all pins are released, the old ClassLoaders were never garbage collected.\n\nI have modified `src/main/java/io/harbor/textd/core/RouteState.java` to explicitly call `cursor.close()` before creating a new cursor when a revision mismatch is detected. This ensures that the pin on the old revision is released, allowing the associated ClassLoader to be closed and its Metaspace reclaimed.\n\nVerification shows that the stress test now passes with 500 cycles (it previously failed) and the integration suite remains healthy.",
+  "plan": "The task is complete. I have verified the fix with the provided stress and suite scripts.",
+  "commands": [],
+  "task_complete": true
+}

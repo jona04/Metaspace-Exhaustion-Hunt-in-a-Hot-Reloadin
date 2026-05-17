@@ -1,0 +1,18 @@
+{
+  "analysis": "The integration runner doesn't check for balance. \n\nI'll create a small reproduction script that checks `isBalanced()` to ensure that old generations are indeed reclaimed after all worker threads have moved to the new generation.",
+  "plan": "Create a temporary Java file to check the balance of the daemon after reloads.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/cli/BalanceCheck.java\npackage io.harbor.textd.cli;\n\nimport io.harbor.textd.core.TextDaemon;\nimport java.nio.file.Path;\nimport java.util.List;\n\npublic class BalanceCheck {\n    public static void main(String[] args) throws Exception {\n        Path pluginJar = Path.of(args[0]);\n        try (TextDaemon daemon = new TextDaemon(pluginJar, 4)) {\n            for (int i = 1; i <= 10; i++) {\n                daemon.reload(i);\n                daemon.processBatch(List.of(\"a\", \"b\", \"c\", \"d\"));\n                if (!daemon.isBalanced()) {\n                    throw new IllegalStateException(\"Daemon is not balanced after generation \" + i);\n                }\n            }\n        }\n        System.out.println(\"balance-ok\");\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/build\n",
+      "duration": 5.0
+    },
+    {
+      "keystrokes": "java -cp build/main-classes io.harbor.textd.cli.BalanceCheck build/plugins/customer-default.jar\n",
+      "duration": 2.0
+    }
+  ]
+}

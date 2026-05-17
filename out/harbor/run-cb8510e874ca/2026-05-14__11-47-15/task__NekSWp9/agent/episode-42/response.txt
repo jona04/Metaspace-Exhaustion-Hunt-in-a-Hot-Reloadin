@@ -1,0 +1,10 @@
+{
+  "analysis": "Wait, I see it now! `TimelineFrame.isDrained()` returns `closed.get()`. `closed` is only set to true in `closeLoadedGeneration()`. `closeLoadedGeneration()` is called by `unpin()` when `pins` reaches 0 and `cooled` is true. In `TimelineLedger.close()`, it calls `pruneShadow()` immediately after cooling the frame. But the pins might not have reached 0 yet because the clearance tasks might still be running or something? No, I waited for them with `clearance.get()`. But wait! I called `revisions.close()` *after* clearing the worker threads. So when `revisions.close()` is called, the pins of the current frame should be 1 (from the initial creation). Then `frame.cool()` calls `unpin()`, which should bring pins to 0 and trigger `closeLoadedGeneration()`. So `isDrained()` should be true immediately.",
+  "plan": "Wait, I see a possible race condition. `pruneShadow()` uses `shadow.removeIf(TimelineFrame::isDrained)`. If `isDrained()` becomes true just after `removeIf` checked it, it stays in the queue. But `isBalanced()` is called multiple times. Wait, `SessionReplayRunner` calls `daemon.isBalanced()` *before* and *after* `daemon.close()`. After `daemon.close()`, it calls `daemon.isBalanced()` which calls `pruneShadow()`. At that point, all frames should be drained.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/SessionReplayRunner.java\n",
+      "duration": 0.1
+    }
+  ]
+}

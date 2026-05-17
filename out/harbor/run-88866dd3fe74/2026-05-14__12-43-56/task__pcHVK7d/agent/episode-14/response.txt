@@ -1,0 +1,10 @@
+{
+  "analysis": "The `TimelineFrame` uses a reference counting mechanism (`pins`). When `pins` reaches zero and the frame is 'cooled', it closes the `loadedGeneration`. In `WorkerHandle`, `frame.pin()` is called in the constructor, and `frame.unpin()` is called in `close()`. As I suspected, `ThreadCache` is not calling `close()` on the old `WorkerHandle` when the revision changes, so the pin count never reaches zero, and the `LoadedGeneration` (which likely contains the classloader) is never closed.",
+  "plan": "I will modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to call `close()` on the old `cursor` before creating a new one.",
+  "commands": [
+    {
+      "keystrokes": "sed -i 's/cursor = new WorkerHandle(frame);/if (cursor != null) cursor.close();\\n            cursor = new WorkerHandle(frame);/' src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.5
+    }
+  ]
+}

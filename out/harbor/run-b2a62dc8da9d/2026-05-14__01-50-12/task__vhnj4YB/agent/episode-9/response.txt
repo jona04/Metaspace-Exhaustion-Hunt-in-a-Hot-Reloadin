@@ -1,0 +1,14 @@
+{
+  "analysis": "In `ThreadCache.cursorFor(TimelineLedger ledger)`:\n```java\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n```\nWhen the `cursor` revision doesn't match the current frame revision, a new `WorkerHandle` is created and assigned to `cursor`, but the old `cursor` is never closed! `WorkerHandle.close()` calls `frame.unpin()`, which is crucial for allowing the old generation to be drained and eventually garbage collected.\n\nAlso, `ThreadBridge.clear()` is available but I don't see it being called anywhere except potentially in tests (if any). But the main issue here seems to be the missing `close()` call in `ThreadCache.cursorFor`.",
+  "plan": "I will fix `ThreadCache.java` by closing the old `cursor` before creating a new one when the revision changes. I should also check `TimelineFrame.java` and `LoadedGeneration.java` to understand how pinning and unpinning works.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.1
+    }
+  ]
+}

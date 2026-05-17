@@ -1,0 +1,39 @@
+Previous response had warnings:
+WARNINGS: - Command 1 should end with newline when followed by another command. Otherwise the two commands will be concatenated together on the same line.
+
+New Terminal Output:
+
+root@745508aaf3b5:/workspace/textd# ./bin/stress 500
+stress-ok cycles=500
+root@745508aaf3b5:/workspace/textd# cat > src/main/java/io/harbor/textd/core/ThreadCache.java <<EOF
+> package io.harbor.textd.core;
+>
+> final class ThreadCache implements AutoCloseable {
+>     private WorkerHandle cursor;
+>
+>     WorkerHandle cursorFor(TimelineLedger ledger) {
+>         TimelineFrame frame = ledger.current();
+>         if (cursor != null && !cursor.matches(frame)) {
+>             cursor.close();
+>             cursor = null;
+>         }
+>
+>         if (cursor == null) {
+>             cursor = new WorkerHandle(frame);
+>         }
+>
+>         return cursor;
+>     }
+>
+>     @Override
+>     public void close() {
+>         if (cursor != null) {
+>             cursor.close();
+>             cursor = null;
+>         }
+>     }
+> }
+> EOF
+root@745508aaf3b5:/workspace/textd# ./bin/stress 500
+./bin/run-suite
+

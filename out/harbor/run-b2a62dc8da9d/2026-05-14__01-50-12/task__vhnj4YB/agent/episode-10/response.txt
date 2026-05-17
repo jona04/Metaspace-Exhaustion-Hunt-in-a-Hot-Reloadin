@@ -1,0 +1,10 @@
+{
+  "analysis": "The code confirms that `TimelineFrame` manages pins and closes the `LoadedGeneration` (which closes the `URLClassLoader`) when the pin count reaches zero and it has been \"cooled\". `TimelineLedger.install` calls `cool()` on the previous frame. `WorkerHandle` pins the frame on creation and unpins it on `close()`.\n\nThe leak is definitely in `ThreadCache.cursorFor` because it replaces the `cursor` without closing the old one, thus leaving the old frame pinned indefinitely.\n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame); // <--- Old cursor is lost and never closed!\n            return cursor;\n        }\n\n        return cursor;\n    }\n```",
+  "plan": "I will modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old cursor before creating a new one.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.1
+    }
+  ]
+}

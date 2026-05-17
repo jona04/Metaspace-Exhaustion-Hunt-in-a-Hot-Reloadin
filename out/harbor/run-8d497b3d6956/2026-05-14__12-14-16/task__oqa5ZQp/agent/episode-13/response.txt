@@ -1,0 +1,14 @@
+{
+  "analysis": "The `ThreadBridge.clear()` method exists but is not called in `TextDaemon.java`. \n\nIn `TextDaemon.processRecord`, we are using `ThreadBridge.current(revisions)`. \n\nIf the daemon is used in a way where threads are not reused, or if we want to ensure everything is cleaned up when the daemon is closed, we might need to call `clear()`.\n\nBut the `TextDaemon` uses a `fixedThreadPool`. These threads stay alive. \n\nWhen `revisions.install(generation)` is called, the next time a worker thread calls `processRecord` -> `ThreadBridge.current(revisions)` -> `ThreadCache.cursorFor(ledger)`, it will see the new generation, close the old `WorkerHandle` (with my fix), and create a new one.\n\nIs there any case where a worker thread might NOT call `processRecord` again? If it doesn't, it will keep the old `WorkerHandle` (and thus the old `TimelineFrame`) pinned forever.\n\nActually, the `TextDaemon.processBatch` submits tasks to all workers? No, it submits one task per record.\n\n```java\n    public List<ProcessingResult> processBatch(List<String> records) throws Exception {\n        CountDownLatch ready = new CountDownLatch(records.size());\n        CountDownLatch release = new CountDownLatch(1);\n        List<Future<ProcessingResult>> futures = new ArrayList<>();\n        for (String record : records) {\n            futures.add(workers.submit(() -> processRecord(record, ready, release)));\n        }\n        // ...\n    }\n```\n\nIf `records.size()` is less than `workerCount`, some workers might not be updated. In the stress test:\n```java\n                daemon.reload(generation);\n                assertOutputs(generation, daemon.processBatch(List.of(SAMPLE, SAMPLE, SAMPLE, SAMPLE)));\n                assertOutput(generation, daemon.process(SAMPLE));\n```\n`workerCount` is 4. `processBatch` with 4 records will likely hit all 4 workers (since it's a fixed thread pool and they all wait on `release` latch).\n\nIf a worker is never used again, it will keep the pin. But usually, workers in a pool are used eventually.\n\nWait, I should check if there's any other place where `WorkerHandle` is used.\n\nIn `TextDaemon.java`, `isBalanced()` calls `revisions.isBalanced()`, which calls `pruneShadow()`. If `shadow` is empty, it means all old generations have been drained.\n\nLet's see if I can add a check for `isBalanced()` in the stress test or a new test to be sure.",
+  "plan": "I will check if there's an existing integration test I should run.",
+  "commands": [
+    {
+      "keystrokes": "ls bin\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./bin/run-suite\n",
+      "duration": 5.0
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+New Terminal Output:
+
+root@a9b47570bd30:/workspace/textd# cat > src/main/java/io/harbor/textd/core/RouteState.java <<EOF
+> package io.harbor.textd.core;
+>
+> final class RouteState implements AutoCloseable {
+>     private RouteCursor cursor;
+>
+>     RouteCursor cursorFor(RevisionLedger ledger) {
+>         RevisionFrame frame = ledger.current();
+>         if (cursor != null && !cursor.matches(frame)) {
+>             cursor.close();
+>             cursor = null;
+>         }
+>
+>         if (cursor == null) {
+>             cursor = new RouteCursor(frame);
+>         }
+>
+>         return cursor;
+>     }
+>
+>     @Override
+>     public void close() {
+>         if (cursor != null) {
+>             cursor.close();
+>             cursor = null;
+>         }
+>     }
+> }
+> EOF
+root@a9b47570bd30:/workspace/textd# ./bin/stress
+

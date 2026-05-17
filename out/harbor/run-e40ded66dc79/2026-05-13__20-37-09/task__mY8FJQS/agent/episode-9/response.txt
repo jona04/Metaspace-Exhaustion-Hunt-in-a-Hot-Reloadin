@@ -1,0 +1,19 @@
+{
+  "analysis": "Confirmed. `WorkerHandle` pins the `TimelineFrame` in its constructor and unpins it in `close()`. In `ThreadCache.java`, when a new generation is loaded, the old `WorkerHandle` is replaced without being closed, so the `TimelineFrame` stays pinned. Since `TimelineFrame.unpin()` only closes the `LoadedGeneration` (which presumably closes the ClassLoader) when the pin count reaches zero AND it's been 'cooled' (which happens when it's replaced in `TimelineLedger`), the old ClassLoaders are never closed or collected.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before replacing it.\n2. Rebuild and run the stress test to verify the fix.",
+  "commands": [
+    {
+      "keystrokes": "cat <<EOF > src/main/java/io/harbor/textd/core/ThreadCache.java\npackage io.harbor.textd.core;\n\nfinal class ThreadCache implements AutoCloseable {\n    private WorkerHandle cursor;\n\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "./bin/build\n",
+      "duration": 2.0
+    },
+    {
+      "keystrokes": "./bin/stress 200\n",
+      "duration": 20.0
+    }
+  ],
+  "task_complete": false
+}

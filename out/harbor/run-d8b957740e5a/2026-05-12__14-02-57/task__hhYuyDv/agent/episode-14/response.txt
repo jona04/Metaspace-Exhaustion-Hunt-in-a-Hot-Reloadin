@@ -1,0 +1,11 @@
+{
+  "analysis": "`ThreadBridge.clear()` is never used. This means the `ThreadLocal` persists for the life of the worker threads. However, since the worker threads are part of a fixed pool in `TextDaemon`, and each time they process a record they check if the `cursor` matches the current `revisions.current()`, they will eventually update their `cursor` and unpin the old frames. \n\nWhen `TextDaemon` is closed, the worker threads are shut down. When the threads die, the `ThreadLocal` map for those threads becomes eligible for GC, which will allow the `ThreadCache` and its `cursor` (and thus the `TimelineFrame`) to be GC'd.\n\nWait, if the daemon is closed, but the threads are still alive (e.g. in a different daemon instance or a shared pool), we might have a leak. But here `workers.shutdownNow()` is called in `TextDaemon.close()`.\n\nThe `TimelineLedger.close()` also calls `pruneShadow()`. \n\nOne thing to note: if a thread processed a record once and then never again, it would hold onto that `WorkerHandle` (and thus that `TimelineFrame`) forever until the thread dies. If there are many `TextDaemon` instances created and destroyed, this could be an issue. But the task focuses on 'long refresh run' within a daemon, which I've addressed.\n\nLet's check `HotReloadStressRunner.java` to see how it uses `TextDaemon`.",
+  "plan": "Examine `src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}

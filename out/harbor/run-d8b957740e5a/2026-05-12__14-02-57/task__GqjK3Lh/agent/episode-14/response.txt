@@ -1,0 +1,6 @@
+{
+  "analysis": "The `textd` service was failing with a `java.lang.OutOfMemoryError: Metaspace` during long runs involving repeated plugin/processor swaps. Analysis revealed that `ThreadCache` was failing to close old `WorkerHandle` instances when a new generation was installed. Since `WorkerHandle` maintains a 'pin' on a `TimelineFrame`, and the frame only closes its `LoadedGeneration` (and the associated `URLClassLoader`) when the pin count reaches zero, the class loaders for old revisions were never being garbage collected. I have modified `ThreadCache.java` to explicitly call `close()` on the old `WorkerHandle` before replacing it, which correctly decrements the pin count and allows the Metaspace to be reclaimed.",
+  "plan": "I have already applied the fix and verified it by running `./bin/stress` (which passed 500 cycles without OOM) and `./bin/run-suite` (which also passed). The system is now stable under the constrained CI profile.",
+  "commands": [],
+  "task_complete": true
+}

@@ -1,0 +1,10 @@
+{
+  "analysis": "`SessionReplayRunner` measures the number of unloaded classes using `ClassLoadingMXBean`. It calls `daemon.close()` followed by `drainGc()`. If `unloaded_after_close` is not greater than `unloaded_before_close`, it means no classes were unloaded after closing the daemon. This is despite my fix in `ThreadCache`. \n\nWait, I see what's happening. `ThreadBridge` uses a `ThreadLocal<ThreadCache>`. My fix in `ThreadCache` only closes the *old* `WorkerHandle` when a *new* one is requested on the same thread. But what about when the `TextDaemon` is closed? The worker threads still have the *last* `WorkerHandle` in their `ThreadLocal`!",
+  "plan": "I need to make sure that when `TextDaemon` is closed, all `WorkerHandle`s in all worker threads are also closed. `TextDaemon` has a `workers` `ExecutorService`. When `daemon.close()` is called, it calls `workers.shutdownNow()`. However, the `ThreadLocal` in those threads might still hold onto the `ThreadCache` and thus the `WorkerHandle`, and since the threads are part of a pool (though `shutdownNow` is called), they might not be GC'd immediately or at all if the JVM keeps them around. \n\nWait, `TextDaemon` uses a `FixedThreadPool`. `shutdownNow()` will interrupt the threads, but it doesn't necessarily clear the `ThreadLocal`s of those threads. Actually, if the threads themselves are not GC'd, the `ThreadLocal` values will stay. \n\nBut even more importantly, the `ThreadLocal` in `ThreadBridge` is static! \n`private static final ThreadLocal<ThreadCache> ROUTES = ThreadLocal.withInitial(ThreadCache::new);` \nThis means it persists across different `TextDaemon` instances if they use the same threads. \n\nIn `TextDaemon.processRecord`, it calls `ThreadBridge.current(revisions)`. This is where the `WorkerHandle` is cached in the thread's `ThreadLocal`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.1
+    }
+  ]
+}

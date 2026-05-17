@@ -1,0 +1,18 @@
+{
+  "analysis": "In `ThreadCache.java`, when `cursor.matches(frame)` is false, a new `WorkerHandle` is created and assigned to `cursor`, but the old `cursor` is never closed. `WorkerHandle.close()` calls `frame.unpin()`, which is likely necessary to allow the old generation to be reclaimed.",
+  "plan": "1. Modify `src/main/java/io/harbor/textd/core/ThreadCache.java` to close the old `cursor` before replacing it.\n2. Also check `ThreadBridge.java` and `TimelineFrame.java` to see how they interact with `ThreadCache` and how pinning/unpinning works.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.1
+    }
+  ]
+}

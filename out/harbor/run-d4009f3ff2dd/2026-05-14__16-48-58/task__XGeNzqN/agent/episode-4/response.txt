@@ -1,0 +1,14 @@
+{
+  "analysis": "I've analyzed the code. Here's how it works:\n- `TextDaemon` uses a thread pool of workers.\n- Each worker calls `ThreadBridge.current(revisions)` which returns a `WorkerHandle` from a `ThreadLocal<ThreadCache>`.\n- `ThreadCache` stores a `cursor` (a `WorkerHandle`).\n- `WorkerHandle` pins a `TimelineFrame` upon creation.\n- When a new generation is installed, the old `TimelineFrame` is 'cooled' (calling `unpin()`).\n- A `TimelineFrame` is closed only when its pin count reaches 0 and it has been cooled.\n\nThe issue seems to be in `ThreadCache.cursorFor`:\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\nWhen `!cursor.matches(frame)`, a new `WorkerHandle` is created and assigned to `cursor`, but the old `cursor` is never closed! This means the old `WorkerHandle` never calls `frame.unpin()`, and thus the old `TimelineFrame`'s pin count never reaches 0, preventing it from being closed and reclaimed.\n\nLet's verify this by running the stress test if possible.",
+  "plan": "I will check the bin directory to see how to run the stress test, then I'll try to run it and observe the behavior.",
+  "commands": [
+    {
+      "keystrokes": "ls bin\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.5
+    }
+  ]
+}

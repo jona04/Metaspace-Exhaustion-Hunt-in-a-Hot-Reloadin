@@ -1,0 +1,14 @@
+{
+  "analysis": "The `sed` command was too broad and replaced both occurrences of `cursor = new RouteCursor(frame);`, including the one where `cursor` is `null`, leading to a `NullPointerException`. I need to fix `RouteState.java` to only close the cursor when it's not null.",
+  "plan": "1. Correct `src/main/java/io/harbor/textd/core/RouteState.java` to properly handle the null check and close the old cursor.\n2. Re-run the stress test.",
+  "commands": [
+    {
+      "keystrokes": "cat > src/main/java/io/harbor/textd/core/RouteState.java <<EOF\npackage io.harbor.textd.core;\n\nfinal class RouteState implements AutoCloseable {\n    private RouteCursor cursor;\n\n    RouteCursor cursorFor(RevisionLedger ledger) {\n        RevisionFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new RouteCursor(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new RouteCursor(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n\n    @Override\n    public void close() {\n        if (cursor != null) {\n            cursor.close();\n            cursor = null;\n        }\n    }\n}\nEOF\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "./bin/stress 500\n",
+      "duration": 15.0
+    }
+  ]
+}

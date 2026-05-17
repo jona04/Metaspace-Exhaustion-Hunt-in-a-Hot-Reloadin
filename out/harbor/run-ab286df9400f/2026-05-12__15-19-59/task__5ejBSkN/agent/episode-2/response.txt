@@ -1,0 +1,19 @@
+{
+  "analysis": "The `bin/stress` script runs `HotReloadStressRunner` with `-XX:MaxMetaspaceSize=64m`. This is a very tight limit for Metaspace. Given the task mentions 'processor swaps' and 'repeated processor swaps', it's highly likely that each reload/swap is leaking classes or class loaders, eventually exhausting the 64MB Metaspace.\n\n`TextDaemon` uses `TimelineLedger` to manage plugin revisions. The `processRecord` method uses `ThreadBridge.current(revisions)` to get a `WorkerHandle`.\n\nI need to check `TimelineLedger.java`, `ThreadBridge.java`, and `ThreadCache.java` to see how class loaders are handled and if they are properly released when a new generation is installed.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/TimelineLedger.java`.\n2. Examine `src/main/java/io/harbor/textd/core/ThreadBridge.java`.\n3. Examine `src/main/java/io/harbor/textd/core/ThreadCache.java`.\n4. Look for where the class loader for the plugin is created and whether it's ever discarded.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineLedger.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadBridge.java\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/ThreadCache.java\n",
+      "duration": 0.2
+    }
+  ],
+  "task_complete": false
+}

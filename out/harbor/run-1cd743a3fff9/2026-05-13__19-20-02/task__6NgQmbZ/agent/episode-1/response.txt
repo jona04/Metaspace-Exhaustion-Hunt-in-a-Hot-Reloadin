@@ -1,0 +1,14 @@
+{
+  "analysis": "The project is a Java-based daemon called `textd`. Based on the file structure and the task description, it seems to involve hot-reloading or 'processor swaps' (as suggested by `HotReloadStressRunner.java` and `HotReloadIntegrationRunner.java`). The issue is a crash during long runs, likely related to resource management when plugins are reloaded.\n\nKey files appear to be:\n- `src/main/java/io/harbor/textd/core/TextDaemon.java`: Likely the main entry point.\n- `src/main/java/io/harbor/textd/core/ThreadBridge.java`, `ThreadCache.java`, `WorkerHandle.java`: Likely manage the lifecycle of processing threads.\n- `bin/stress`: Likely the script that triggers the failing long run.",
+  "plan": "1. Examine the `bin/stress` script to see how the long run is executed.\n2. Examine `src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java` to understand the stress test logic.\n3. Examine `src/main/java/io/harbor/textd/core/TextDaemon.java` and `ThreadBridge.java` to see how 'processor swaps' (reloads) are handled.",
+  "commands": [
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java\n",
+      "duration": 0.5
+    }
+  ]
+}

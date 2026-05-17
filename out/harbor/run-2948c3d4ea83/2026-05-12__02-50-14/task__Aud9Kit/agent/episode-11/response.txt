@@ -1,0 +1,6 @@
+{
+  "analysis": "The investigation revealed a Metaspace leak caused by unreleased `GenerationLease` objects. Specifically, in `WorkerBindings.current()`, when a worker thread encountered a new processor generation, it would replace its `ThreadLocal` `DispatchBinding` with a new one without calling `close()` on the old one. Since `DispatchBinding` holds a reference-counted lease on the `LoadedGeneration` (which contains a `URLClassLoader`), these classloaders were never closed or garbage collected, leading to `OutOfMemoryError: Metaspace` under the constrained 64MB limit in the soak test.\n\nI have patched `src/main/java/io/harbor/textd/core/WorkerBindings.java` to ensure the old binding is closed before the new one is set. Verified the fix with `bin/stress 500` and the full `bin/run-suite`.",
+  "plan": "The task is complete as the soak test now passes and the lifecycle leak is resolved.",
+  "commands": [],
+  "task_complete": true
+}

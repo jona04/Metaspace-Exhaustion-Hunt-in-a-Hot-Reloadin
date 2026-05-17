@@ -1,0 +1,40 @@
+New Terminal Output:
+
+root@fdec75227c26:/workspace/textd# sed -i 's/ACTIVE.set(replacement);/if (binding != null) { binding.close(); } ACTIVE.set(replacement);/' src/main/java/io/har
+bor/textd/core/WorkerBindings.java
+root@fdec75227c26:/workspace/textd# cat src/main/java/io/harbor/textd/core/WorkerBindings.java
+package io.harbor.textd.core;
+
+final class WorkerBindings {
+    private static final ThreadLocal<DispatchBinding> ACTIVE = new ThreadLocal<>();
+
+    private WorkerBindings() {
+    }
+
+    static DispatchBinding current(GenerationRegistry registry) {
+        GenerationLease activeLease = registry.active();
+        DispatchBinding binding = ACTIVE.get();
+        if (binding == null) {
+            DispatchBinding created = new DispatchBinding(activeLease);
+            ACTIVE.set(created);
+            return created;
+        }
+
+        if (!binding.matches(activeLease)) {
+            DispatchBinding replacement = new DispatchBinding(activeLease);
+            if (binding != null) { binding.close(); } ACTIVE.set(replacement);
+            return replacement;
+        }
+
+        return binding;
+    }
+
+    static void releaseCurrent() {
+        DispatchBinding binding = ACTIVE.get();
+        if (binding != null) {
+            binding.close();
+            ACTIVE.remove();
+        }
+    }
+}
+root@fdec75227c26:/workspace/textd#

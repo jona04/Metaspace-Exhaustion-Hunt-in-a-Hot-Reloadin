@@ -1,0 +1,10 @@
+{
+  "analysis": "It seems `ThreadBridge.clear()` is never called in the source code. This means the `ThreadLocal` variables are never cleared. While the `WorkerHandle` within `ThreadCache` is now correctly replaced when a new generation is installed, if a thread is no longer used but remains in the pool, it will still hold onto its `ThreadCache` and the last `WorkerHandle` it used (and thus the last `TimelineFrame` it used). \n\nHowever, since it's a fixed thread pool in `TextDaemon`, the number of threads is constant. The real issue is whether these threads ever release their reference to a `TimelineFrame` that is no longer current.\n\nIn `ThreadCache.cursorFor(TimelineLedger ledger)`:\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        // ...\n        if (!cursor.matches(frame)) {\n            cursor.close();\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n        return cursor;\n    }\n```\nThis only happens when a new request comes in and the thread is reused. If a thread is idle, it will keep holding its last `WorkerHandle`.",
+  "plan": "Check if there's any mechanism to clear the thread locals after a session or a batch of processing. In `TextDaemon.java`, `processRecord` is called for each record. I'll check `TextDaemon.java` again.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TextDaemon.java\n",
+      "duration": 0.5
+    }
+  ]
+}

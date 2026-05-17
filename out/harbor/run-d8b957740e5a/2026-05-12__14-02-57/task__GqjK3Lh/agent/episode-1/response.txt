@@ -1,0 +1,15 @@
+{
+  "analysis": "The project is a Java-based text processing daemon (`textd`). \n- It has a plugin system (`plugin-src`).\n- There are CLI runners for stress testing and hot reloading in `src/main/java/io/harbor/textd/cli`.\n- The task mentions 'repeated processor swaps' and 'long refresh run', which aligns with the existence of `HotReloadStressRunner.java` and `HotReloadIntegrationRunner.java`.\n- The binaries/scripts in `bin/` like `stress` and `run-suite` likely trigger these behaviors.",
+  "plan": "1. Examine `bin/stress` to see how the stress test is invoked.\n2. Run the stress test to reproduce the failure.\n3. Analyze the source code, specifically `TextDaemon.java`, `ThreadCache.java`, and the HotReload runners, to identify resource leaks or synchronization issues during 'processor swaps'.",
+  "commands": [
+    {
+      "keystrokes": "cat bin/stress\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "./bin/stress\n",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}

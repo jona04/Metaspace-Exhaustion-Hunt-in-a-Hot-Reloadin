@@ -1,0 +1,18 @@
+{
+  "analysis": "I see a potential issue in `ThreadCache.java`. \n\n```java\n    WorkerHandle cursorFor(TimelineLedger ledger) {\n        TimelineFrame frame = ledger.current();\n        if (cursor == null) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        if (!cursor.matches(frame)) {\n            cursor = new WorkerHandle(frame);\n            return cursor;\n        }\n\n        return cursor;\n    }\n```\n\nWhen `cursor` is replaced because it doesn't match the current frame, the old `cursor` is not closed. `WorkerHandle.close()` might be important for releasing resources (like references to the ClassLoader). \n\nAlso, `TimelineFrame` tracks usage and is pruned when 'drained'. Let's see `WorkerHandle.java`, `TimelineFrame.java`, and `LoadedGeneration.java`.",
+  "plan": "1. Examine `src/main/java/io/harbor/textd/core/WorkerHandle.java`.\n2. Examine `src/main/java/io/harbor/textd/core/TimelineFrame.java`.\n3. Examine `src/main/java/io/harbor/textd/core/LoadedGeneration.java`.",
+  "commands": [
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/WorkerHandle.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/TimelineFrame.java\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat src/main/java/io/harbor/textd/core/LoadedGeneration.java\n",
+      "duration": 0.1
+    }
+  ]
+}
