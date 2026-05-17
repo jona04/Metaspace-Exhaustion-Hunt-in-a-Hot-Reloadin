@@ -1,4 +1,4 @@
-1. The public runner surfaces (`bin/build`, `bin/integration`, `bin/replay-check`, `bin/run-suite`, `bin/stress`, `src/main/java/io/harbor/textd/cli/RuntimeDigestRunner.java`, and `src/main/java/io/harbor/textd/cli/SessionReplayRunner.java`) remain identical to the shipped task state
+1. The public runner surfaces (`bin/build`, `bin/integration`, `bin/replay-check`, `bin/run-suite`, `bin/stress`, `src/main/java/io/harbor/textd/cli/HotReloadIntegrationRunner.java`, `src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java`, `src/main/java/io/harbor/textd/cli/RuntimeDigestRunner.java`, and `src/main/java/io/harbor/textd/cli/SessionReplayRunner.java`) remain identical to the shipped task state
 2. The 500-cycle reload soak completes successfully with `-XX:MaxMetaspaceSize=64m`
 3. The daemon does not throw `java.lang.OutOfMemoryError` during the soak run
 4. The baseline processor generation returns the expected deterministic output for the canonical sample record

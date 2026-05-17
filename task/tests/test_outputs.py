@@ -15,7 +15,7 @@ PRISTINE_HASHES = {
     "bin/build": "d30c8c505f3771343176879ee02bef48b272c7abb2f73c317aabb516d3c2289f",
     "bin/integration": "6c77011e97beb056d141550a0082f540c53fb662e495e281581a8060cdf607da",
     "bin/replay-check": "fcb3cf9b23c5038a5243d304e88b2463782640e3a3cbee33d1d5c0bc9d594c15",
-    "bin/run-suite": "037ad0eade3428f31b2e659017dd76ca55611fb606ca1364bc09cc721337d749",
+    "bin/run-suite": "bbca906dcc2e4780ec99f53c50c506b5647bc44633e73596c84d385b44b70141",
     "bin/stress": "73cffc270f82508dbb859b624b442e7261fb9cc689dd3189f2166d4ce6b53170",
     "src/main/java/io/harbor/textd/cli/HotReloadIntegrationRunner.java": "42b743fa308066b053f31cc3fd62afd769fa8b2789f905b669f2e2042e7ecec6",
     "src/main/java/io/harbor/textd/cli/HotReloadStressRunner.java": "1b43b517f29cb280e3f171b49abf2b35e4ff4f231990eacf5bc37d9c8b1ca595",

@@ -5,3 +5,5 @@
 - CI soak validation runs 500 refresh cycles with `-XX:MaxMetaspaceSize=64m` and a mixed request pattern that revisits the same workers throughout the run
 - An auxiliary digest runner samples outputs and worker identities around the end of a multi-refresh session
 - The full suite also replays the daemon twice in one JVM, and the replay-check wrapper prints positive unloading deltas after each close
+- The `java` launcher reads additional startup flags from `/opt/textd/jvm.cfg`; the shipped profile disables explicit GC until that runtime config is corrected
+- The public `bin/run-suite` command builds the service, runs integration and digest checks, performs the 500-cycle stress run, and then runs the replay-unloading check before printing `suite-ok`
