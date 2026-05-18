@@ -1,0 +1,147 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 13,
+            "passed": 9,
+            "failed": 4,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1779067993.2366238,
+            "stop": 1779068032.5083823
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_public_runner_surfaces_are_pristine",
+                "status": "passed",
+                "duration": 0.0012155199656262994,
+                "start": 1779067993.2742186,
+                "stop": 1779067993.2757647,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_runtime_profile_allows_explicit_gc",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.0010276399843860418,
+                "start": 1779067993.276036,
+                "stop": 1779067993.303332,
+                "retries": 0,
+                "file_path": "test_outputs.py",
+                "trace": "def test_runtime_profile_allows_explicit_gc() -> None:\n        profile = (ROOT / \"config/jvm.cfg\").read_text()\n>       assert \"-XX:+DisableExplicitGC\" not in profile\nE       AssertionError: assert '-XX:+DisableExplicitGC' not in '-XX:+UseG1G...ding=UTF-8\\n'\nE         \nE         '-XX:+DisableExplicitGC' is contained here:\nE           -XX:+UseG1GC\nE           -XX:MaxGCPauseMillis=200\nE           -XX:+DisableExplicitGC\nE           -Dtextd.profile=ci\nE           -Dfile.encoding=UTF-8\n\n/tests/test_outputs.py:108: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_outputs.py::test_daemon_core_does_not_force_gc",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.0033338999783154577,
+                "start": 1779067993.303635,
+                "stop": 1779067993.3146138,
+                "retries": 0,
+                "file_path": "test_outputs.py",
+                "trace": "def test_daemon_core_does_not_force_gc() -> None:\n        core_text = \"\\n\".join(\n            path.read_text()\n            for path in (ROOT / \"src/main/java/io/harbor/textd/core\").glob(\"*.java\")\n        )\n        for snippet in FORBIDDEN_CORE_SNIPPETS:\n>           assert snippet not in core_text, f\"explicit GC trigger found in daemon core: {snippet}\"\nE           AssertionError: explicit GC trigger found in daemon core: ManagementFactory\nE           assert 'ManagementFactory' not in 'package io....\\n    }\\n}\\n'\nE             \nE             'ManagementFactory' is contained here:\nE               anagement.ManagementFactory;\nE               import java.util.concurrent.CountDownLatch;\nE               import java.util.concurrent.ExecutionException;\nE               import java.util.concurrent.ExecutorService;\nE               import java.util.concurrent.Executors;...\nE             \nE             ...Full output truncated (279 lines hidden), use '-vv' to show\n\n/tests/test_outputs.py:117: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_outputs.py::test_stress_runner_completes",
+                "status": "passed",
+                "duration": 28.23344936198555,
+                "start": 1779067993.3149338,
+                "stop": 1779068021.548711,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_stress_runner_has_no_metaspace_oom",
+                "status": "passed",
+                "duration": 0.000473049032734707,
+                "start": 1779068021.549047,
+                "stop": 1779068021.5496724,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_generation_one_output",
+                "status": "passed",
+                "duration": 2.2459600170259364,
+                "start": 1779068021.54988,
+                "stop": 1779068023.7961981,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_current_output",
+                "status": "passed",
+                "duration": 0.0006196200265549123,
+                "start": 1779068023.7966156,
+                "stop": 1779068023.797497,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_runtime_digest_reports_stable_run",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 2.2084772170055658,
+                "start": 1779068023.7977774,
+                "stop": 1779068026.0115073,
+                "retries": 0,
+                "file_path": "test_outputs.py",
+                "trace": "digest_result = {'after_close': False, 'before_close': True, 'end': ['textd-worker-1', 'textd-worker-2', 'textd-worker-3', 'textd-worker-4'], 'first': 'GEN-001|ALPHA>BETA>GAMMA|PIPE-18528', ...}\n\n    def test_runtime_digest_reports_stable_run(digest_result: dict) -> None:\n        assert digest_result[\"sample\"] == SAMPLE\n        assert digest_result[\"first\"] == expected_output(1)\n        assert digest_result[\"rev\"] == LATEST_GENERATION\n        assert digest_result[\"last\"] == expected_output(LATEST_GENERATION)\n        assert digest_result[\"start\"] == [\"textd-worker-1\", \"textd-worker-2\", \"textd-worker-3\", \"textd-worker-4\"]\n        assert digest_result[\"end\"] == [\"textd-worker-1\", \"textd-worker-2\", \"textd-worker-3\", \"textd-worker-4\"]\n        assert digest_result[\"same_workers\"] is True\n        assert digest_result[\"before_close\"] is True\n>       assert digest_result[\"after_close\"] is True\nE       assert False is True\n\n/tests/test_outputs.py:149: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_outputs.py::test_replay_check_reports_unloading",
+                "status": "failed",
+                "duration": 2.5617187150055543,
+                "start": 1779068026.011729,
+                "stop": 1779068028.6284354,
+                "retries": 0,
+                "file_path": "test_outputs.py",
+                "trace": "build_once = None\n\n    @pytest.fixture(scope=\"session\")\n    def replay_check_result(build_once: None) -> subprocess.CompletedProcess[str]:\n>       return run_command([\"bash\", \"./bin/replay-check\"], env={\"TEXTD_SKIP_BUILD\": \"1\"})\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\n/tests/test_outputs.py:99: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n/tests/test_outputs.py:43: in run_command\n    return subprocess.run(\n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\ninput = None, capture_output = True, timeout = 600, check = True\npopenargs = (['bash', './bin/replay-check'],)\nkwargs = {'cwd': PosixPath('/workspace/textd'), 'env': {'HOME': '/root', 'HOSTNAME': '5190d9e898d4', 'LC_CTYPE': 'C.UTF-8', 'PA...:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', ...}, 'stderr': -1, 'stdout': -1, ...}\nprocess = <Popen: returncode: 1 args: ['bash', './bin/replay-check']>\nstdout = '', stderr = 'replay-fail unloaded-first=0 unloaded-second=0\\n'\nretcode = 1\n\n    def run(*popenargs,\n            input=None, capture_output=False, timeout=None, check=False, **kwargs):\n        \"\"\"Run command with arguments and return a CompletedProcess instance.\n    \n        The returned instance will have attributes args, returncode, stdout and\n        stderr. By default, stdout and stderr are not captured, and those attributes\n        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,\n        or pass capture_output=True to capture both.\n    \n        If check is True and the exit code was non-zero, it raises a\n        CalledProcessError. The CalledProcessError object will have the return code\n        in the returncode attribute, and output & stderr attributes if those streams\n        were captured.\n    \n        If timeout is given, and the process takes too long, a TimeoutExpired\n        exception will be raised.\n    \n        There is an optional argument \"input\", allowing you to\n        pass bytes or a string to the subprocess's stdin.  If you use this argument\n        you may not also use the Popen constructor's \"stdin\" argument, as\n        it will be used internally.\n    \n        By default, all communication is in bytes, and therefore any \"input\" should\n        be bytes, and the stdout and stderr will be bytes. If in text mode, any\n        \"input\" should be a string, and stdout and stderr will be strings decoded\n        according to locale encoding, or by \"encoding\" if set. Text mode is\n        triggered by setting any of text, encoding, errors or universal_newlines.\n    \n        The other arguments are the same as for the Popen constructor.\n        \"\"\"\n        if input is not None:\n            if kwargs.get('stdin') is not None:\n                raise ValueError('stdin and input arguments may not both be used.')\n            kwargs['stdin'] = PIPE\n    \n        if capture_output:\n            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:\n                raise ValueError('stdout and stderr arguments may not be used '\n                                 'with capture_output.')\n            kwargs['stdout'] = PIPE\n            kwargs['stderr'] = PIPE\n    \n        with Popen(*popenargs, **kwargs) as process:\n            try:\n                stdout, stderr = process.communicate(input, timeout=timeout)\n            except TimeoutExpired as exc:\n                process.kill()\n                if _mswindows:\n                    # Windows accumulates the output in a single blocking\n                    # read() call run on child threads, with the timeout\n                    # being done in a join() on those threads.  communicate()\n                    # _after_ kill() is required to collect that and add it\n                    # to the exception.\n                    exc.stdout, exc.stderr = process.communicate()\n                else:\n                    # POSIX _communicate already populated the output so\n                    # far into the TimeoutExpired exception.\n                    process.wait()\n                raise\n            except:  # Including KeyboardInterrupt, communicate handled that.\n                process.kill()\n                # We don't call process.wait() as .__exit__ does that for us.\n                raise\n            retcode = process.poll()\n            if check and retcode:\n>               raise CalledProcessError(retcode, process.args,\n                                         output=stdout, stderr=stderr)\nE               subprocess.CalledProcessError: Command '['bash', './bin/replay-check']' returned non-zero exit status 1.\n\n/usr/lib/python3.12/subprocess.py:571: CalledProcessError"
+            },
+            {
+                "name": "test_outputs.py::test_first_replay_session_stays_clean",
+                "status": "passed",
+                "duration": 3.8754224800213706,
+                "start": 1779068028.6288357,
+                "stop": 1779068032.5046241,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_second_replay_session_stays_clean",
+                "status": "passed",
+                "duration": 0.0009607299871277064,
+                "start": 1779068032.5049489,
+                "stop": 1779068032.5062659,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_replay_sessions_unload_classes",
+                "status": "passed",
+                "duration": 0.0004935400211252272,
+                "start": 1779068032.5065649,
+                "stop": 1779068032.5072207,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_replay_sessions_do_not_regress_unloading",
+                "status": "passed",
+                "duration": 0.0005921499978285283,
+                "start": 1779068032.507439,
+                "stop": 1779068032.508152,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            }
+        ]
+    }
+}

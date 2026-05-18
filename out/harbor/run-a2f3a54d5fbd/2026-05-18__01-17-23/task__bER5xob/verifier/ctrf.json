@@ -1,0 +1,144 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 13,
+            "passed": 10,
+            "failed": 3,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1779067991.5970352,
+            "stop": 1779068003.5883205
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_public_runner_surfaces_are_pristine",
+                "status": "passed",
+                "duration": 0.0015325400163419545,
+                "start": 1779067991.6403148,
+                "stop": 1779067991.6422591,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_runtime_profile_allows_explicit_gc",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.001191550021758303,
+                "start": 1779067991.6425915,
+                "stop": 1779067991.6668363,
+                "retries": 0,
+                "file_path": "test_outputs.py",
+                "trace": "def test_runtime_profile_allows_explicit_gc() -> None:\n        profile = (ROOT / \"config/jvm.cfg\").read_text()\n>       assert \"-XX:+DisableExplicitGC\" not in profile\nE       AssertionError: assert '-XX:+DisableExplicitGC' not in '-XX:+UseG1G...ding=UTF-8\\n'\nE         \nE         '-XX:+DisableExplicitGC' is contained here:\nE           -XX:+UseG1GC\nE           -XX:MaxGCPauseMillis=200\nE           -XX:+DisableExplicitGC\nE           -Dtextd.profile=ci\nE           -Dfile.encoding=UTF-8\n\n/tests/test_outputs.py:108: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_outputs.py::test_daemon_core_does_not_force_gc",
+                "status": "passed",
+                "duration": 0.0013286100002005696,
+                "start": 1779067991.6672366,
+                "stop": 1779067991.6687725,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_stress_runner_completes",
+                "status": "passed",
+                "duration": 8.618981101026293,
+                "start": 1779067991.6690683,
+                "stop": 1779068000.2883701,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_stress_runner_has_no_metaspace_oom",
+                "status": "passed",
+                "duration": 0.0006597400060854852,
+                "start": 1779068000.2887216,
+                "stop": 1779068000.289578,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_generation_one_output",
+                "status": "passed",
+                "duration": 0.5464522349939216,
+                "start": 1779068000.2898285,
+                "stop": 1779068000.8366346,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_current_output",
+                "status": "passed",
+                "duration": 0.0006078699952922761,
+                "start": 1779068000.8370006,
+                "stop": 1779068000.837818,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_runtime_digest_reports_stable_run",
+                "status": "passed",
+                "duration": 0.5722803439712152,
+                "start": 1779068000.8381634,
+                "stop": 1779068001.4107332,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_replay_check_reports_unloading",
+                "status": "failed",
+                "duration": 0.9809698500030208,
+                "start": 1779068001.4111867,
+                "stop": 1779068002.4344218,
+                "retries": 0,
+                "file_path": "test_outputs.py",
+                "trace": "build_once = None\n\n    @pytest.fixture(scope=\"session\")\n    def replay_check_result(build_once: None) -> subprocess.CompletedProcess[str]:\n>       return run_command([\"bash\", \"./bin/replay-check\"], env={\"TEXTD_SKIP_BUILD\": \"1\"})\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\n/tests/test_outputs.py:99: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n/tests/test_outputs.py:43: in run_command\n    return subprocess.run(\n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\ninput = None, capture_output = True, timeout = 600, check = True\npopenargs = (['bash', './bin/replay-check'],)\nkwargs = {'cwd': PosixPath('/workspace/textd'), 'env': {'HOME': '/root', 'HOSTNAME': '9a90d6b94004', 'LC_CTYPE': 'C.UTF-8', 'PA...:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', ...}, 'stderr': -1, 'stdout': -1, ...}\nprocess = <Popen: returncode: 1 args: ['bash', './bin/replay-check']>\nstdout = '', stderr = 'replay-fail unloaded-first=0 unloaded-second=0\\n'\nretcode = 1\n\n    def run(*popenargs,\n            input=None, capture_output=False, timeout=None, check=False, **kwargs):\n        \"\"\"Run command with arguments and return a CompletedProcess instance.\n    \n        The returned instance will have attributes args, returncode, stdout and\n        stderr. By default, stdout and stderr are not captured, and those attributes\n        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,\n        or pass capture_output=True to capture both.\n    \n        If check is True and the exit code was non-zero, it raises a\n        CalledProcessError. The CalledProcessError object will have the return code\n        in the returncode attribute, and output & stderr attributes if those streams\n        were captured.\n    \n        If timeout is given, and the process takes too long, a TimeoutExpired\n        exception will be raised.\n    \n        There is an optional argument \"input\", allowing you to\n        pass bytes or a string to the subprocess's stdin.  If you use this argument\n        you may not also use the Popen constructor's \"stdin\" argument, as\n        it will be used internally.\n    \n        By default, all communication is in bytes, and therefore any \"input\" should\n        be bytes, and the stdout and stderr will be bytes. If in text mode, any\n        \"input\" should be a string, and stdout and stderr will be strings decoded\n        according to locale encoding, or by \"encoding\" if set. Text mode is\n        triggered by setting any of text, encoding, errors or universal_newlines.\n    \n        The other arguments are the same as for the Popen constructor.\n        \"\"\"\n        if input is not None:\n            if kwargs.get('stdin') is not None:\n                raise ValueError('stdin and input arguments may not both be used.')\n            kwargs['stdin'] = PIPE\n    \n        if capture_output:\n            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:\n                raise ValueError('stdout and stderr arguments may not be used '\n                                 'with capture_output.')\n            kwargs['stdout'] = PIPE\n            kwargs['stderr'] = PIPE\n    \n        with Popen(*popenargs, **kwargs) as process:\n            try:\n                stdout, stderr = process.communicate(input, timeout=timeout)\n            except TimeoutExpired as exc:\n                process.kill()\n                if _mswindows:\n                    # Windows accumulates the output in a single blocking\n                    # read() call run on child threads, with the timeout\n                    # being done in a join() on those threads.  communicate()\n                    # _after_ kill() is required to collect that and add it\n                    # to the exception.\n                    exc.stdout, exc.stderr = process.communicate()\n                else:\n                    # POSIX _communicate already populated the output so\n                    # far into the TimeoutExpired exception.\n                    process.wait()\n                raise\n            except:  # Including KeyboardInterrupt, communicate handled that.\n                process.kill()\n                # We don't call process.wait() as .__exit__ does that for us.\n                raise\n            retcode = process.poll()\n            if check and retcode:\n>               raise CalledProcessError(retcode, process.args,\n                                         output=stdout, stderr=stderr)\nE               subprocess.CalledProcessError: Command '['bash', './bin/replay-check']' returned non-zero exit status 1.\n\n/usr/lib/python3.12/subprocess.py:571: CalledProcessError"
+            },
+            {
+                "name": "test_outputs.py::test_first_replay_session_stays_clean",
+                "status": "passed",
+                "duration": 1.0824191889551003,
+                "start": 1779068002.4346926,
+                "stop": 1779068003.5177197,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_second_replay_session_stays_clean",
+                "status": "passed",
+                "duration": 0.0008777000184636563,
+                "start": 1779068003.5182576,
+                "stop": 1779068003.5194654,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_replay_sessions_unload_classes",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.0021483799791894853,
+                "start": 1779068003.5199327,
+                "stop": 1779068003.5862613,
+                "retries": 0,
+                "file_path": "test_outputs.py",
+                "trace": "replay_result = {'first': {'after_close': True, 'before_close': True, 'end': ['textd-worker-1', 'textd-worker-2', 'textd-worker-3', 't...worker-1', 'textd-worker-2', 'textd-worker-3', 'textd-worker-4'], 'first': 'GEN-001|ALPHA>BETA>GAMMA|PIPE-18528', ...}}\n\n    def test_replay_sessions_unload_classes(replay_result: dict) -> None:\n        first = replay_result[\"first\"]\n        second = replay_result[\"second\"]\n>       assert first[\"unloaded_after_close\"] > first[\"unloaded_before_close\"]\nE       assert 0 > 0\n\n/tests/test_outputs.py:197: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_outputs.py::test_replay_sessions_do_not_regress_unloading",
+                "status": "passed",
+                "duration": 0.000802050024503842,
+                "start": 1779068003.5869336,
+                "stop": 1779068003.5879364,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            }
+        ]
+    }
+}

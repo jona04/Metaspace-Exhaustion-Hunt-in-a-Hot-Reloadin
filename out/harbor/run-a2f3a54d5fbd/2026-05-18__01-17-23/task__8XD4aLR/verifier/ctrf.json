@@ -1,0 +1,146 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 13,
+            "passed": 10,
+            "failed": 3,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1779068942.6686857,
+            "stop": 1779068971.7252107
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_public_runner_surfaces_are_pristine",
+                "status": "passed",
+                "duration": 0.0011438399669714272,
+                "start": 1779068942.6971717,
+                "stop": 1779068942.6986089,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_runtime_profile_allows_explicit_gc",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.0009516690042801201,
+                "start": 1779068942.6988509,
+                "stop": 1779068942.7167926,
+                "retries": 0,
+                "file_path": "test_outputs.py",
+                "trace": "def test_runtime_profile_allows_explicit_gc() -> None:\n        profile = (ROOT / \"config/jvm.cfg\").read_text()\n>       assert \"-XX:+DisableExplicitGC\" not in profile\nE       AssertionError: assert '-XX:+DisableExplicitGC' not in '-XX:+UseG1G...ding=UTF-8\\n'\nE         \nE         '-XX:+DisableExplicitGC' is contained here:\nE           -XX:+UseG1GC\nE           -XX:MaxGCPauseMillis=200\nE           -XX:+DisableExplicitGC\nE           -Dtextd.profile=ci\nE           -Dfile.encoding=UTF-8\n\n/tests/test_outputs.py:108: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_outputs.py::test_daemon_core_does_not_force_gc",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.0022814699914306402,
+                "start": 1779068942.7171125,
+                "stop": 1779068942.7233803,
+                "retries": 0,
+                "file_path": "test_outputs.py",
+                "trace": "def test_daemon_core_does_not_force_gc() -> None:\n        core_text = \"\\n\".join(\n            path.read_text()\n            for path in (ROOT / \"src/main/java/io/harbor/textd/core\").glob(\"*.java\")\n        )\n        for snippet in FORBIDDEN_CORE_SNIPPETS:\n>           assert snippet not in core_text, f\"explicit GC trigger found in daemon core: {snippet}\"\nE           AssertionError: explicit GC trigger found in daemon core: ManagementFactory\nE           assert 'ManagementFactory' not in 'package io....\\n    }\\n}\\n'\nE             \nE             'ManagementFactory' is contained here:\nE               anagement.ManagementFactory;\nE               import java.nio.file.Path;\nE               import java.util.ArrayList;\nE               import java.util.List;\nE               import java.util.concurrent.CountDownLatch;...\nE             \nE             ...Full output truncated (275 lines hidden), use '-vv' to show\n\n/tests/test_outputs.py:117: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_outputs.py::test_stress_runner_completes",
+                "status": "passed",
+                "duration": 19.66665416501928,
+                "start": 1779068942.7236028,
+                "stop": 1779068962.39064,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_stress_runner_has_no_metaspace_oom",
+                "status": "passed",
+                "duration": 0.0007678099791519344,
+                "start": 1779068962.3910596,
+                "stop": 1779068962.392094,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_generation_one_output",
+                "status": "passed",
+                "duration": 1.8509200609987602,
+                "start": 1779068962.392414,
+                "stop": 1779068964.2436671,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_current_output",
+                "status": "passed",
+                "duration": 0.0005316300084814429,
+                "start": 1779068964.2440305,
+                "stop": 1779068964.244741,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_runtime_digest_reports_stable_run",
+                "status": "passed",
+                "duration": 1.9535494489828125,
+                "start": 1779068964.2450318,
+                "stop": 1779068966.1988823,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_replay_check_reports_unloading",
+                "status": "passed",
+                "duration": 1.6699344330118038,
+                "start": 1779068966.1992486,
+                "stop": 1779068967.8694804,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_first_replay_session_stays_clean",
+                "status": "passed",
+                "duration": 3.8482866400154307,
+                "start": 1779068967.869801,
+                "stop": 1779068971.7183785,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_second_replay_session_stays_clean",
+                "status": "passed",
+                "duration": 0.00047856001765467227,
+                "start": 1779068971.7186515,
+                "stop": 1779068971.7193017,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_replay_sessions_unload_classes",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.000574939971556887,
+                "start": 1779068971.7194984,
+                "stop": 1779068971.7241693,
+                "retries": 0,
+                "file_path": "test_outputs.py",
+                "trace": "replay_result = {'first': {'after_close': True, 'before_close': True, 'end': ['textd-worker-1', 'textd-worker-2', 'textd-worker-3', 't...worker-1', 'textd-worker-2', 'textd-worker-3', 'textd-worker-4'], 'first': 'GEN-001|ALPHA>BETA>GAMMA|PIPE-18528', ...}}\n\n    def test_replay_sessions_unload_classes(replay_result: dict) -> None:\n        first = replay_result[\"first\"]\n        second = replay_result[\"second\"]\n        assert first[\"unloaded_after_close\"] > first[\"unloaded_before_close\"]\n>       assert second[\"unloaded_after_close\"] > second[\"unloaded_before_close\"]\nE       assert 3891 > 3891\n\n/tests/test_outputs.py:198: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_outputs.py::test_replay_sessions_do_not_regress_unloading",
+                "status": "passed",
+                "duration": 0.0005267400410957634,
+                "start": 1779068971.7243662,
+                "stop": 1779068971.7250166,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            }
+        ]
+    }
+}

@@ -1,0 +1,143 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 13,
+            "passed": 11,
+            "failed": 2,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1779068001.2097175,
+            "stop": 1779068069.9863873
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_public_runner_surfaces_are_pristine",
+                "status": "passed",
+                "duration": 0.001251400011824444,
+                "start": 1779068001.2985353,
+                "stop": 1779068001.3001635,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_runtime_profile_allows_explicit_gc",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.0009435599786229432,
+                "start": 1779068001.3003776,
+                "stop": 1779068001.3819256,
+                "retries": 0,
+                "file_path": "test_outputs.py",
+                "trace": "def test_runtime_profile_allows_explicit_gc() -> None:\n        profile = (ROOT / \"config/jvm.cfg\").read_text()\n>       assert \"-XX:+DisableExplicitGC\" not in profile\nE       AssertionError: assert '-XX:+DisableExplicitGC' not in '-XX:+UseG1G...ding=UTF-8\\n'\nE         \nE         '-XX:+DisableExplicitGC' is contained here:\nE           -XX:+UseG1GC\nE           -XX:MaxGCPauseMillis=200\nE           -XX:+DisableExplicitGC\nE           -Dtextd.profile=ci\nE           -Dfile.encoding=UTF-8\n\n/tests/test_outputs.py:108: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_outputs.py::test_daemon_core_does_not_force_gc",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.0030861000122968107,
+                "start": 1779068001.3822675,
+                "stop": 1779068001.3896637,
+                "retries": 0,
+                "file_path": "test_outputs.py",
+                "trace": "def test_daemon_core_does_not_force_gc() -> None:\n        core_text = \"\\n\".join(\n            path.read_text()\n            for path in (ROOT / \"src/main/java/io/harbor/textd/core\").glob(\"*.java\")\n        )\n        for snippet in FORBIDDEN_CORE_SNIPPETS:\n>           assert snippet not in core_text, f\"explicit GC trigger found in daemon core: {snippet}\"\nE           AssertionError: explicit GC trigger found in daemon core: ManagementFactory\nE           assert 'ManagementFactory' not in 'package io....\\n    }\\n}\\n'\nE             \nE             'ManagementFactory' is contained here:\nE               anagement.ManagementFactory;\nE               import java.util.concurrent.atomic.AtomicBoolean;\nE               \nE               final class CiGcTuning {\nE                   private static final AtomicBoolean CONFIGURED = new AtomicBoolean(false);...\nE             \nE             ...Full output truncated (28 lines hidden), use '-vv' to show\n\n/tests/test_outputs.py:117: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_outputs.py::test_stress_runner_completes",
+                "status": "passed",
+                "duration": 49.219516784040025,
+                "start": 1779068001.3898678,
+                "stop": 1779068050.6098347,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_stress_runner_has_no_metaspace_oom",
+                "status": "passed",
+                "duration": 0.000725930993212387,
+                "start": 1779068050.6102602,
+                "stop": 1779068050.6112876,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_generation_one_output",
+                "status": "passed",
+                "duration": 4.166620277042966,
+                "start": 1779068050.611558,
+                "stop": 1779068054.7785459,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_current_output",
+                "status": "passed",
+                "duration": 0.0004818110028281808,
+                "start": 1779068054.7788334,
+                "stop": 1779068054.7794526,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_runtime_digest_reports_stable_run",
+                "status": "passed",
+                "duration": 4.514108703006059,
+                "start": 1779068054.7796307,
+                "stop": 1779068059.2940772,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_replay_check_reports_unloading",
+                "status": "passed",
+                "duration": 2.6095203860022593,
+                "start": 1779068059.2943847,
+                "stop": 1779068061.9042332,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_first_replay_session_stays_clean",
+                "status": "passed",
+                "duration": 8.076609748008195,
+                "start": 1779068061.904609,
+                "stop": 1779068069.9816358,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_second_replay_session_stays_clean",
+                "status": "passed",
+                "duration": 0.0009638500050641596,
+                "start": 1779068069.982432,
+                "stop": 1779068069.9836817,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_replay_sessions_unload_classes",
+                "status": "passed",
+                "duration": 0.0006544700008817017,
+                "start": 1779068069.9839563,
+                "stop": 1779068069.984805,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_replay_sessions_do_not_regress_unloading",
+                "status": "passed",
+                "duration": 0.0007929600251372904,
+                "start": 1779068069.9850986,
+                "stop": 1779068069.9860797,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            }
+        ]
+    }
+}
