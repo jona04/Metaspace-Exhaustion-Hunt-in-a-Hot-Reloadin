@@ -9,10 +9,4 @@ final class ThreadBridge {
     static WorkerHandle current(TimelineLedger ledger) {
         return ROUTES.get().cursorFor(ledger);
     }
-
-    static void clear() {
-        ThreadCache routeState = ROUTES.get();
-        routeState.close();
-        ROUTES.remove();
-    }
 }

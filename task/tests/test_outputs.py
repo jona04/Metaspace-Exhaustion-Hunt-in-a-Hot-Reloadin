@@ -11,6 +11,14 @@ ROOT = Path("/workspace/textd")
 SAMPLE = "alpha beta gamma"
 LATEST_GENERATION = 24
 
+FORBIDDEN_CORE_SNIPPETS = [
+    "System.gc",
+    "ManagementFactory",
+    "DiagnosticCommand",
+    "gcRun",
+    "GC.run",
+]
+
 PRISTINE_HASHES = {
     "bin/build": "d30c8c505f3771343176879ee02bef48b272c7abb2f73c317aabb516d3c2289f",
     "bin/integration": "6c77011e97beb056d141550a0082f540c53fb662e495e281581a8060cdf607da",
@@ -93,6 +101,20 @@ def replay_check_result(build_once: None) -> subprocess.CompletedProcess[str]:
 
 def test_public_runner_surfaces_are_pristine(pristine_surfaces: None) -> None:
     pass
+
+
+def test_runtime_profile_allows_explicit_gc() -> None:
+    profile = (ROOT / "config/jvm.cfg").read_text()
+    assert "-XX:+DisableExplicitGC" not in profile
+
+
+def test_daemon_core_does_not_force_gc() -> None:
+    core_text = "\n".join(
+        path.read_text()
+        for path in (ROOT / "src/main/java/io/harbor/textd/core").glob("*.java")
+    )
+    for snippet in FORBIDDEN_CORE_SNIPPETS:
+        assert snippet not in core_text, f"explicit GC trigger found in daemon core: {snippet}"
 
 
 def test_stress_runner_completes(stress_result: subprocess.CompletedProcess[str]) -> None:
